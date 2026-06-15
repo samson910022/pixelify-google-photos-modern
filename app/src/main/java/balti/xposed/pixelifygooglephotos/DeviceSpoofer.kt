@@ -45,7 +45,7 @@ object DeviceSpoofer {
         // Read the device name from preferences; fall back to the default (Pixel 5).
         val deviceName = prefs?.getString(Constants.PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
             ?: DeviceProps.defaultDeviceName
-        Log.d(TAG, "Device spoof: $deviceName")
+        if (verboseLog) Log.d(TAG, "Device spoof: $deviceName")
 
         val deviceEntries = DeviceProps.getDeviceProps(deviceName)
 

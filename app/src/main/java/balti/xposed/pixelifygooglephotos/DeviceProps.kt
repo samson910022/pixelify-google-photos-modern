@@ -96,6 +96,21 @@ object DeviceProps {
             "com.google.android.feature.PIXEL_2021_EXPERIENCE",
             "com.google.android.apps.photos.PIXEL_2021_PRELOAD",
         ),
+
+        Features("Pixel 2022", // Pixel 7 series
+            "com.google.android.feature.PIXEL_2022_EXPERIENCE",
+            "com.google.android.apps.photos.PIXEL_2022_PRELOAD",
+        ),
+
+        Features("Pixel 2023", // Pixel 8 series
+            "com.google.android.feature.PIXEL_2023_EXPERIENCE",
+            "com.google.android.apps.photos.PIXEL_2023_PRELOAD",
+        ),
+
+        Features("Pixel 2024", // Pixel 9 series
+            "com.google.android.feature.PIXEL_2024_EXPERIENCE",
+            "com.google.android.apps.photos.PIXEL_2024_PRELOAD",
+        ),
     )
 
     /**
@@ -142,6 +157,10 @@ object DeviceProps {
         AndroidVersion("Q 10.0", "10", 29),
         AndroidVersion("R 11.0", "11", 30),
         AndroidVersion("S 12.0", "12", 31),
+        AndroidVersion("Android 13", "13", 33),
+        AndroidVersion("Android 14", "14", 34),
+        AndroidVersion("Android 15", "15", 35),
+        AndroidVersion("Android 16", "16", 36),
     )
 
     /**
@@ -286,6 +305,182 @@ object DeviceProps {
             ),
             "Pixel 2021",
             getAndroidVersionFromLabel("S 12.0"),
+        ),
+
+        DeviceEntries(
+            "Pixel 6a", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "bluejay"),
+                Pair("PRODUCT", "bluejay"),
+                Pair("MODEL", "Pixel 6a"),
+                Pair("FINGERPRINT", "google/bluejay/bluejay:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2022",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel 7", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "panther"),
+                Pair("PRODUCT", "panther"),
+                Pair("MODEL", "Pixel 7"),
+                Pair("FINGERPRINT", "google/panther/panther:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2022",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel 7 Pro", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "cheetah"),
+                Pair("PRODUCT", "cheetah"),
+                Pair("MODEL", "Pixel 7 Pro"),
+                Pair("FINGERPRINT", "google/cheetah/cheetah:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2022",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel 7a", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "lynx"),
+                Pair("PRODUCT", "lynx"),
+                Pair("MODEL", "Pixel 7a"),
+                Pair("FINGERPRINT", "google/lynx/lynx:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2023",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel 8", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "shiba"),
+                Pair("PRODUCT", "shiba"),
+                Pair("MODEL", "Pixel 8"),
+                Pair("FINGERPRINT", "google/shiba/shiba:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2023",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel 8 Pro", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "husky"),
+                Pair("PRODUCT", "husky"),
+                Pair("MODEL", "Pixel 8 Pro"),
+                Pair("FINGERPRINT", "google/husky/husky:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2023",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel 8a", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "akita"),
+                Pair("PRODUCT", "akita"),
+                Pair("MODEL", "Pixel 8a"),
+                Pair("FINGERPRINT", "google/akita/akita:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2024",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel 9", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "tokay"),
+                Pair("PRODUCT", "tokay"),
+                Pair("MODEL", "Pixel 9"),
+                Pair("FINGERPRINT", "google/tokay/tokay:16/BP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "BP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2024",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        DeviceEntries(
+            "Pixel 9 Pro", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "caiman"),
+                Pair("PRODUCT", "caiman"),
+                Pair("MODEL", "Pixel 9 Pro"),
+                Pair("FINGERPRINT", "google/caiman/caiman:16/BP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "BP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2024",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        DeviceEntries(
+            "Pixel 9 Pro XL", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "komodo"),
+                Pair("PRODUCT", "komodo"),
+                Pair("MODEL", "Pixel 9 Pro XL"),
+                Pair("FINGERPRINT", "google/komodo/komodo:16/BP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "BP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2024",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        DeviceEntries(
+            "Pixel 9a", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "tehua"),
+                Pair("PRODUCT", "tehua"),
+                Pair("MODEL", "Pixel 9a"),
+                Pair("FINGERPRINT", "google/tehua/tehua:16/BP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "BP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2024",
+            getAndroidVersionFromLabel("Android 16"),
         ),
     )
 

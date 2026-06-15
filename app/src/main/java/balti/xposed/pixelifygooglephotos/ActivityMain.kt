@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.graphics.Paint
 import android.net.Uri
-import android.os.AsyncTask
 import android.os.Build
 import android.os.Bundle
 import android.view.Menu
@@ -26,7 +25,6 @@ import balti.xposed.pixelifygooglephotos.Constants.PREF_OVERRIDE_ROM_FEATURE_LEV
 import balti.xposed.pixelifygooglephotos.Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE
 import balti.xposed.pixelifygooglephotos.Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL
 import balti.xposed.pixelifygooglephotos.Constants.PREF_SPOOF_FEATURES_LIST
-import balti.xposed.pixelifygooglephotos.Constants.PREF_STRICTLY_CHECK_GOOGLE_PHOTOS
 import balti.xposed.pixelifygooglephotos.Constants.RELEASES_URL
 import balti.xposed.pixelifygooglephotos.Constants.RELEASES_URL2
 import balti.xposed.pixelifygooglephotos.Constants.SHARED_PREF_FILE_NAME
@@ -54,14 +52,7 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
      * they allow the Xposed hook process (inside Google Photos) to read
      * preferences written by the module UI process.
      */
-    private fun getPrefs(): SharedPreferences? {
-        return try {
-            App.mService?.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-                ?: getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, MODE_PRIVATE)
-        } catch (e: Exception) {
-            getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, MODE_PRIVATE)
-        }
-    }
+    private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
     /**
      * Check if the Xposed module is actually active/enabled in LSPosed.
@@ -113,7 +104,10 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
      */
     private fun restartActivity() {
         finish()
-        startActivity(intent)
+        startActivity(intent.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        })
+        overridePendingTransition(0, 0)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -146,7 +140,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         val customizeFeatureFlags = findViewById<LinearLayout>(R.id.customize_feature_flags)
         val featureFlagsChanged = findViewById<TextView>(R.id.feature_flags_changed)
         val overrideROMFeatureLevels = findViewById<SwitchCompat>(R.id.override_rom_feature_levels)
-        val switchEnforceGooglePhotos = findViewById<SwitchCompat>(R.id.spoof_only_in_google_photos_switch)
         val deviceSpooferSpinner = findViewById<Spinner>(R.id.device_spoofer_spinner)
         val forceStopGooglePhotos = findViewById<Button>(R.id.force_stop_google_photos)
         val openGooglePhotos = findViewById<ImageButton>(R.id.open_google_photos)
@@ -166,7 +159,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             pref?.edit()?.run {
                 putString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
                 putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true)
-                putBoolean(PREF_STRICTLY_CHECK_GOOGLE_PHOTOS, true)
                 putStringSet(
                     PREF_SPOOF_FEATURES_LIST,
                     DeviceProps.defaultFeatures.map { it.displayName }.toSet()
@@ -187,20 +179,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             setOnCheckedChangeListener { _, isChecked ->
                 pref?.edit()?.run {
                     putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, isChecked)
-                    apply()
-                    showRebootSnack()
-                }
-            }
-        }
-
-        /**
-         * See [FeatureSpoofer].
-         */
-        switchEnforceGooglePhotos.apply {
-            isChecked = pref?.getBoolean(PREF_STRICTLY_CHECK_GOOGLE_PHOTOS, true) ?: false
-            setOnCheckedChangeListener { _, isChecked ->
-                pref?.edit()?.run {
-                    putBoolean(PREF_STRICTLY_CHECK_GOOGLE_PHOTOS, isChecked)
                     apply()
                     showRebootSnack()
                 }
@@ -325,10 +303,8 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
 
         /**
          * Check for updates in background thread.
-         * Yes AsyncTask is deprecated, but it works fine and for such a short network operation
-         * it is useless to try coroutine or something like that.
          */
-        AsyncTask.execute {
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute {
             isUpdateAvailable()?.let { url ->
                 runOnUiThread {
                     updateAvailableLink.apply {
@@ -442,7 +418,9 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         val pref = getPrefs()
 
         try {
-            val confFile = File(cacheDir, CONF_EXPORT_NAME)
+            val configDir = File(cacheDir, "config_exports")
+            configDir.mkdirs()
+            val confFile = File(configDir, CONF_EXPORT_NAME)
             val uriFromFile = Uri.fromFile(confFile)
 
             confFile.delete()
@@ -493,12 +471,16 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
      * The Uri of the location is present in result.
      * Then call [Utils.writeConfigFile] using that Uri.
      */
-    private val configCreateLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+    private val configCreateLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
         val pref = getPrefs()
 
         try {
             if (it.resultCode == Activity.RESULT_OK) {
-                utils.writeConfigFile(this, it.data!!.data!!, pref)
+                val uri = it.data?.data ?: run {
+                    Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+                    return@registerForActivityResult
+                }
+                utils.writeConfigFile(this, uri, pref)
                 Toast.makeText(this, R.string.export_complete, Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
@@ -521,12 +503,16 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         configOpenLauncher.launch(openIntent)
     }
 
-    private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+    private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
         val pref = getPrefs()
 
         try {
             if (it.resultCode == Activity.RESULT_OK) {
-                utils.readConfigFile(this, it.data!!.data!!, pref)
+                val uri = it.data?.data ?: run {
+                    Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+                    return@registerForActivityResult
+                }
+                utils.readConfigFile(this, uri, pref)
                 Toast.makeText(this, R.string.import_complete, Toast.LENGTH_SHORT).show()
                 restartActivity()
             }

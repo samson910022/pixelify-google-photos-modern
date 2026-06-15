@@ -7,9 +7,9 @@
 ## 功能
 
 - **裝置偽造** — 將非 Pixel 裝置偽裝為 Google Pixel，解鎖 Google Photos 的 Pixel 限定功能
-- **Feature Flags 偽造** — 偽造 17 組 Pixel 專屬 system features，涵蓋 Pixel 2016~2024
-- **17 款 Pixel 裝置** — 從 Nexus 6P 到 Pixel 9 Pro XL 完整支援
-- **Android 版本偽造** — 可自訂偽造的 Android 版本（支援 Android 9~16）
+- **Feature Flags 偽造** — 偽造 12 組 Pixel 專屬 feature levels，涵蓋 Pixel 2016~2024
+- **20 款 Pixel 裝置** — 從 Pixel XL 到 Pixel 9 Pro XL / Pixel 9a 完整支援
+- **Android 版本偽造** — 可自訂偽造的 Android 版本（支援 Android 7.1~16）
 - **ROM Feature Level 覆寫** — 覆蓋自訂 ROM 內建的 Pixel feature flag 設定
 - **自訂 Feature List** — 精細選擇要偽造的特定 feature flags
 - **Config Import/Export** — 匯出/匯入設定檔
@@ -37,6 +37,38 @@ cd pixelify-google-photos-modern
 ```
 
 APK 產出在 `app/build/outputs/apk/release/`
+
+## 測試
+
+```bash
+# 執行單元測試
+./gradlew test --tests "balti.xposed.pixelifygooglephotos.*"
+```
+
+專案包含 **88 個單元測試**，涵蓋：
+- `DevicePropsTest` (47 tests) — 裝置資料完整性、查詢邏輯
+- `FeatureSpoofLogicTest` (17 tests) — Feature flag 決策邏輯
+- `UtilsConfigTest` (16 tests) — 設定檔匯出/匯入往返
+- `ConstantsTest` (8 tests) — 常數完整性
+
+## 專案品質
+
+本專案經歷了完整的 **4 階段程式碼審查與修補**：
+
+### 安全性
+- `forceStopPackage()` 加入 `require()` 驗證 + `ProcessBuilder`，防止命令注入
+- Config Import/Export 使用安全 URI 訪問，消除 NPE 崩潰風險
+- Config Import 加入 device name / Android version 驗證
+- FileProvider 路徑限定於子目錄
+- 敏感日誌（裝置名稱）限 verbose mode 才輸出
+
+### 程式碼品質
+- `FeatureSpoofer` 使用 `Set` 取代 `List`，查詢從 O(n) 優化為 O(1)
+- 提取共用 `PrefUtils.getPrefs()` 消除三處重複
+- 淘汰已棄用的 `AsyncTask`，改用 `Executors`
+- 修復 `OutputStream` 資源洩漏
+- `restartActivity()` 消除視覺閃爍
+- 移除無效的 `PREF_STRICTLY_CHECK_GOOGLE_PHOTOS` 死代碼
 
 ## 技術架構
 

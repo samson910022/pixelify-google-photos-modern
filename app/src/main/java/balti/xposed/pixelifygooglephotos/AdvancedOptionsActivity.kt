@@ -18,14 +18,7 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
      * Retrieve SharedPreferences, preferring remote preferences via XposedService
      * with fallback to local MODE_PRIVATE.
      */
-    private fun getPrefs(): SharedPreferences? {
-        return try {
-            App.mService?.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-                ?: getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, MODE_PRIVATE)
-        } catch (e: Exception) {
-            getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, MODE_PRIVATE)
-        }
-    }
+    private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
     private val pref by lazy { getPrefs() }
 
@@ -69,7 +62,10 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
             aa.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             adapter = aa
             val defaultSelection = pref?.getString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
-            setSelection(aa.getPosition(defaultSelection))
+            val pos = aa.getPosition(defaultSelection)
+            if (pos >= 0) {
+                setSelection(pos)
+            }
         }
 
         /**

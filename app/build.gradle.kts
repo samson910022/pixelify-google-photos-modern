@@ -11,8 +11,8 @@ android {
         applicationId = "balti.xposed.pixelifygooglephotos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "5.0"
+        versionCode = 7
+        versionName = "5.1"
     }
 
     buildTypes {
@@ -59,4 +59,10 @@ dependencies {
 
     compileOnly(libs.libxposed.api)
     implementation(libs.libxposed.service)
+
+    // Unit testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:${libs.versions.kotlin.get()}")
+    testImplementation("org.mockito:mockito-core:5.14.2")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
 }

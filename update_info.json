@@ -1,8 +1,8 @@
 {
-    "versionCode": 6,
-    "versionName": "5.0",
-    "latestVersion": "5.0",
-    "latestVersionCode": 6,
+    "versionCode": 7,
+    "versionName": "5.1",
+    "latestVersion": "5.1",
+    "latestVersionCode": 7,
     "url": "https://github.com/samson910022/pixelify-google-photos-modern/releases",
-    "notes": "基於 libxposed Modern API 全面改寫，支援 Pixel 9 Pro、移除舊版 Xposed Bridge API"
+    "notes": "安全性修補、程式碼品質優化、新增 88 個單元測試、擴充裝置支援至 20 款 Pixel"
 }

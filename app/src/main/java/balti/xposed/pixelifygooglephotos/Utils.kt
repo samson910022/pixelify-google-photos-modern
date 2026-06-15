@@ -13,12 +13,12 @@ import balti.xposed.pixelifygooglephotos.Constants.PREF_OVERRIDE_ROM_FEATURE_LEV
 import balti.xposed.pixelifygooglephotos.Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE
 import balti.xposed.pixelifygooglephotos.Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL
 import balti.xposed.pixelifygooglephotos.Constants.PREF_SPOOF_FEATURES_LIST
-import balti.xposed.pixelifygooglephotos.Constants.PREF_STRICTLY_CHECK_GOOGLE_PHOTOS
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
 import java.io.OutputStreamWriter
+import java.util.concurrent.TimeUnit
 
 
 /**
@@ -32,15 +32,13 @@ class Utils {
      * Uses root to stop an application.
      */
     fun forceStopPackage(packageName: String, context: Context) {
+        require(packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) { "Invalid package name: $packageName" }
         try {
             Toast.makeText(context, R.string.killing_please_wait, Toast.LENGTH_SHORT).show()
-            Runtime.getRuntime().exec("su").apply {
-                BufferedWriter(OutputStreamWriter(this.outputStream)).run {
-                    this.write("am force-stop $packageName\n")
-                    this.write("exit\n")
-                    this.flush()
-                }
-            }
+            val process = ProcessBuilder("su", "-c", "am force-stop $packageName")
+                .redirectErrorStream(true)
+                .start()
+            process.waitFor(5, TimeUnit.SECONDS)
         } catch (e: Exception) {
             Toast.makeText(context, R.string.failed_to_stop_package, Toast.LENGTH_SHORT).show()
             val intent = Intent().apply {
@@ -83,24 +81,23 @@ class Utils {
         // List of keys from shared preference which need not be copied to file.
         val fieldsNotToCopy = listOf(PREF_LAST_VERSION, PREF_SPOOF_FEATURES_LIST)
 
-        val outputStream = context.contentResolver.openOutputStream(uri)
-        val writer = BufferedWriter(OutputStreamWriter(outputStream))
+        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+            BufferedWriter(OutputStreamWriter(outputStream)).use { writer ->
 
-        val jsonObject = JSONObject()
-        pref?.all?.let { allPrefs ->
-            for (key in allPrefs.keys) {
-                if (key !in fieldsNotToCopy) jsonObject.put(key, allPrefs[key])
+                val jsonObject = JSONObject()
+                pref?.all?.let { allPrefs ->
+                    for (key in allPrefs.keys) {
+                        if (key !in fieldsNotToCopy) jsonObject.put(key, allPrefs[key])
+                    }
+                }
+
+                // Store PREF_SPOOF_FEATURES_LIST
+                pref?.getStringSet(PREF_SPOOF_FEATURES_LIST, setOf())?.let {
+                    jsonObject.put(PREF_SPOOF_FEATURES_LIST, JSONArray(it.toTypedArray()))
+                }
+
+                writer.write(jsonObject.toString(4))
             }
-        }
-
-        // Store PREF_SPOOF_FEATURES_LIST
-        pref?.getStringSet(PREF_SPOOF_FEATURES_LIST, setOf())?.let {
-            jsonObject.put(PREF_SPOOF_FEATURES_LIST, JSONArray(it.toTypedArray()))
-        }
-
-        writer.run {
-            write(jsonObject.toString(4))
-            close()
         }
     }
 
@@ -138,6 +135,20 @@ class Utils {
             return list
         }
 
+        // Validate before writing
+        val importedDeviceName = jsonObject.optString(PREF_DEVICE_TO_SPOOF, "")
+        val importedVersion = jsonObject.optString(PREF_SPOOF_ANDROID_VERSION_MANUAL, "")
+
+        val deviceIsValid = importedDeviceName.isEmpty() || DeviceProps.getDeviceProps(importedDeviceName) != null
+        val versionIsValid = importedVersion.isEmpty() || DeviceProps.getAndroidVersionFromLabel(importedVersion) != null
+
+        if (!deviceIsValid && importedDeviceName.isNotEmpty()) {
+            Toast.makeText(context, "Invalid device in imported config: $importedDeviceName. Skipping.", Toast.LENGTH_LONG).show()
+        }
+        if (!versionIsValid && importedVersion.isNotEmpty()) {
+            Toast.makeText(context, "Invalid Android version in imported config: $importedVersion. Skipping.", Toast.LENGTH_LONG).show()
+        }
+
         /**
          * Check for field and store in shared prefs.
          */
@@ -150,14 +161,9 @@ class Utils {
             }
 
             PREF_DEVICE_TO_SPOOF.let { key ->
-                jsonObject.optString(key)?.let {
-                    putString(key, it)
-                }
-            }
-
-            PREF_STRICTLY_CHECK_GOOGLE_PHOTOS.let { key ->
-                jsonObject.optBoolean(key, true).let {
-                    putBoolean(key, it)
+                val v = jsonObject.optString(key)
+                if (v.isNotEmpty() && deviceIsValid) {
+                    putString(key, v)
                 }
             }
 
@@ -182,8 +188,9 @@ class Utils {
             }
 
             PREF_SPOOF_ANDROID_VERSION_MANUAL.let { key ->
-                jsonObject.optString(key)?.let {
-                    putString(key, it)
+                val v = jsonObject.optString(key)
+                if (v.isNotEmpty() && versionIsValid) {
+                    putString(key, v)
                 }
             }
 

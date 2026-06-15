@@ -41,14 +41,14 @@ object FeatureSpoofer {
      * Feature flags that should be spoofed as **present** (return `true`).
      * Built from the user's selected feature levels in preferences.
      */
-    private var finalFeaturesToSpoof: List<String> = emptyList()
+    private var finalFeaturesToSpoof: Set<String> = emptySet()
 
     /**
      * Feature flags that should be spoofed as **absent** (return `false`).
      * Built from all known flags minus [finalFeaturesToSpoof].
      * Only active when [overrideCustomROMLevels] is `true`.
      */
-    private var featuresNotToSpoof: List<String> = emptyList()
+    private var featuresNotToSpoof: Set<String> = emptySet()
 
     /**
      * Whether to override upper feature levels advertised by custom ROMs.
@@ -143,12 +143,12 @@ object FeatureSpoofer {
             else -> DeviceProps.allFeatures.filter { it.displayName in selectedNames }
         }
 
-        finalFeaturesToSpoof = eligibleFeatures.flatMap { it.featureFlags }
+        finalFeaturesToSpoof = eligibleFeatures.flatMap { it.featureFlags }.toSet()
 
         // --- Build the "not-to-spoof" list ---
 
         val allFlags = DeviceProps.allFeatures.flatMap { it.featureFlags }
-        featuresNotToSpoof = allFlags.filter { it !in finalFeaturesToSpoof }
+        featuresNotToSpoof = allFlags.filter { it !in finalFeaturesToSpoof }.toSet()
 
         initialized = true
 

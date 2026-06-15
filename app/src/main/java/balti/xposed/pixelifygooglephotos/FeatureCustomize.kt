@@ -20,14 +20,7 @@ class FeatureCustomize : AppCompatActivity(R.layout.feature_customize) {
      * Retrieve SharedPreferences, preferring remote preferences via XposedService
      * with fallback to local MODE_PRIVATE.
      */
-    private fun getPrefs(): SharedPreferences? {
-        return try {
-            App.mService?.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-                ?: getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, MODE_PRIVATE)
-        } catch (e: Exception) {
-            getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, MODE_PRIVATE)
-        }
-    }
+    private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
     private val pref by lazy { getPrefs() }
 
