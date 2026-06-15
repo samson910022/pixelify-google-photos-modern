@@ -1,0 +1,2 @@
+-keep class balti.xposed.pixelifygooglephotos.PixelifyModule
+-keep class io.github.libxposed.service.** { *; }

@@ -1,0 +1,8 @@
+{
+    "versionCode": 6,
+    "versionName": "5.0",
+    "latestVersion": "5.0",
+    "latestVersionCode": 6,
+    "url": "https://github.com/samson910022/pixelify-google-photos-modern/releases",
+    "notes": "基於 libxposed Modern API 全面改寫，支援 Pixel 9 Pro、移除舊版 Xposed Bridge API"
+}

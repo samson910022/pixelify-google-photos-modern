@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:layout_margin="25dp"
+    android:id="@+id/root_view_for_snackbar"
+    >
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        >
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            >
+
+            <ImageButton
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:src="@drawable/ic_export"
+                android:backgroundTint="@android:color/white"
+                android:contentDescription="@string/export_config"
+                android:id="@+id/conf_export"
+                />
+
+            <ImageButton
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:src="@drawable/ic_import"
+                android:backgroundTint="@android:color/white"
+                android:contentDescription="@string/import_config"
+                android:id="@+id/conf_import"
+                />
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"/>
+
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/reset"
+                android:id="@+id/reset_settings"
+                />
+
+        </LinearLayout>
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="25dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            >
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/device_to_spoof"
+                    android:textAppearance="?android:attr/textAppearanceLarge"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/spoofs_build_and_features"/>
+
+            </LinearLayout>
+
+            <Spinner
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/device_spoofer_spinner"/>
+
+        </LinearLayout>
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="25dp"/>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingTop="10dp"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:id="@+id/customize_feature_flags"
+            >
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/customize_feature_flags"
+                android:textAppearance="?android:attr/textAppearanceLarge"
+                />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/feature_flags_changed"
+                android:textColor="?android:attr/colorPrimary"
+                android:alpha="0.0"
+                android:id="@+id/feature_flags_changed"
+                />
+
+        </LinearLayout>
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="25dp"/>
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/override_rom_feature_levels"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:id="@+id/override_rom_feature_levels"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/override_rom_feature_levels_desc"
+            android:textAppearance="?android:attr/textAppearanceSmall"/>
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="25dp"/>
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/spoof_only_in_google_photos"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:id="@+id/spoof_only_in_google_photos_switch"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/spoof_only_in_google_photos_desc"
+            android:textAppearance="?android:attr/textAppearanceSmall"/>
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="15dp"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/advanced_options"
+            android:textAppearance="?android:attr/textAppearanceMedium"
+            android:textStyle="bold"
+            android:clickable="true"
+            android:focusable="true"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:id="@+id/advanced_options"
+            />
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="15dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/update_available"
+            android:textColor="@color/red"
+            android:clickable="true"
+            android:focusable="true"
+            android:textStyle="bold"
+            android:textAppearance="?android:attr/textAppearanceMedium"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:visibility="gone"
+            android:id="@+id/update_available_link"
+            />
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="5dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/telegram_group"
+            android:textColor="?android:attr/colorPrimary"
+            android:clickable="true"
+            android:focusable="true"
+            android:textStyle="bold"
+            android:textAppearance="?android:attr/textAppearanceMedium"
+            android:foreground="?android:attr/selectableItemBackground"
+            android:id="@+id/telegram_group"
+            />
+
+        <Space
+            android:layout_width="wrap_content"
+            android:layout_height="25dp"/>
+
+        <RelativeLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            >
+
+            <Button
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/force_stop_google_photos"
+                android:elevation="3dp"
+                android:id="@+id/force_stop_google_photos"
+                />
+
+            <ImageButton
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toEndOf="@id/force_stop_google_photos"
+                android:layout_alignTop="@id/force_stop_google_photos"
+                android:layout_alignBottom="@id/force_stop_google_photos"
+                android:backgroundTint="?android:attr/colorPrimary"
+                android:contentDescription="@string/open_google_photos"
+                android:src="@drawable/ic_open"
+                android:elevation="3dp"
+                android:id="@+id/open_google_photos"
+                />
+
+        </RelativeLayout>
+
+    </LinearLayout>
+
+</ScrollView>
