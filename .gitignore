@@ -27,9 +27,12 @@ out/
 # Log Files
 *.log
 
-# Keystore files (uncomment if needed)
-# *.jks
-# *.keystore
+# Keystore files
+*.jks
+*.keystore
+
+# Key properties (contains passwords)
+key.properties
 
 # Android Profiling
 *.hprof
@@ -52,3 +55,6 @@ lint/tmp/
 
 # Version control
 vcs.xml
+
+# Android Studio signing config
+signing.properties

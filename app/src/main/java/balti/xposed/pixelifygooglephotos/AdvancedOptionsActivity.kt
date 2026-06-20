@@ -32,14 +32,14 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (pref == null) return
+        val prefs = pref ?: return
 
-        verboseLogging.isChecked = pref.getBoolean(PREF_ENABLE_VERBOSE_LOGS, false)
+        verboseLogging.isChecked = prefs.getBoolean(PREF_ENABLE_VERBOSE_LOGS, false)
 
         /**
          * Get the current spoofing device and its android version.
          */
-        val deviceNameInPreference = pref.getString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
+        val deviceNameInPreference = prefs.getString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
         val spoofDevice = DeviceProps.getDeviceProps(deviceNameInPreference)
         deviceNameLabel.text = spoofDevice?.deviceName
         deviceAndroidVersion.text = spoofDevice?.androidVersion?.label
@@ -61,7 +61,7 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
 
             aa.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             adapter = aa
-            val defaultSelection = pref?.getString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
+            val defaultSelection = prefs.getString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
             val pos = aa.getPosition(defaultSelection)
             if (pos >= 0) {
                 setSelection(pos)
@@ -78,11 +78,11 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
                 androidVersionSpinner.isVisible = checkedId == R.id.manually_set_android_version
             }
 
-            val manualVersion = pref.getString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)?.trim()
+            val manualVersion = prefs.getString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)?.trim()
 
             check(
                 when {
-                    pref.getBoolean(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, false) -> R.id.follow_spoof_device_version
+                    prefs.getBoolean(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, false) -> R.id.follow_spoof_device_version
                     manualVersion != null && manualVersion in allVersionLabels -> R.id.manually_set_android_version
                     else -> R.id.dont_spoof_android_version
                 }

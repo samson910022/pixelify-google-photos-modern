@@ -3,6 +3,16 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+import java.util.Properties
+import java.io.FileInputStream
+
+// Signing configuration loaded from key.properties (not committed to git)
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(keystorePropertiesFile.inputStream())
+}
+
 android {
     namespace = "balti.xposed.pixelifygooglephotos"
     compileSdk = 35
@@ -11,12 +21,24 @@ android {
         applicationId = "balti.xposed.pixelifygooglephotos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "5.1"
+        versionCode = 8
+        versionName = "5.1.1"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.containsKey("storeFile")) {
+                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                keyAlias = keystoreProperties["keyAlias"] as String
+            }
+        }
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -28,6 +50,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     compileOptions {
@@ -58,7 +81,7 @@ dependencies {
     implementation(libs.material)
 
     compileOnly(libs.libxposed.api)
-    implementation(libs.libxposed.service)
+    compileOnly(libs.libxposed.service)
 
     // Unit testing
     testImplementation("junit:junit:4.13.2")

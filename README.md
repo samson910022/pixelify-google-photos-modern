@@ -30,13 +30,64 @@
 
 ## 編譯
 
+### 前置需求
+
+- [Android Studio](https://developer.android.com/studio)（或 JDK 17+ + Android SDK）
+- Android SDK 35+
+
+### 快速開始
+
 ```bash
 git clone https://github.com/samson910022/pixelify-google-photos-modern.git
 cd pixelify-google-photos-modern
+./gradlew assembleDebug
+```
+
+### 簽署 Release APK
+
+若要建置簽署用於正式發佈的 APK，需要先準備簽署金鑰：
+
+#### 首次：產生金鑰庫
+
+```bash
+# 使用 keytool（隨 Android Studio / JDK 提供）
+keytool -genkey -v -keystore pixelify.jks \
+        -alias pixelify \
+        -keyalg RSA -keysize 2048 -validity 10000 \
+        -storepass <your-store-pass> \
+        -keypass <your-key-pass> \
+        -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown"
+```
+
+#### 建立簽署設定
+
+在專案根目錄建立 `key.properties`（已加入 `.gitignore`，不會被 commit）：
+
+```properties
+storePassword=<your-store-pass>
+keyPassword=<your-key-pass>
+keyAlias=pixelify
+storeFile=pixelify.jks
+```
+
+#### 建置簽署 APK
+
+```bash
 ./gradlew assembleRelease
 ```
 
 APK 產出在 `app/build/outputs/apk/release/`
+
+> ⚠️ **金鑰安全提醒**
+> - `key.properties` 含密碼，已列入 `.gitignore`
+> - `pixelify.jks` 請務必備份到安全處
+> - 金鑰遺失後**無法更新**已上架的 APK
+
+### 跑單元測試
+
+```bash
+./gradlew test --tests "balti.xposed.pixelifygooglephotos.*"
+```
 
 ## 測試
 

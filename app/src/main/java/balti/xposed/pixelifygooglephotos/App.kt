@@ -15,6 +15,10 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         App.mService = service
     }
 
+    override fun onServiceDied(service: XposedService) {
+        App.mService = null
+    }
+
     companion object {
         var mService: XposedService? = null
             private set
