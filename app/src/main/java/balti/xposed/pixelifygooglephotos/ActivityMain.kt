@@ -103,6 +103,7 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
      * For some reason, invalidate or recreate() does not refresh the switches.
      */
     private fun restartActivity() {
+        if (isFinishing || isDestroyed) return
         finish()
         startActivity(intent.apply {
             addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -125,6 +126,7 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
                 }
                 .setCancelable(false)
                 .show()
+            return
         }
 
         /**
@@ -306,12 +308,14 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
          */
         java.util.concurrent.Executors.newSingleThreadExecutor().execute {
             isUpdateAvailable()?.let { url ->
-                runOnUiThread {
-                    updateAvailableLink.apply {
-                        paintFlags = Paint.UNDERLINE_TEXT_FLAG
-                        visibility = View.VISIBLE
-                        setOnClickListener {
-                            openWebLink(url)
+                if (!isFinishing && !isDestroyed) {
+                    runOnUiThread {
+                        updateAvailableLink.apply {
+                            paintFlags = Paint.UNDERLINE_TEXT_FLAG
+                            visibility = View.VISIBLE
+                            setOnClickListener {
+                                openWebLink(url)
+                            }
                         }
                     }
                 }

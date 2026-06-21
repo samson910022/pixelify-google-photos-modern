@@ -161,6 +161,7 @@ object DeviceProps {
         AndroidVersion("Android 14", "14", 34),
         AndroidVersion("Android 15", "15", 35),
         AndroidVersion("Android 16", "16", 36),
+        AndroidVersion("Android 17", "17", 37),
     )
 
     /**

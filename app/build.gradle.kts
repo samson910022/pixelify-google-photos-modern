@@ -21,8 +21,8 @@ android {
         applicationId = "balti.xposed.pixelifygooglephotos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "5.1.1"
+        versionCode = 9
+        versionName = "5.2"
     }
 
     signingConfigs {
@@ -88,4 +88,5 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test:${libs.versions.kotlin.get()}")
     testImplementation("org.mockito:mockito-core:5.14.2")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
+    testImplementation("org.json:json:20231013")
 }

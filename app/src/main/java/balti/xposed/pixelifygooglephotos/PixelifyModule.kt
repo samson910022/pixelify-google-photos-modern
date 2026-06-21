@@ -19,16 +19,28 @@ class PixelifyModule : XposedModule() {
             Constants.PACKAGE_NAME_GOOGLE_PHOTOS -> {
                 Log.d(TAG, "Google Photos detected (${params.packageName}). Applying hooks...")
 
+                // Each hook is individually guarded so one failure doesn't block the other.
+                // The outer catch is a safety net for any unexpected errors that might slip
+                // past the inner per-hook guards (e.g. uncaught exceptions from try blocks themselves).
                 try {
                     // FeatureSpoofer: hook hasSystemFeature()
-                    FeatureSpoofer.hook(this, params.defaultClassLoader)
-                    Log.d(TAG, "FeatureSpoofer hook registered")
+                    try {
+                        FeatureSpoofer.hook(this, params.defaultClassLoader)
+                        Log.d(TAG, "FeatureSpoofer hook registered")
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "Failed to register FeatureSpoofer hooks", t)
+                    }
 
                     // DeviceSpoofer: spoof Build properties
-                    DeviceSpoofer.hook(params.defaultClassLoader)
-                    Log.d(TAG, "DeviceSpoofer hook registered")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to register hooks", e)
+                    try {
+                        val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
+                        DeviceSpoofer.hook(params.defaultClassLoader, prefs)
+                        Log.d(TAG, "DeviceSpoofer hook registered")
+                    } catch (t: Throwable) {
+                        Log.e(TAG, "Failed to register DeviceSpoofer hooks", t)
+                    }
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Failed to register hooks", t)
                 }
             }
         }

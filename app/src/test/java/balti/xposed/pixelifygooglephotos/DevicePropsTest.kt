@@ -300,8 +300,8 @@ class DevicePropsTest {
     // =========================================================================
 
     @Test
-    fun `allAndroidVersions contains 10 entries`() {
-        assertEquals(10, DeviceProps.allAndroidVersions.size)
+    fun `allAndroidVersions contains 11 entries`() {
+        assertEquals(11, DeviceProps.allAndroidVersions.size)
     }
 
     @Test
@@ -395,12 +395,37 @@ class DevicePropsTest {
         assertEquals(36, device.androidVersion?.sdk)
     }
 
+    @Test
+    fun `Android 17 is in allAndroidVersions with SDK 37`() {
+        val a17 = DeviceProps.allAndroidVersions.firstOrNull { it.sdk == 37 }
+        assertNotNull("allAndroidVersions should contain SDK 37 (Android 17)", a17)
+        assertEquals("Android 17", a17!!.label)
+    }
+
+    @Test
+    fun `getAsMap returns correct keys and values for Android 17`() {
+        val a17 = DeviceProps.allAndroidVersions.first { it.label == "Android 17" }
+        val map = a17.getAsMap()
+        assertEquals("17", map["RELEASE"])
+        assertEquals(37, map["SDK_INT"])
+        assertEquals("37", map["SDK"])
+        assertEquals(3, map.size)
+    }
+
+    @Test
+    fun `getAndroidVersionFromLabel returns correct version for Android 17`() {
+        val v = DeviceProps.getAndroidVersionFromLabel("Android 17")
+        assertNotNull(v)
+        assertEquals("17", v!!.release)
+        assertEquals(37, v.sdk)
+    }
+
     // =========================================================================
     // Fingerprint format validation
     // =========================================================================
 
     @Test
-    fun `all device fingerprints follow brand/device/device pattern`() {
+    fun `all device fingerprints contain brand slash device slash device pattern`() {
         DeviceProps.allDevices.filter { it.deviceName != "None" }.forEach { device ->
             val fingerprint = device.props["FINGERPRINT"]
             assertNotNull(
