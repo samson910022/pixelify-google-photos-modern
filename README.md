@@ -96,10 +96,11 @@ APK 產出在 `app/build/outputs/apk/release/`
 ./gradlew test --tests "balti.xposed.pixelifygooglephotos.*"
 ```
 
-專案包含 **88 個單元測試**，涵蓋：
-- `DevicePropsTest` (47 tests) — 裝置資料完整性、查詢邏輯
+專案包含 **100 個單元測試**，涵蓋：
+- `DevicePropsTest` (50 tests) — 裝置資料完整性、查詢邏輯、Android 17 資料
+- `DeviceSpooferTest` (6 tests) — Reflection exception safety、catch(Throwable) 驗證
 - `FeatureSpoofLogicTest` (17 tests) — Feature flag 決策邏輯
-- `UtilsConfigTest` (16 tests) — 設定檔匯出/匯入往返
+- `UtilsConfigTest` (19 tests) — 設定檔匯出/匯入往返
 - `ConstantsTest` (8 tests) — 常數完整性
 
 ## 專案品質
@@ -112,6 +113,11 @@ APK 產出在 `app/build/outputs/apk/release/`
 - Config Import 加入 device name / Android version 驗證
 - FileProvider 路徑限定於子目錄
 - 敏感日誌（裝置名稱）限 verbose mode 才輸出
+
+### Android 17 Crash 修補 (v5.2)
+- **SIGSEGV 防護** — Android 17 reflection ban 造成 SIGSEGV，加入 early-return guard（SDK >= 37 完全跳過 Build spoofing）
+- **catch(Throwable)** — 所有 catch 區塊從 `Exception` 全面升級為 `Throwable`，防止 Error 子類漏接
+- **null-safe reflection** — `accessFlagsField` 可為 null，不再因找不到 Dalvik-specific Field 中斷
 
 ### 程式碼品質
 - `FeatureSpoofer` 使用 `Set` 取代 `List`，查詢從 O(n) 優化為 O(1)

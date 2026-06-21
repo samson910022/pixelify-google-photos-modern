@@ -1,5 +1,26 @@
 # Changelog
 
+## [5.2] - 2026-06-21
+
+### 關鍵修復
+- **Android 17 SIGSEGV Crash 修補** — `DeviceSpoofer.hook()` 加入 Android 17 early-return guard（SDK >= 37 完全跳過 reflection），消除 Android 17 static final field reflection ban 造成的 SIGSEGV
+- **`catch(t: Throwable)` 全面遷移** — `setStaticField` 與 `forEach` 迴圈的 `catch(e: Exception)` 改為 `catch(t: Throwable)`，防止 Error 子類（如 `NoSuchFieldError`、`VerifyError`）漏接
+- **`accessFlagsField` null-safety** — `accessFlagsField` lazy initializer 找不到 `Field.accessFlags` 時不 throw，改為 nullable，`setStaticField` 使用 safe-call
+- **Activity lifecycle 防護** — `restartActivity()` 加入 `finish()` 後 `return`；背景更新執行緒加入 `isFinishing/isDestroyed` 檢查
+
+### 相依性
+- **Android 17 entry** — `DeviceProps` 加入 Android 17（SDK 37）至版本清單
+- **JSON 測試相依性** — 加入 `org.json:json:20231013` 測試用 dependency
+
+### 測試覆蓋
+- **DeviceSpooferTest** — 新增 7 個單元測試（Android 17 常數、setStaticField exception safety、catch(Throwable) vs catch(Exception)）
+- **DevicePropsTest** — 新增 3 個 Android 17 測試（存在性、getAsMap、getAndroidVersionFromLabel）
+- **總測試數：** 100 tests（原本 88 + 新 12），全部 PASS
+
+### 程式碼品質
+- **PixelifyModule 縮排修正** — 外層 try 區塊內容正確縮排
+- **code review** — 通過雙審（Code Reviewer ✅ APPROVED + Test Engineer ✅ PASS）
+
 ## [5.1.1] - 2026-06-21
 
 ### 簽署支援
