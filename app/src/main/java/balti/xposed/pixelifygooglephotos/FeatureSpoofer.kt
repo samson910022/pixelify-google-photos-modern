@@ -67,7 +67,7 @@ object FeatureSpoofer {
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Called from [PixelifyModule.onPackageLoaded].
+     * Called from [PixelifyModule.onPackageReady].
      *
      * Reads user preferences via [XposedModule.getRemotePreferences],
      * resolves the feature flag lists, and registers interceptors on both

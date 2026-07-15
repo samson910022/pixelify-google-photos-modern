@@ -10,7 +10,7 @@ import java.lang.reflect.Modifier
  * Spoofs device properties by modifying [android.os.Build] static fields
  * using Java Reflection instead of XposedHelpers.
  *
- * Called from [PixelifyModule.onPackageLoaded] when Google Photos is detected.
+ * Called from [PixelifyModule.onPackageReady] when Google Photos is detected.
  *
  * Device properties are defined in [DeviceProps] and selected via user preferences
  * stored in the module's shared preference file.
@@ -44,9 +44,9 @@ object DeviceSpoofer {
     /**
      * Hook entry point: spoof [android.os.Build] static fields for the target app.
      *
-     * @param classLoader ClassLoader of the target package (provided by [PixelifyModule]).
+     * @param prefs Remote preferences obtained in the hooked process.
      */
-    fun hook(classLoader: ClassLoader, prefs: SharedPreferences?) {
+    fun hook(prefs: SharedPreferences?) {
         // Android 17+ blocks reflection-based modification of static final fields,
         // which would cause a SIGSEGV crash. Skip all Build spoofing entirely.
         if (Build.VERSION.SDK_INT >= ANDROID_17_SDK_INT) {

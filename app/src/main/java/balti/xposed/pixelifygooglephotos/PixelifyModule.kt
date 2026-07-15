@@ -14,7 +14,7 @@ class PixelifyModule : XposedModule() {
         Log.d(TAG, "Pixelify Google Photos module loaded (libxposed Modern API v5.0)")
     }
 
-    override fun onPackageLoaded(params: XposedModuleInterface.PackageLoadedParam) {
+    override fun onPackageReady(params: XposedModuleInterface.PackageReadyParam) {
         when (params.packageName) {
             Constants.PACKAGE_NAME_GOOGLE_PHOTOS -> {
                 Log.d(TAG, "Google Photos detected (${params.packageName}). Applying hooks...")
@@ -25,7 +25,7 @@ class PixelifyModule : XposedModule() {
                 try {
                     // FeatureSpoofer: hook hasSystemFeature()
                     try {
-                        FeatureSpoofer.hook(this, params.defaultClassLoader)
+                        FeatureSpoofer.hook(this, params.classLoader)
                         Log.d(TAG, "FeatureSpoofer hook registered")
                     } catch (t: Throwable) {
                         Log.e(TAG, "Failed to register FeatureSpoofer hooks", t)
@@ -34,7 +34,7 @@ class PixelifyModule : XposedModule() {
                     // DeviceSpoofer: spoof Build properties
                     try {
                         val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-                        DeviceSpoofer.hook(params.defaultClassLoader, prefs)
+                        DeviceSpoofer.hook(prefs)
                         Log.d(TAG, "DeviceSpoofer hook registered")
                     } catch (t: Throwable) {
                         Log.e(TAG, "Failed to register DeviceSpoofer hooks", t)
@@ -44,10 +44,6 @@ class PixelifyModule : XposedModule() {
                 }
             }
         }
-    }
-
-    override fun onPackageReady(params: XposedModuleInterface.PackageReadyParam) {
-        // Reserved for hooks that require fully initialized package
     }
 
     // onHotReloading/onHotReloaded are optional default methods (available since API 102)
