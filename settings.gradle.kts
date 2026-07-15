@@ -11,9 +11,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://api.xposed.info/repository") }
-        maven { url = uri("https://jitpack.io") }
     }
 }
-rootProject.name = "Pixelify Google Photos"
+rootProject.name = "Pixelify Photos"
 include(":app")

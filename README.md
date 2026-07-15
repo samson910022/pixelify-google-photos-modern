@@ -1,158 +1,90 @@
-# Pixelify Google Photos (Modern API)
+# Pixelify Photos
 
-基於 **libxposed Modern API** 全面改寫的 Pixelify Google Photos Xposed 模組。
+[English](README.md) · [繁體中文](docs/README.zh-TW.md) · [简体中文](docs/README.zh-CN.md) · [日本語](docs/README.ja.md)
 
-> ⚠️ 此版本使用 libxposed Modern API（api v101+），**僅支援 LSPosed**，不支援舊版 Xposed Framework 或 EdXposed。
+Pixelify Photos is an independently maintained Xposed module that spoofs selected Google Pixel device properties and system feature flags for Google Photos. It uses the modern libxposed API and has its own package name, release history, and signing identity.
 
-## 功能
+> [!IMPORTANT]
+> This project is not affiliated with or endorsed by Google, Google Photos, Pixel, LSPosed, or the original upstream maintainers. Feature availability can change with Google Photos, server-side configuration, account, region, device, or Android updates. Use the module at your own risk.
 
-- **裝置偽造** — 將非 Pixel 裝置偽裝為 Google Pixel，解鎖 Google Photos 的 Pixel 限定功能
-- **Feature Flags 偽造** — 偽造 12 組 Pixel 專屬 feature levels，涵蓋 Pixel 2016~2024
-- **20 款 Pixel 裝置** — 從 Pixel XL 到 Pixel 9 Pro XL / Pixel 9a 完整支援
-- **Android 版本偽造** — 可自訂偽造的 Android 版本（支援 Android 7.1~16）
-- **ROM Feature Level 覆寫** — 覆蓋自訂 ROM 內建的 Pixel feature flag 設定
-- **自訂 Feature List** — 精細選擇要偽造的特定 feature flags
-- **Config Import/Export** — 匯出/匯入設定檔
+## Features
 
-## 需求
+- Spoof selected Google Pixel device profiles.
+- Spoof Pixel-related system feature flags.
+- Choose from device profiles spanning Pixel XL through newer Pixel generations.
+- Optionally spoof a compatible Android version.
+- Override ROM-provided Pixel feature levels.
+- Select individual feature flags through an advanced configuration screen.
+- Import, export, and share module configuration.
 
-- Android 8.0（API 26）或更高版本
-- **LSPosed** 模組管理器
-- Google Photos（建議最新版本）
+## Requirements
 
-## 安裝
+- Android 8.0 (API 26) or later.
+- Root access.
+- An Xposed environment with modern libxposed API 101 support, such as a compatible LSPosed setup.
+- Google Photos (`com.google.android.apps.photos`).
 
-1. 從 [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) 下載最新 APK
-2. 安裝 APK 到裝置上
-3. 開啟 LSPosed，啟用本模組
-4. 作用範圍選擇 `com.google.android.apps.photos`
-5. 重新啟動 Google Photos
+Legacy XposedBridge/EdXposed environments are not supported by this modern-API build.
 
-## 編譯
+**Android 17+ compatibility:** build-property spoofing is intentionally disabled on Android API 37 and later because modifying those fields is unsafe. Feature-flag spoofing may still work, so support on those Android versions is partial and depends on the device, ROM, framework, and Google Photos version.
 
-### 前置需求
+## Installation
 
-- JDK 17
-- Android SDK Platform 35
-- Android Build Tools 35.0.0 或相容版本
+1. Download the APK from this repository's [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) page.
+2. Install the APK.
+3. Enable **Pixelify Photos** in your Xposed module manager.
+4. Set the module scope to **Google Photos** only.
+5. Force-stop and reopen Google Photos. Reboot the device if the module manager requires it.
 
-### 快速開始
+Only install releases obtained from the repository above or its future official Xposed Modules Repository mirror. See [Release verification](#release-verification) before installing a downloaded APK.
 
-```bash
-git clone https://github.com/samson910022/pixelify-google-photos-modern.git
-cd pixelify-google-photos-modern
+## Upgrading from the legacy project
 
-# Debug APK（自動使用 Android debug key）
-./gradlew test lintDebug assembleDebug
+This project uses the independent application ID:
 
-# Release APK；未提供 release key 時會產出 unsigned APK
-./gradlew lintRelease assembleRelease
+```text
+io.github.samson910022.pixelifyphotos
 ```
 
-APK 產出在 `app/build/outputs/apk/`。
+It is a separate application, not an in-place upgrade of `balti.xposed.pixelifygooglephotos`. The two applications may coexist. When migrating, enable and scope the new module separately; settings are not migrated automatically.
 
-### Release 簽名
+See [FORK_NOTICE.md](FORK_NOTICE.md) for the complete maintenance and attribution notice.
 
-Keystore 不應放入 Git。專案支援以下任一方式提供 release signing 資訊：
+## Release verification
 
-1. 在專案根目錄建立已被 `.gitignore` 排除的 `key.properties`：
+Official releases use a stable signing certificate. Before installing an APK, verify that its signer SHA-256 matches the fingerprint published in [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md). Release pages should also provide a checksum for each downloadable artifact.
 
-```properties
-storeFile=/absolute/path/to/release.jks
-storePassword=<secret>
-keyAlias=<alias>
-keyPassword=<secret>
-```
+The public certificate is available at [`certificates/pixelifyphotos-release-cert.pem`](certificates/pixelifyphotos-release-cert.pem). Private signing keys are never distributed in this repository.
 
-2. 透過 Gradle properties（例如 `~/.gradle/gradle.properties`）或 CI environment secrets 提供：
+## Privacy and network access
 
-```properties
-RELEASE_STORE_FILE=/absolute/path/to/release.jks
-RELEASE_STORE_PASSWORD=<secret>
-RELEASE_KEY_ALIAS=<alias>
-RELEASE_KEY_PASSWORD=<secret>
-```
+Pixelify Photos does not include analytics or advertising SDKs. The app uses network access to check the configured GitHub/Xposed release metadata for updates and to open project links. Module settings and exported configuration files remain under the user's control.
 
-然後執行：
+See [PRIVACY.md](PRIVACY.md) for details.
 
-```bash
-./gradlew :app:signingReport :app:assembleRelease :app:bundleRelease
-```
+## Troubleshooting and support
 
-簽名值必須四項完整提供；四項都未提供時 release 會維持 unsigned，僅提供部分值則建置會明確失敗。
+Before reporting a problem:
 
-> ⚠️ **金鑰安全提醒**
-> - `key.properties` 含密碼，已列入 `.gitignore`
-> - `*.jks` / `*.keystore` 請務必備份到安全處
-> - 金鑰遺失後**無法更新**以該金鑰簽署的 APK
+1. Confirm that the module is enabled and scoped only to Google Photos.
+2. Force-stop and reopen Google Photos.
+3. Reproduce the issue with verbose logging enabled only when diagnostics are needed.
+4. Remove account identifiers and other personal information from logs.
+5. Search existing [issues](https://github.com/samson910022/pixelify-google-photos-modern/issues).
 
-## 測試
+Use GitHub Issues for reproducible bugs and feature requests. Security vulnerabilities should be reported according to [SECURITY.md](SECURITY.md), not through a public issue.
 
-```bash
-# 執行單元測試
-./gradlew test --tests "balti.xposed.pixelifygooglephotos.*"
-```
+## Development
 
-專案包含 **100 個單元測試**，涵蓋：
-- `DevicePropsTest` (50 tests) — 裝置資料完整性、查詢邏輯、Android 17 資料
-- `DeviceSpooferTest` (9 tests) — Reflection exception safety、catch(Throwable) 驗證
-- `FeatureSpoofLogicTest` (17 tests) — Feature flag 決策邏輯
-- `UtilsConfigTest` (16 tests) — 設定檔匯出/匯入往返
-- `ConstantsTest` (8 tests) — 常數完整性
+Build instructions, contribution rules, test commands, and release-maintainer notes are kept in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 專案品質
+## License and attribution
 
-本專案經歷了完整的 **4 階段程式碼審查與修補**：
+Licensed under the [MIT License](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for dependency notices.
 
-### 安全性
-- `forceStopPackage()` 加入 `require()` 驗證 + `ProcessBuilder`，防止命令注入
-- Config Import/Export 使用安全 URI 訪問，消除 NPE 崩潰風險
-- Config Import 加入 device name / Android version 驗證
-- FileProvider 路徑限定於子目錄
-- 敏感日誌（裝置名稱）限 verbose mode 才輸出
+This project is derived from [BaltiApps/Pixelify-Google-Photos](https://github.com/BaltiApps/Pixelify-Google-Photos). Additional acknowledgements:
 
-### Android 17 Crash 修補 (v5.2)
-- **SIGSEGV 防護** — Android 17 reflection ban 造成 SIGSEGV，加入 early-return guard（SDK >= 37 完全跳過 Build spoofing）
-- **catch(Throwable)** — 所有 catch 區塊從 `Exception` 全面升級為 `Throwable`，防止 Error 子類漏接
-- **null-safe reflection** — `accessFlagsField` 可為 null，不再因找不到 Dalvik-specific Field 中斷
+- [libxposed/api](https://github.com/libxposed/api)
+- [LSPosed](https://github.com/LSPosed/LSPosed)
 
-### 程式碼品質
-- `FeatureSpoofer` 使用 `Set` 取代 `List`，查詢從 O(n) 優化為 O(1)
-- 提取共用 `PrefUtils.getPrefs()` 消除三處重複
-- 淘汰已棄用的 `AsyncTask`，改用 `Executors`
-- 修復 `OutputStream` 資源洩漏
-- `restartActivity()` 消除視覺閃爍
-- 移除無效的 `PREF_STRICTLY_CHECK_GOOGLE_PHOTOS` 死代碼
-
-## 技術架構
-
-```
-PixelifyModule (XposedModule)
-  ├── onPackageLoaded() → 偵測 Google Photos
-  ├── FeatureSpoofer: hook().intercept() → 偽造 hasSystemFeature()
-  └── DeviceSpoofer: Java Reflection → 偽造 Build 屬性
-
-App (XposedServiceHelper)
-  └── mService → Remote Preferences 讀寫
-```
-
-### 與舊版差異
-
-| 項目 | 舊版 (XposedBridge 82) | 新版 (libxposed Modern API) |
-|------|-----------------------|-----------------------------|
-| 模組入口 | `assets/xposed_init` | `META-INF/xposed/java_init.list` |
-| Hook API | `XposedHelpers.findAndHookMethod` | `hook(method).intercept{ chain -> }` |
-| 偏好儲存 | `XSharedPreferences` + `MODE_WORLD_READABLE` | `XposedService.getRemotePreferences()` |
-| 模組宣告 | AndroidManifest meta-data | `module.prop` / `scope.list` |
-| minSdk | 21 | 26（Android 8.0） |
-| Build 工具 | Groovy + AGP 7.1 | Kotlin DSL + AGP 8.7 |
-
-## 授權
-
-[Apache License 2.0](LICENSE)
-
-## 致謝
-
-- [BaltiApps/Pixelify-Google-Photos](https://github.com/BaltiApps/Pixelify-Google-Photos) — 原始專案
-- [libxposed/api](https://github.com/libxposed/api) — Modern Xposed API
-- [LSPosed](https://github.com/LSPosed/LSPosed) — Xposed Framework
+Google Photos, Google Pixel, Android, and related names are trademarks of their respective owners.

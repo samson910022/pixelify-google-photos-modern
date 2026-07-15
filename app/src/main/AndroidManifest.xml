@@ -10,6 +10,7 @@
     <application
         android:name=".App"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:icon="@mipmap/ic_launcher"
@@ -28,7 +29,7 @@
         <activity android:name=".AdvancedOptionsActivity" />
 
         <provider
-            android:authorities="${applicationId}"
+            android:authorities="${applicationId}.fileprovider"
             android:name="androidx.core.content.FileProvider"
             android:exported="false"
             android:grantUriPermissions="true">

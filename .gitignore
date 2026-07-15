@@ -32,6 +32,11 @@ out/
 *.keystore
 *.p12
 *.pfx
+*.key
+*.pk8
+*.pkcs8
+*.pem
+!certificates/pixelifyphotos-release-cert.pem
 key.properties
 keystore.properties
 signing.properties
@@ -57,3 +62,23 @@ lint/tmp/
 
 # Version control
 vcs.xml
+
+# Environment files and common secret exports
+.env
+.env.*
+!.env.example
+*.secrets
+secrets.*
+credentials*.json
+service-account*.json
+google-services.json
+
+# Local release and publication state
+release.properties
+publication.properties
+*.sig
+*.minisig
+
+# Python helper caches
+__pycache__/
+*.py[cod]

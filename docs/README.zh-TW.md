@@ -1,0 +1,89 @@
+# Pixelify Photos
+
+[English](../README.md) · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
+
+> 本文件是繁體中文翻譯；若內容有差異，以[英文 README](../README.md)為準。
+
+Pixelify Photos 是獨立維護的 Xposed 模組，可針對 Google 相簿模擬特定 Google Pixel 裝置屬性及系統功能旗標。本專案使用現代 libxposed API，並有獨立的套件名稱、版本歷史與簽署身分。
+
+> [!IMPORTANT]
+> 本專案與 Google、Google 相簿、Pixel、LSPosed 或原始上游維護者沒有隸屬或背書關係。功能可能隨 Google 相簿、伺服器端設定、帳戶、地區、裝置或 Android 更新而改變。使用風險由使用者自行承擔。
+
+## 功能
+
+- 模擬特定 Google Pixel 裝置設定檔。
+- 模擬與 Pixel 相關的系統功能旗標。
+- 提供從 Pixel XL 到較新 Pixel 世代的多種裝置設定檔。
+- 可選擇模擬相容的 Android 版本。
+- 覆寫 ROM 內建的 Pixel feature level。
+- 透過進階設定個別選擇功能旗標。
+- 匯入、匯出及分享模組設定。
+
+## 系統需求
+
+- Android 8.0（API 26）以上。
+- Root 權限。
+- 支援現代 libxposed API 101 的 Xposed 環境，例如相容的 LSPosed 設定。
+- Google 相簿（`com.google.android.apps.photos`）。
+
+此現代 API 版本不支援舊式 XposedBridge／EdXposed 環境。
+
+**Android 17 以上相容性：**Android API 37 以上會刻意停用裝置 Build 屬性模擬，避免不安全的執行階段修改。功能旗標模擬仍可能運作，因此在這些 Android 版本上僅屬部分支援，並取決於裝置、ROM、框架及 Google 相簿版本。
+
+## 安裝
+
+1. 從本 repository 的 [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) 頁面下載 APK。
+2. 安裝 APK。
+3. 在 Xposed 模組管理器啟用 **Pixelify Photos**。
+4. 僅將模組作用範圍設為 **Google 相簿**。
+5. 強制停止並重新開啟 Google 相簿；若模組管理器要求，請重新啟動裝置。
+
+請只安裝來自上述 repository 或未來官方 Xposed Modules Repository 鏡像的版本。安裝前請參閱[版本驗證](#版本驗證)。
+
+## 從舊版專案轉移
+
+本專案使用獨立 application ID：
+
+```text
+io.github.samson910022.pixelifyphotos
+```
+
+它不是 `balti.xposed.pixelifygooglephotos` 的原地升級，兩者可以共存。轉移時必須重新啟用新模組並設定作用範圍，設定資料不會自動移轉。
+
+完整維護及歸屬說明請見 [FORK_NOTICE.md](../FORK_NOTICE.md)。
+
+## 版本驗證
+
+正式版本使用固定簽署憑證。安裝 APK 前，請確認簽署者 SHA-256 與 [docs/RELEASE_SIGNING.md](RELEASE_SIGNING.md) 公布的 fingerprint 相同。Release 頁面也應提供各下載檔案的 checksum。
+
+公開憑證位於 [`certificates/pixelifyphotos-release-cert.pem`](../certificates/pixelifyphotos-release-cert.pem)。私密簽署金鑰不會放入此 repository。
+
+## 隱私與網路存取
+
+Pixelify Photos 不包含分析或廣告 SDK。App 使用網路權限向設定的 GitHub／Xposed 發佈來源檢查更新及開啟專案連結。模組設定及匯出的設定檔由使用者自行控制。
+
+詳細資訊請見 [PRIVACY.md](../PRIVACY.md)。
+
+## 疑難排解與支援
+
+回報問題前：
+
+1. 確認模組已啟用，且作用範圍僅包含 Google 相簿。
+2. 強制停止並重新開啟 Google 相簿。
+3. 只有在需要診斷時才啟用詳細記錄並重現問題。
+4. 分享記錄前移除帳戶識別資訊及其他個人資料。
+5. 搜尋既有 [issues](https://github.com/samson910022/pixelify-google-photos-modern/issues)。
+
+可透過 GitHub Issues 回報可重現的錯誤或提出功能建議。安全漏洞請依照 [SECURITY.md](../SECURITY.md) 回報，不要建立公開 issue。
+
+## 開發
+
+編譯說明、貢獻規範、測試命令及維護者發佈說明位於 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+
+## 授權與歸屬
+
+本專案使用 [MIT License](../LICENSE)。相依套件聲明請見 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
+
+本專案衍生自 [BaltiApps/Pixelify-Google-Photos](https://github.com/BaltiApps/Pixelify-Google-Photos)，並使用 [libxposed/api](https://github.com/libxposed/api) 與 [LSPosed](https://github.com/LSPosed/LSPosed) 生態系。
+
+Google 相簿、Google Pixel、Android 及相關名稱為其各自權利人的商標。

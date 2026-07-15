@@ -1,5 +1,5 @@
 # Keep the module entry class
--keep class balti.xposed.pixelifygooglephotos.PixelifyModule
+-keep class io.github.samson910022.pixelifyphotos.PixelifyModule
 
 # libxposed API: keep module entry even with R8 optimization
 -keep,allowoptimization,allowobfuscation public class * extends io.github.libxposed.api.XposedModule {
@@ -9,3 +9,6 @@
 # libxposed service (provided by framework at runtime)
 -keep class io.github.libxposed.service.** { *; }
 -dontwarn io.github.libxposed.service.IXposedService
+
+# Keep the entry-point resource synchronized if R8 renames the module class.
+-adaptresourcefilecontents META-INF/xposed/java_init.list

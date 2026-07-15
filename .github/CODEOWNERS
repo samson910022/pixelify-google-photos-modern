@@ -1,0 +1,12 @@
+# Security- and publication-critical files require maintainer review.
+/.github/workflows/ @samson910022
+/scripts/ @samson910022
+/gradle/wrapper/ @samson910022
+/gradlew @samson910022
+/settings.gradle.kts @samson910022
+/build.gradle.kts @samson910022
+/app/build.gradle.kts @samson910022
+/gradle/libs.versions.toml @samson910022
+/certificates/ @samson910022
+/docs/RELEASE_SIGNING.md @samson910022
+/docs/PUBLICATION_CHECKLIST.md @samson910022

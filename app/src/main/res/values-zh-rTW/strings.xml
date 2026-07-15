@@ -1,78 +1,60 @@
 <resources>
+    <string name="app_name">Pixelify Photos</string>
 
-    <!--Things to update in new versions:
-
-    build.gradle: versionCode
-    build.gradle: versionName
-
-    update_info.json
-
-    changelog
-    -->
-
-    <string name="app_name">Pixelify Google Photos</string>
-
-    <!--activity_main.xml-->
-    <string name="reset">還原</string>
-    <string name="device_to_spoof">裝置模擬</string>
-    <string name="spoofs_build_and_features">修改 build.prop 下的裝置參數</string>
-    <string name="customize_feature_flags">自定義功能參數</string>
-    <string name="feature_flags_changed">功能參數已更改！</string>
-    <string name="override_rom_feature_levels">覆蓋 ROM 自訂功能</string>
-    <string name="override_rom_feature_levels_desc">如果使用者選擇較低版本的 Pixel，
-    將避免部分 ROM 內含有模擬 Pixel 的功能影響 Pixelify Google Photos <b>(推薦啟用)</b></string>
+    <!-- 主畫面 -->
+    <string name="reset">重設</string>
+    <string name="device_to_spoof">要模擬的裝置</string>
+    <string name="spoofs_build_and_features">模擬特定裝置屬性與功能旗標。</string>
+    <string name="customize_feature_flags">自訂功能旗標</string>
+    <string name="feature_flags_changed">功能旗標已變更</string>
+    <string name="override_rom_feature_levels">覆寫 ROM 功能層級</string>
+    <string name="override_rom_feature_levels_desc">選擇較舊的 Pixel 設定檔時，忽略 ROM 已提供的較高功能層級。<b>（建議）</b></string>
     <string name="force_stop_google_photos">強制停止\nGoogle 相簿</string>
-    <string name="module_not_enabled">
-        \n
-        此模組似乎未啟用。\n
-        請在 LSPosed / EdXposed 中啟用它，然後重新啟動。\n
-        如果已啟用，可能需強制強制停止 Pixelify Google Photos 後重啟。\n
-        如果沒用，請移除並重新安裝。
-    </string>
+    <string name="module_not_enabled">模組尚未啟用。請在相容的 Xposed 管理器中啟用 Pixelify Photos，將作用範圍僅設為 Google 相簿，然後重新開啟本 App。若 Xposed 管理器要求，請重新啟動裝置。</string>
     <string name="close">關閉</string>
     <string name="open_google_photos">開啟 Google 相簿</string>
-    <string name="telegram_group">Telegram 討論組！</string>
-    <string name="update_available">有最新的更新可用！</string>
+    <string name="support_link">支援／回報問題</string>
+    <string name="update_available">有可用的 App 更新</string>
 
-    <!--menu_activity_main.xml-->
-    <string name="changelog">更改日誌</string>
+    <!-- 變更記錄 -->
+    <string name="version_head">版本 1.0.0</string>
+    <string name="version_desc">獨立維護版本，採用新的 application ID、固定發佈身分，以及由本專案控制的更新來源。</string>
+    <string name="changelog">變更記錄</string>
 
-    <!--ActivityMain.xml-->
-    <string name="please_force_stop_google_photos">請強制停止 Google 相簿以使其生效。</string>
-    <string name="export_config">匯出配置</string>
-    <string name="export_config_desc">備份或與他人分享此模組的設定。\n
-        點選 \"儲存\" 後將提示選擇一個位置以將設定匯出為 JSON 檔案。
-    </string>
-    <string name="export_complete">匯出成功!</string>
+    <!-- 設定匯入／匯出 -->
+    <string name="please_force_stop_google_photos">請強制停止並重新開啟 Google 相簿，讓變更生效。</string>
+    <string name="export_config">匯出設定</string>
+    <string name="export_config_desc">將本模組的設定儲存或分享為 JSON 檔案。</string>
+    <string name="export_complete">匯出完成</string>
     <string name="share">分享</string>
-    <string name="select_a_location">選擇要儲存的位置</string>
-    <string name="share_config_file">共享設定檔</string>
-    <string name="import_config">匯入設定檔</string>
-    <string name="import_config_desc">點選後請選擇要匯入的設定檔</string>
-    <string name="share_error">分享錯誤紀錄!</string>
-    <string name="read_error">讀取錯誤! 請確認是否有選擇適合的檔案!</string>
-    <string name="import_complete">匯入成功!</string>
-    <string name="advanced_options">進階設定</string>
+    <string name="select_a_location">選擇儲存位置</string>
+    <string name="share_config_file">分享設定檔</string>
+    <string name="import_config">匯入設定</string>
+    <string name="import_config_desc">選擇 Pixelify Photos 的 JSON 設定檔。</string>
+    <string name="share_error">無法分享或匯出設定。</string>
+    <string name="read_error">無法讀取所選的設定檔。</string>
+    <string name="import_complete">匯入完成</string>
+    <string name="invalid_imported_device">匯入的裝置設定檔不受支援，已略過。</string>
+    <string name="invalid_imported_android_version">匯入的 Android 版本不受支援，已略過。</string>
+    <string name="advanced_options">進階選項</string>
 
-    <!--feature_customize.xml-->
+    <!-- 功能自訂 -->
     <string name="save">儲存</string>
 
-    <!--advanced_options_activity.xml-->
-    <string name="enable_verbose_logging">開啟詳細日誌記錄</string>
-    <string name="enable_verbose_logging_desc">LSPosed / EdXposed 日誌和 Android logcat 中的的除錯資訊。\n
-        如果要匯出日誌，請開啟 LSPosed / EdXposed -> 日誌 -> 頂部儲存圖示。然後分享儲存後的檔案或壓縮檔。
-    </string>
+    <!-- 進階選項 -->
+    <string name="enable_verbose_logging">啟用詳細記錄</string>
+    <string name="enable_verbose_logging_desc">在 Xposed 與 Android 記錄中加入更多診斷資訊。只在重現問題時啟用，分享前請移除個人資訊。</string>
     <string name="spoof_android_version">模擬 Android 版本</string>
-    <string name="spoof_android_version_desc">不要設定高於您當前版本 Android 的版本。\n
-        例如，如果您的 Android 版本是 <b>Pie</b>，那您可以設定<b>Nougat / Oreo / Pie</b>，而不能設定以下的版本 Q / R / S.
-    </string>
-    <string name="this_might_cause_crash">這可能會導致 Google 相簿立即崩潰！</string>
-    <string name="dont_spoof_android_version">不要模擬 Android 的版本 <b>(推薦)</b></string>
-    <string name="follow_spoof_device_version">與選擇模擬的裝置版本一致</string>
-    <string name="manually_set_android_version">手動設定 Android 的版本</string>
+    <string name="spoof_android_version_desc">不要選擇比裝置實際版本更新的 Android 版本。</string>
+    <string name="this_might_cause_crash">不相容的值可能導致 Google 相簿崩潰。</string>
+    <string name="dont_spoof_android_version">不要模擬 Android 版本 <b>（建議）</b></string>
+    <string name="follow_spoof_device_version">使用所選 Pixel 設定檔的 Android 版本</string>
+    <string name="manually_set_android_version">手動設定 Android 版本</string>
+    <string name="device_version_separator"> – </string>
 
-    <!--Utils.kt-->
-    <string name="killing_please_wait">強制停止中…請稍候。</string>
-    <string name="failed_to_stop_package">無法自動強制停止。請手動強制停止。</string>
-    <string name="failed_to_launch_package">無法自動啟動。請手動啟動。</string>
+    <!-- 工具訊息 -->
+    <string name="killing_please_wait">正在停止 Google 相簿…</string>
+    <string name="failed_to_stop_package">無法自動強制停止 Google 相簿，請從 Android 設定中手動停止。</string>
+    <string name="failed_to_launch_package">無法自動開啟 Google 相簿。</string>
+    <string name="unable_to_open_link">沒有可開啟此連結的應用程式。</string>
 </resources>

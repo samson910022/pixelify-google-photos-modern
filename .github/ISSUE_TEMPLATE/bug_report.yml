@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem with Pixelify Photos.
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include vulnerabilities, account identifiers, tokens, private logs, or signing material. Follow SECURITY.md for security reports.
+  - type: input
+    id: version
+    attributes:
+      label: Pixelify Photos version
+      placeholder: "1.0.0 (versionCode 1)"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Android and Xposed environment
+      description: Include Android version, device/ROM, Xposed manager, and framework/API version.
+    validations:
+      required: true
+  - type: input
+    id: photos
+    attributes:
+      label: Google Photos version
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: Provide the smallest reliable sequence that triggers the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized diagnostics
+      description: Paste only relevant excerpts after removing identifiers and personal information.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I tested the latest published release.
+          required: true
+        - label: The module is enabled and scoped only to Google Photos.
+          required: true
+        - label: I searched existing issues and removed sensitive information.
+          required: true

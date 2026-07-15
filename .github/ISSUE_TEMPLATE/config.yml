@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/samson910022/pixelify-google-photos-modern/security
+    about: Do not disclose vulnerabilities publicly; follow SECURITY.md and use private reporting when available.
+  - name: Usage and troubleshooting guide
+    url: https://github.com/samson910022/pixelify-google-photos-modern/blob/master/SUPPORT.md
+    about: Review setup, diagnostics, and safe log-sharing guidance before filing an issue.

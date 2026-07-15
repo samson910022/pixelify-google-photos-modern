@@ -189,14 +189,14 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/telegram_group"
+            android:text="@string/support_link"
             android:textColor="?android:attr/colorPrimary"
             android:clickable="true"
             android:focusable="true"
             android:textStyle="bold"
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:foreground="?android:attr/selectableItemBackground"
-            android:id="@+id/telegram_group"
+            android:id="@+id/support_link"
             />
 
         <Space

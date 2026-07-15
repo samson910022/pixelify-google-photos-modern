@@ -1,3 +1,6 @@
+import java.io.File
+import java.security.KeyStore
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -5,46 +8,77 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
-// Local key.properties remains supported for developer builds, while Gradle
-// properties / environment variables are convenient for CI. None are committed.
-val keystorePropertiesFile = rootProject.file("key.properties")
-val keystoreProperties = Properties().apply {
-    if (keystorePropertiesFile.exists()) {
-        keystorePropertiesFile.inputStream().use { load(it) }
+// Release signing can come from one complete source only. Prefer an explicit,
+// repository-external properties file for local signing. The root key.properties
+// fallback is retained for compatibility and is ignored by Git.
+val explicitSigningPropertiesPath = providers
+    .gradleProperty("RELEASE_SIGNING_PROPERTIES_FILE")
+    .orElse(providers.environmentVariable("RELEASE_SIGNING_PROPERTIES_FILE"))
+    .orNull
+    ?.takeIf { it.isNotBlank() }
+val legacySigningPropertiesFile = rootProject.file("key.properties")
+if (explicitSigningPropertiesPath != null) {
+    check(File(explicitSigningPropertiesPath).isAbsolute) {
+        "RELEASE_SIGNING_PROPERTIES_FILE must be an absolute path"
+    }
+}
+val signingPropertiesFile = explicitSigningPropertiesPath?.let(::file)
+    ?: legacySigningPropertiesFile.takeIf { it.isFile }
+
+if (explicitSigningPropertiesPath != null) {
+    check(checkNotNull(signingPropertiesFile).isFile && signingPropertiesFile.canRead()) {
+        "RELEASE_SIGNING_PROPERTIES_FILE does not point to a readable file"
     }
 }
 
-fun releaseSigningValue(name: String, keyPropertiesName: String): String? =
-    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
-        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
-        ?: keystoreProperties.getProperty(keyPropertiesName)?.takeIf { it.isNotBlank() }
-
-val releaseStoreFile = releaseSigningValue("RELEASE_STORE_FILE", "storeFile")
-val releaseStorePassword = releaseSigningValue("RELEASE_STORE_PASSWORD", "storePassword")
-val releaseKeyAlias = releaseSigningValue("RELEASE_KEY_ALIAS", "keyAlias")
-val releaseKeyPassword = releaseSigningValue("RELEASE_KEY_PASSWORD", "keyPassword")
-val releaseSigningValues = listOf(
-    releaseStoreFile,
-    releaseStorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
+val signingPropertyNames = linkedMapOf(
+    "RELEASE_STORE_FILE" to "storeFile",
+    "RELEASE_STORE_PASSWORD" to "storePassword",
+    "RELEASE_KEY_ALIAS" to "keyAlias",
+    "RELEASE_KEY_PASSWORD" to "keyPassword",
 )
-val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
-check(releaseSigningValues.none { !it.isNullOrBlank() } || releaseSigningConfigured) {
-    "Release signing requires RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, " +
-        "RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD (or all matching key.properties values)"
+
+fun directSigningValue(name: String): String? = providers
+    .gradleProperty(name)
+    .orElse(providers.environmentVariable(name))
+    .orNull
+    ?.takeIf { it.isNotBlank() }
+
+val directSigningValues = signingPropertyNames.keys.associateWith(::directSigningValue)
+val fileSigningValues = signingPropertiesFile?.let { propertiesFile ->
+    check(directSigningValues.values.none { it != null }) {
+        "Do not combine a release signing properties file with direct signing properties"
+    }
+    val properties = Properties().apply {
+        propertiesFile.inputStream().use(::load)
+    }
+    signingPropertyNames.mapValues { (_, keyPropertiesName) ->
+        properties.getProperty(keyPropertiesName)?.takeIf { it.isNotBlank() }
+    }
 }
 
+val releaseSigningValues = fileSigningValues ?: directSigningValues
+val configuredReleaseSigningValues = releaseSigningValues.filterValues { it != null }
+check(configuredReleaseSigningValues.isEmpty() || configuredReleaseSigningValues.size == signingPropertyNames.size) {
+    val missing = releaseSigningValues.filterValues { it == null }.keys.joinToString()
+    "Incomplete release signing configuration; missing: $missing"
+}
+val releaseSigningConfigured = configuredReleaseSigningValues.isNotEmpty()
+val releaseStoreFile = releaseSigningValues.getValue("RELEASE_STORE_FILE")
+val releaseStorePassword = releaseSigningValues.getValue("RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = releaseSigningValues.getValue("RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningValues.getValue("RELEASE_KEY_PASSWORD")
+
 android {
-    namespace = "balti.xposed.pixelifygooglephotos"
-    compileSdk = 35
+    namespace = "io.github.samson910022.pixelifyphotos"
+    compileSdk = 36
 
     defaultConfig {
-        applicationId = "balti.xposed.pixelifygooglephotos"
+        applicationId = "io.github.samson910022.pixelifyphotos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "5.2"
+        versionCode = 1
+        versionName = "1.0.0"
     }
 
     signingConfigs {
@@ -97,13 +131,68 @@ android {
     }
 }
 
+val expectedReleaseCertificateSha256 =
+    "37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
+
+val verifyReleaseSigningIdentity = tasks.register("verifyReleaseSigningIdentity") {
+    group = "verification"
+    description = "Fails unless the configured release keystore contains the approved certificate."
+
+    doLast {
+        check(releaseSigningConfigured) {
+            "Official release publication requires a complete release signing configuration"
+        }
+
+        val keyStore = KeyStore.getInstance("PKCS12")
+        rootProject.file(checkNotNull(releaseStoreFile)).inputStream().use { input ->
+            keyStore.load(input, checkNotNull(releaseStorePassword).toCharArray())
+        }
+        val certificate = checkNotNull(keyStore.getCertificate(checkNotNull(releaseKeyAlias))) {
+            "Configured release key alias was not found in the keystore"
+        }
+        val actualFingerprint = MessageDigest.getInstance("SHA-256")
+            .digest(certificate.encoded)
+            .joinToString("") { byte -> "%02X".format(byte.toInt() and 0xFF) }
+        check(actualFingerprint == expectedReleaseCertificateSha256) {
+            "Configured release certificate fingerprint does not match the approved public certificate"
+        }
+    }
+}
+
+val verifiedRelease = tasks.register("verifiedRelease") {
+    group = "distribution"
+    description = "Builds APK and AAB artifacts only after validating the fixed release signer."
+    dependsOn(verifyReleaseSigningIdentity, "assembleRelease", "bundleRelease")
+}
+
+// When verifiedRelease adds the verifier to the graph, every Android release task must
+// wait for it. For ordinary unsigned release builds the verifier is absent, so this
+// ordering rule has no effect.
+tasks.configureEach {
+    if (name.contains("Release") &&
+        name != "verifyReleaseSigningIdentity" &&
+        name != "verifiedRelease"
+    ) {
+        mustRunAfter(verifyReleaseSigningIdentity)
+    }
+}
+
+// Fail before task execution rather than spending time on an unsigned publication build.
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it == verifiedRelease.get() }) {
+        check(releaseSigningConfigured) {
+            "verifiedRelease requires external release signing configuration"
+        }
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
 
     compileOnly(libs.libxposed.api)
-    compileOnly(libs.libxposed.service)
+    implementation(libs.libxposed.service)
 
     // Unit testing
     testImplementation("junit:junit:4.13.2")
