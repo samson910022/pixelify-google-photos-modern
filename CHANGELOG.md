@@ -13,7 +13,7 @@
 - **JSON 測試相依性** — 加入 `org.json:json:20231013` 測試用 dependency
 
 ### 測試覆蓋
-- **DeviceSpooferTest** — 新增 7 個單元測試（Android 17 常數、setStaticField exception safety、catch(Throwable) vs catch(Exception)）
+- **DeviceSpooferTest** — 新增 9 個單元測試（Android 17 常數、setStaticField exception safety、catch(Throwable) vs catch(Exception)）
 - **DevicePropsTest** — 新增 3 個 Android 17 測試（存在性、getAsMap、getAndroidVersionFromLabel）
 - **總測試數：** 100 tests（原本 88 + 新 12），全部 PASS
 

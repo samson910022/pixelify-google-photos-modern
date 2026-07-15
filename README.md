@@ -32,62 +32,59 @@
 
 ### 前置需求
 
-- [Android Studio](https://developer.android.com/studio)（或 JDK 17+ + Android SDK）
-- Android SDK 35+
+- JDK 17
+- Android SDK Platform 35
+- Android Build Tools 35.0.0 或相容版本
 
 ### 快速開始
 
 ```bash
 git clone https://github.com/samson910022/pixelify-google-photos-modern.git
 cd pixelify-google-photos-modern
-./gradlew assembleDebug
+
+# Debug APK（自動使用 Android debug key）
+./gradlew test lintDebug assembleDebug
+
+# Release APK；未提供 release key 時會產出 unsigned APK
+./gradlew lintRelease assembleRelease
 ```
 
-### 簽署 Release APK
+APK 產出在 `app/build/outputs/apk/`。
 
-若要建置簽署用於正式發佈的 APK，需要先準備簽署金鑰：
+### Release 簽名
 
-#### 首次：產生金鑰庫
+Keystore 不應放入 Git。專案支援以下任一方式提供 release signing 資訊：
 
-```bash
-# 使用 keytool（隨 Android Studio / JDK 提供）
-keytool -genkey -v -keystore pixelify.jks \
-        -alias pixelify \
-        -keyalg RSA -keysize 2048 -validity 10000 \
-        -storepass <your-store-pass> \
-        -keypass <your-key-pass> \
-        -dname "CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown"
-```
-
-#### 建立簽署設定
-
-在專案根目錄建立 `key.properties`（已加入 `.gitignore`，不會被 commit）：
+1. 在專案根目錄建立已被 `.gitignore` 排除的 `key.properties`：
 
 ```properties
-storePassword=<your-store-pass>
-keyPassword=<your-key-pass>
-keyAlias=pixelify
-storeFile=pixelify.jks
+storeFile=/absolute/path/to/release.jks
+storePassword=<secret>
+keyAlias=<alias>
+keyPassword=<secret>
 ```
 
-#### 建置簽署 APK
+2. 透過 Gradle properties（例如 `~/.gradle/gradle.properties`）或 CI environment secrets 提供：
+
+```properties
+RELEASE_STORE_FILE=/absolute/path/to/release.jks
+RELEASE_STORE_PASSWORD=<secret>
+RELEASE_KEY_ALIAS=<alias>
+RELEASE_KEY_PASSWORD=<secret>
+```
+
+然後執行：
 
 ```bash
-./gradlew assembleRelease
+./gradlew :app:signingReport :app:assembleRelease :app:bundleRelease
 ```
 
-APK 產出在 `app/build/outputs/apk/release/`
+簽名值必須四項完整提供；四項都未提供時 release 會維持 unsigned，僅提供部分值則建置會明確失敗。
 
 > ⚠️ **金鑰安全提醒**
 > - `key.properties` 含密碼，已列入 `.gitignore`
-> - `pixelify.jks` 請務必備份到安全處
-> - 金鑰遺失後**無法更新**已上架的 APK
-
-### 跑單元測試
-
-```bash
-./gradlew test --tests "balti.xposed.pixelifygooglephotos.*"
-```
+> - `*.jks` / `*.keystore` 請務必備份到安全處
+> - 金鑰遺失後**無法更新**以該金鑰簽署的 APK
 
 ## 測試
 
@@ -98,9 +95,9 @@ APK 產出在 `app/build/outputs/apk/release/`
 
 專案包含 **100 個單元測試**，涵蓋：
 - `DevicePropsTest` (50 tests) — 裝置資料完整性、查詢邏輯、Android 17 資料
-- `DeviceSpooferTest` (6 tests) — Reflection exception safety、catch(Throwable) 驗證
+- `DeviceSpooferTest` (9 tests) — Reflection exception safety、catch(Throwable) 驗證
 - `FeatureSpoofLogicTest` (17 tests) — Feature flag 決策邏輯
-- `UtilsConfigTest` (19 tests) — 設定檔匯出/匯入往返
+- `UtilsConfigTest` (16 tests) — 設定檔匯出/匯入往返
 - `ConstantsTest` (8 tests) — 常數完整性
 
 ## 專案品質

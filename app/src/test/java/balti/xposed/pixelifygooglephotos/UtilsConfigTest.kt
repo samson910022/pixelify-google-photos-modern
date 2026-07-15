@@ -82,13 +82,15 @@ class UtilsConfigTest {
             if (it.isNotEmpty()) result[Constants.PREF_DEVICE_TO_SPOOF] = it
         }
 
-        // Read boolean prefs
-        result[Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS] =
-            jsonObject.optBoolean(Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS, true)
-        result[Constants.PREF_ENABLE_VERBOSE_LOGS] =
-            jsonObject.optBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS, true)
-        result[Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE] =
-            jsonObject.optBoolean(Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, true)
+        // Read boolean prefs only when explicitly present and correctly typed.
+        listOf(
+            Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS,
+            Constants.PREF_ENABLE_VERBOSE_LOGS,
+            Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
+        ).forEach { key ->
+            val value = jsonObject.opt(key)
+            if (value is Boolean) result[key] = value
+        }
 
         // Read string pref
         jsonObject.optString(Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL, "")?.let {
@@ -213,8 +215,11 @@ class UtilsConfigTest {
     fun `import handles empty JSONObject gracefully`() {
         val json = JSONObject()
         val imported = parseImportJson(json)
-        // Should not crash; missing keys use defaults
+        // Missing keys must preserve existing preferences rather than invent defaults.
         assertFalse(imported.containsKey(Constants.PREF_DEVICE_TO_SPOOF))
+        assertFalse(imported.containsKey(Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS))
+        assertFalse(imported.containsKey(Constants.PREF_ENABLE_VERBOSE_LOGS))
+        assertFalse(imported.containsKey(Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE))
     }
 
     @Test

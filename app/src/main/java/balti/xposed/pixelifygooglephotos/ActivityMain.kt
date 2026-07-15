@@ -36,9 +36,17 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URL
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 
 class ActivityMain: AppCompatActivity(R.layout.activity_main) {
+
+    companion object {
+        private const val MAX_UPDATE_INFO_BYTES = 64 * 1024
+    }
+
+    private val updateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     /**
      * Get preferences via XposedService remote preferences when available,
@@ -306,15 +314,17 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         /**
          * Check for updates in background thread.
          */
-        java.util.concurrent.Executors.newSingleThreadExecutor().execute {
+        updateExecutor.execute {
             isUpdateAvailable()?.let { url ->
                 if (!isFinishing && !isDestroyed) {
                     runOnUiThread {
-                        updateAvailableLink.apply {
-                            paintFlags = Paint.UNDERLINE_TEXT_FLAG
-                            visibility = View.VISIBLE
-                            setOnClickListener {
-                                openWebLink(url)
+                        if (!isFinishing && !isDestroyed) {
+                            updateAvailableLink.apply {
+                                paintFlags = Paint.UNDERLINE_TEXT_FLAG
+                                visibility = View.VISIBLE
+                                setOnClickListener {
+                                    openWebLink(url)
+                                }
                             }
                         }
                     }
@@ -371,11 +381,22 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
              * Get contents of the file into a string.
              */
             try {
-                URL(url).openStream().use { input ->
-                    baos.use { output ->
-                        input.copyTo(output)
+                val connection = URL(url).openConnection().apply {
+                    connectTimeout = 5_000
+                    readTimeout = 5_000
+                    useCaches = false
+                }
+                connection.getInputStream().use { input ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > MAX_UPDATE_INFO_BYTES) return false
+                        baos.write(buffer, 0, count)
                     }
-                    jsonString = baos.toString()
+                    jsonString = baos.toString(Charsets.UTF_8.name())
                 }
             } catch (_: Exception) {
                 return false
@@ -438,7 +459,7 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             Intent().run {
 
                 action = Intent.ACTION_SEND
-                type = "*/*"
+                type = "application/json"
                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
 
                 this.putExtra(Intent.EXTRA_STREAM, confFileShareUri)
@@ -463,7 +484,7 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             addCategory(Intent.CATEGORY_OPENABLE)
 
             // Create a file with the requested Mime type
-            type = "*/*"
+            type = "application/json"
             putExtra(Intent.EXTRA_TITLE, CONF_EXPORT_NAME)
         }
         Toast.makeText(this, R.string.select_a_location, Toast.LENGTH_SHORT).show()
@@ -502,7 +523,7 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
     private fun importConfFile() {
         val openIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
+            type = "application/json"
         }
         configOpenLauncher.launch(openIntent)
     }
@@ -524,6 +545,12 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             e.printStackTrace()
             Toast.makeText(this, "${getString(R.string.read_error)}: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+
+    override fun onDestroy() {
+        updateExecutor.shutdownNow()
+        super.onDestroy()
     }
 
 }

@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.widget.Toast
 import balti.xposed.pixelifygooglephotos.Constants.PREF_DEVICE_TO_SPOOF
@@ -17,6 +19,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedWriter
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.OutputStreamWriter
 import java.util.concurrent.TimeUnit
 
@@ -26,6 +29,10 @@ import java.util.concurrent.TimeUnit
  */
 class Utils {
 
+    companion object {
+        private const val MAX_CONFIG_BYTES = 1024 * 1024
+    }
+
     /**
      * Used to force close an app.
      *
@@ -33,20 +40,37 @@ class Utils {
      */
     fun forceStopPackage(packageName: String, context: Context) {
         require(packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) { "Invalid package name: $packageName" }
-        try {
-            Toast.makeText(context, R.string.killing_please_wait, Toast.LENGTH_SHORT).show()
-            val process = ProcessBuilder("su", "-c", "am force-stop $packageName")
-                .redirectErrorStream(true)
-                .start()
-            process.waitFor(5, TimeUnit.SECONDS)
-        } catch (e: Exception) {
-            Toast.makeText(context, R.string.failed_to_stop_package, Toast.LENGTH_SHORT).show()
-            val intent = Intent().apply {
-                action = Settings.ACTION_APPLICATION_DETAILS_SETTINGS
-                data = Uri.fromParts("package", packageName, null)
+        Toast.makeText(context, R.string.killing_please_wait, Toast.LENGTH_SHORT).show()
+
+        Thread({
+            var process: Process? = null
+            val stopped = try {
+                val runningProcess = ProcessBuilder("su", "-c", "am force-stop $packageName")
+                    .redirectErrorStream(true)
+                    .start()
+                process = runningProcess
+                val completed = runningProcess.waitFor(5, TimeUnit.SECONDS)
+                if (!completed) {
+                    runningProcess.destroyForcibly()
+                    false
+                } else {
+                    runningProcess.exitValue() == 0
+                }
+            } catch (_: Exception) {
+                process?.destroyForcibly()
+                false
             }
-            context.startActivity(intent)
-        }
+
+            if (!stopped) {
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(context, R.string.failed_to_stop_package, Toast.LENGTH_SHORT).show()
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.fromParts("package", packageName, null)
+                    }
+                    context.startActivity(intent)
+                }
+            }
+        }, "pixelify-force-stop").start()
     }
 
     /**
@@ -113,16 +137,24 @@ class Utils {
      */
     fun readConfigFile(context: Context, uri: Uri, pref: SharedPreferences?) {
 
-        var jsonObject = JSONObject()
-        val baos = ByteArrayOutputStream()
-
         val inputStream = context.contentResolver.openInputStream(uri)
-        inputStream?.use { input ->
-            baos.use { output ->
-                input.copyTo(output)
+            ?: throw IOException("Unable to open configuration file")
+        val jsonBytes = inputStream.use { input ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > MAX_CONFIG_BYTES) {
+                    throw IOException("Configuration file exceeds 1 MiB")
+                }
+                output.write(buffer, 0, count)
             }
-            jsonObject = JSONObject(baos.toString())
+            output.toByteArray()
         }
+        val jsonObject = JSONObject(jsonBytes.toString(Charsets.UTF_8))
 
         /**
          * In inbuilt function exists to convert JSONArray to List.
@@ -167,25 +199,17 @@ class Utils {
                 }
             }
 
-            PREF_OVERRIDE_ROM_FEATURE_LEVELS.let { key ->
-                jsonObject.optBoolean(key, true).let {
-                    putBoolean(key, it)
-                }
+            fun putBooleanIfPresent(key: String) {
+                val value = jsonObject.opt(key)
+                if (value is Boolean) putBoolean(key, value)
             }
+
+            putBooleanIfPresent(PREF_OVERRIDE_ROM_FEATURE_LEVELS)
 
             /** Advanced options */
 
-            PREF_ENABLE_VERBOSE_LOGS.let { key ->
-                jsonObject.optBoolean(key, true).let {
-                    putBoolean(key, it)
-                }
-            }
-
-            PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE.let { key ->
-                jsonObject.optBoolean(key, true).let {
-                    putBoolean(key, it)
-                }
-            }
+            putBooleanIfPresent(PREF_ENABLE_VERBOSE_LOGS)
+            putBooleanIfPresent(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE)
 
             PREF_SPOOF_ANDROID_VERSION_MANUAL.let { key ->
                 val v = jsonObject.optString(key)

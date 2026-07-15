@@ -1,5 +1,6 @@
 package balti.xposed.pixelifygooglephotos
 
+import android.os.Build
 import android.util.Log
 import org.junit.After
 import org.junit.Assert.*
@@ -158,4 +159,32 @@ class DeviceSpooferTest {
         // but any exception is caught by catch(Throwable)
         assertTrue("setStaticField handles all Throwable subtypes", true)
     }
+    // =========================================================================
+    // C7: Device property fields are routed to their actual Android classes
+    // =========================================================================
+
+    private fun targetClassForField(fieldName: String): Class<*> {
+        val method = DeviceSpoofer::class.java.getDeclaredMethod(
+            "targetClassForField",
+            String::class.java,
+        )
+        method.isAccessible = true
+        return method.invoke(DeviceSpoofer, fieldName) as Class<*>
+    }
+
+    @Test
+    fun `INCREMENTAL is routed to Build VERSION`() {
+        assertSame(Build.VERSION::class.java, targetClassForField("INCREMENTAL"))
+    }
+
+    @Test
+    fun `SECURITY_PATCH is routed to Build VERSION`() {
+        assertSame(Build.VERSION::class.java, targetClassForField("SECURITY_PATCH"))
+    }
+
+    @Test
+    fun `MODEL remains routed to Build`() {
+        assertSame(Build::class.java, targetClassForField("MODEL"))
+    }
+
 }

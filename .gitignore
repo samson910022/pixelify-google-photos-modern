@@ -27,12 +27,14 @@ out/
 # Log Files
 *.log
 
-# Keystore files
+# Signing keys and local signing configuration
 *.jks
 *.keystore
-
-# Key properties (contains passwords)
+*.p12
+*.pfx
 key.properties
+keystore.properties
+signing.properties
 
 # Android Profiling
 *.hprof
@@ -55,6 +57,3 @@ lint/tmp/
 
 # Version control
 vcs.xml
-
-# Android Studio signing config
-signing.properties

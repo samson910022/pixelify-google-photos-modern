@@ -1,16 +1,38 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
 
-import java.util.Properties
-import java.io.FileInputStream
-
-// Signing configuration loaded from key.properties (not committed to git)
+// Local key.properties remains supported for developer builds, while Gradle
+// properties / environment variables are convenient for CI. None are committed.
 val keystorePropertiesFile = rootProject.file("key.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(keystorePropertiesFile.inputStream())
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun releaseSigningValue(name: String, keyPropertiesName: String): String? =
+    providers.gradleProperty(name).orNull?.takeIf { it.isNotBlank() }
+        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+        ?: keystoreProperties.getProperty(keyPropertiesName)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = releaseSigningValue("RELEASE_STORE_FILE", "storeFile")
+val releaseStorePassword = releaseSigningValue("RELEASE_STORE_PASSWORD", "storePassword")
+val releaseKeyAlias = releaseSigningValue("RELEASE_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = releaseSigningValue("RELEASE_KEY_PASSWORD", "keyPassword")
+val releaseSigningValues = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+)
+val releaseSigningConfigured = releaseSigningValues.all { !it.isNullOrBlank() }
+check(releaseSigningValues.none { !it.isNullOrBlank() } || releaseSigningConfigured) {
+    "Release signing requires RELEASE_STORE_FILE, RELEASE_STORE_PASSWORD, " +
+        "RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD (or all matching key.properties values)"
 }
 
 android {
@@ -26,19 +48,19 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            if (keystoreProperties.containsKey("storeFile")) {
-                storeFile = rootProject.file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["storePassword"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                keyAlias = keystoreProperties["keyAlias"] as String
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = rootProject.file(checkNotNull(releaseStoreFile))
+                storePassword = checkNotNull(releaseStorePassword)
+                keyAlias = checkNotNull(releaseKeyAlias)
+                keyPassword = checkNotNull(releaseKeyPassword)
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -71,7 +93,7 @@ android {
 
     lint {
         abortOnError = true
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
     }
 }
 

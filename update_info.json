@@ -1,8 +1,9 @@
 {
-    "versionCode": 7,
-    "versionName": "5.1",
-    "latestVersion": "5.1",
-    "latestVersionCode": 7,
+    "versionCode": 9,
+    "versionName": "5.2",
+    "latestVersion": "5.2",
+    "latestVersionCode": 9,
     "url": "https://github.com/samson910022/pixelify-google-photos-modern/releases",
-    "notes": "安全性修補、程式碼品質優化、新增 88 個單元測試、擴充裝置支援至 20 款 Pixel"
+    "notes": "Android 17 SIGSEGV 防護、設定與建置流程強化、100 個單元測試",
+    "latest_version_code": 9
 }

@@ -32,6 +32,7 @@ import java.lang.reflect.Modifier
 object DeviceSpoofer {
 
     private const val TAG = "Pixelify"
+    private val VERSION_FIELD_NAMES = setOf("INCREMENTAL", "SECURITY_PATCH")
 
     /**
      * Android 17 SDK_INT value. Used to guard against reflection-based
@@ -75,11 +76,14 @@ object DeviceSpoofer {
 
         // ── Spoof android.os.Build static fields ──
         deviceEntries.props.forEach { (key, value) ->
+            val targetClass = targetClassForField(key)
             try {
-                setStaticField(Build::class.java, key, value)
-                if (verboseLog) Log.d(TAG, "DEVICE PROPS: $key - $value")
+                setStaticField(targetClass, key, value)
+                if (verboseLog) {
+                    Log.d(TAG, "DEVICE PROPS: ${targetClass.simpleName}.$key - $value")
+                }
             } catch (t: Throwable) {
-                Log.e(TAG, "Failed to spoof Build.$key", t)
+                Log.e(TAG, "Failed to spoof ${targetClass.simpleName}.$key", t)
             }
         }
 
@@ -106,6 +110,9 @@ object DeviceSpoofer {
             }
         }
     }
+
+    private fun targetClassForField(fieldName: String): Class<*> =
+        if (fieldName in VERSION_FIELD_NAMES) Build.VERSION::class.java else Build::class.java
 
     /**
      * Sets a static field on the given class using Java Reflection.

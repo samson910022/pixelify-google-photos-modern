@@ -18,9 +18,6 @@
     <string name="spoofs_build_and_features">修改 build.prop 下的裝置參數</string>
     <string name="customize_feature_flags">自定義功能參數</string>
     <string name="feature_flags_changed">功能參數已更改！</string>
-    <string name="spoof_only_in_google_photos">確保僅對 Google 相簿進行 HOOK</string>
-    <string name="spoof_only_in_google_photos_desc">因 LSPosed 中僅使用白名單，預設該模組僅針對 Google 相簿啟用，
-     如果您想在其他應用中使用它，請保持此開關 <b>關閉</b>.</string>
     <string name="override_rom_feature_levels">覆蓋 ROM 自訂功能</string>
     <string name="override_rom_feature_levels_desc">如果使用者選擇較低版本的 Pixel，
     將避免部分 ROM 內含有模擬 Pixel 的功能影響 Pixelify Google Photos <b>(推薦啟用)</b></string>
