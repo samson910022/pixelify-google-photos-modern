@@ -17,7 +17,7 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.0.0</string>
+    <string name="version_head">版本 1.0.1</string>
     <string name="version_desc">獨立維護版本，採用新的 application ID、固定發佈身分，以及由本專案控制的更新來源。</string>
     <string name="changelog">變更記錄</string>
 

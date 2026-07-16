@@ -28,7 +28,7 @@ Pixelify Photos 是獨立維護的 Xposed 模組，可針對 Google 相簿模擬
 
 此現代 API 版本不支援舊式 XposedBridge／EdXposed 環境。
 
-**Android 17 以上相容性：**Android API 37 以上會刻意停用裝置 Build 屬性模擬，避免不安全的執行階段修改。功能旗標模擬仍可能運作，因此在這些 Android 版本上僅屬部分支援，並取決於裝置、ROM、框架及 Google 相簿版本。
+**Android 17 以上相容性：**所有支援的 Android 版本（含 API 37+）都會嘗試 Build 屬性模擬；反射寫入失敗只會記錄 log，不再硬性跳過。功能旗標與裝置設定檔仍取決於裝置、ROM、框架及 Google 相簿版本。
 
 ## 安裝
 

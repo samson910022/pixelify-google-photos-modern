@@ -6,6 +6,8 @@
 
 ### 關鍵修復
 - **Android 17 SIGSEGV Crash 修補** — `DeviceSpoofer.hook()` 加入 Android 17 early-return guard（SDK >= 37 完全跳過 reflection），消除 Android 17 static final field reflection ban 造成的 SIGSEGV
+> **Correction (2026-07-16):** The Android 17 early-return in modern `DeviceSpoofer` was later determined to be over-conservative and unrelated to libxposed API 101. Build reflection spoofing is restored; the historical entry above documents what was shipped at the time.
+
 - **`catch(t: Throwable)` 全面遷移** — `setStaticField` 與 `forEach` 迴圈的 `catch(e: Exception)` 改為 `catch(t: Throwable)`，防止 Error 子類（如 `NoSuchFieldError`、`VerifyError`）漏接
 - **`accessFlagsField` null-safety** — `accessFlagsField` lazy initializer 找不到 `Field.accessFlags` 時不 throw，改為 nullable，`setStaticField` 使用 safe-call
 - **Activity lifecycle 防護** — `restartActivity()` 加入 `finish()` 後 `return`；背景更新執行緒加入 `isFinishing/isDestroyed` 檢查

@@ -17,7 +17,7 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.0.0</string>
+    <string name="version_head">Version 1.0.1</string>
     <string name="version_desc">Independent maintenance release with a new application ID, stable release identity, and update sources controlled by this project.</string>
     <string name="changelog">Change log</string>
 

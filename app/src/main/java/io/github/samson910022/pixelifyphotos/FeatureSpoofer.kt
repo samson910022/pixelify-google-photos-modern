@@ -17,9 +17,12 @@ import io.github.libxposed.api.XposedModule
  * - `android.app.ApplicationPackageManager.hasSystemFeature(String, int)`
  *
  * ### Spoofing logic
- * 1. If the queried feature name is in [finalFeaturesToSpoof] → return `true`
- * 2. If [overrideCustomROMLevels] is true and the feature is in [featuresNotToSpoof] → return `false`
- * 3. Otherwise → `chain.proceed()` (let the original implementation decide)
+ * 1. If pass-through mode (device "None" or empty feature selection) → always
+ *    [XposedInterface.Chain.proceed] (same as module disabled for features)
+ * 2. If the queried feature name is in [finalFeaturesToSpoof] → return `true`
+ * 3. If [overrideCustomROMLevels] is true and the feature is in [featuresNotToSpoof]
+ *    → return `false`
+ * 4. Otherwise → `chain.proceed()`
  *
  * @see DeviceProps for the list of all known Pixel feature flags
  * @see Constants for preference keys
@@ -38,6 +41,13 @@ object FeatureSpoofer {
     private var initialized = false
 
     /**
+     * When true, do not force TRUE or FALSE for any feature flag — behave like
+     * the module is not intercepting features. Used for device "None" and empty
+     * feature selection.
+     */
+    private var passThroughAll = false
+
+    /**
      * Feature flags that should be spoofed as **present** (return `true`).
      * Built from the user's selected feature levels in preferences.
      */
@@ -46,7 +56,7 @@ object FeatureSpoofer {
     /**
      * Feature flags that should be spoofed as **absent** (return `false`).
      * Built from all known flags minus [finalFeaturesToSpoof].
-     * Only active when [overrideCustomROMLevels] is `true`.
+     * Only active when [overrideCustomROMLevels] is `true` and not [passThroughAll].
      */
     private var featuresNotToSpoof: Set<String> = emptySet()
 
@@ -122,6 +132,11 @@ object FeatureSpoofer {
             Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS, true
         )
 
+        val deviceName = prefs.getString(
+            Constants.PREF_DEVICE_TO_SPOOF,
+            DeviceProps.defaultDeviceName,
+        ) ?: DeviceProps.defaultDeviceName
+
         // --- Resolve the feature flag list from user selection ---
 
         val defaultNames = DeviceProps.defaultFeatures
@@ -132,10 +147,21 @@ object FeatureSpoofer {
             Constants.PREF_SPOOF_FEATURES_LIST, defaultNames
         ) ?: defaultNames
 
-        val eligibleFeatures = when {
-            // Empty selection → spoof nothing
-            selectedNames.isEmpty() -> emptyList()
+        // Device "None" or empty feature list: behave like module-off for features
+        // (no force TRUE, no force FALSE). Do not treat empty as "hide all Pixel flags",
+        // which differs from module-off and surprises users on real Pixel hardware.
+        if (deviceName == "None" || selectedNames.isEmpty()) {
+            passThroughAll = true
+            finalFeaturesToSpoof = emptySet()
+            featuresNotToSpoof = emptySet()
+            initialized = true
+            Log.d(TAG, "Feature spoof pass-through (device=$deviceName, emptyFeatures=${selectedNames.isEmpty()})")
+            return
+        }
 
+        passThroughAll = false
+
+        val eligibleFeatures = when {
             // Exactly the default set → use the pre-computed default features list
             selectedNames == defaultNames -> DeviceProps.defaultFeatures
 
@@ -175,7 +201,9 @@ object FeatureSpoofer {
      *         to fall through to the original implementation.
      */
     private fun decideSpoof(chain: XposedInterface.Chain): Any? {
-        if (!initialized) return chain.proceed()
+        if (!initialized || passThroughAll) {
+            return chain.proceed()
+        }
 
         val feature = chain.getArg(0) as? String ?: return chain.proceed()
 

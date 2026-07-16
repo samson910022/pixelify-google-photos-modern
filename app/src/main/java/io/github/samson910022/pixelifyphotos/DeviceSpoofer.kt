@@ -7,24 +7,21 @@ import java.lang.reflect.Field
 import java.lang.reflect.Modifier
 
 /**
- * Spoofs device properties by modifying [android.os.Build] static fields
- * using Java Reflection instead of XposedHelpers.
+ * Spoofs device properties by rewriting [android.os.Build] static fields via
+ * Java reflection (clear `final`, then [Field.set]), matching the legacy module.
  *
  * Called from [PixelifyModule.onPackageReady] when Google Photos is detected.
  *
  * Device properties are defined in [DeviceProps] and selected via user preferences
  * stored in the module's shared preference file.
  *
- * ## Android 17+ Safety
+ * ## Android 17+ note
  *
- * Reflection-based modification of static final fields is blocked on Android 17+
- * (SDK_INT >= 37) and would cause a SIGSEGV crash. The early-return guard at the
- * top of [hook] — comparing [Build.VERSION.SDK_INT] against [ANDROID_17_SDK_INT] —
- * skips all Build spoofing entirely on affected runtimes. The SDK value 37 is the
- * canonical value from [DeviceProps.AndroidVersion] ("Android 17", SDK=37).
- *
- * On Android 16 and below, the [setStaticField] method uses a `catch(t: Throwable)`
- * guard as a final safety net against any unexpected exceptions during reflection.
+ * An earlier guard skipped all Build spoofing on SDK >= 37 based on a speculative
+ * SIGSEGV concern. That disabled the core model-name spoof (e.g. UI still showed
+ * the real "Pixel 6 Pro"). Reflection writes to `Build` static fields are still
+ * attempted on Android 17+; failures are caught and logged. libxposed API 101 is
+ * unrelated to whether these fields can be written.
  *
  * Inspired by:
  * https://github.com/itsuki-t/FakeDeviceData/blob/master/src/jp/rmitkt/xposed/fakedevicedata/FakeDeviceData.java
@@ -35,9 +32,9 @@ object DeviceSpoofer {
     private val VERSION_FIELD_NAMES = setOf("INCREMENTAL", "SECURITY_PATCH")
 
     /**
-     * Android 17 SDK_INT value. Used to guard against reflection-based
-     * modification of static final fields (SIGSEGV crash on Android 17+).
-     * Source of truth: [DeviceProps.AndroidVersion]("Android 17", SDK=37).
+     * Canonical Android 17 SDK_INT from [DeviceProps.AndroidVersion]
+     * ("Android 17", SDK=37). Retained for tests and diagnostics only — not used
+     * as a hard skip for spoofing.
      */
     private const val ANDROID_17_SDK_INT = 37
 
@@ -47,24 +44,15 @@ object DeviceSpoofer {
      * @param prefs Remote preferences obtained in the hooked process.
      */
     fun hook(prefs: SharedPreferences?) {
-        // Android 17+ blocks reflection-based modification of static final fields,
-        // which would cause a SIGSEGV crash. Skip all Build spoofing entirely.
-        if (Build.VERSION.SDK_INT >= ANDROID_17_SDK_INT) {
-            Log.w(TAG, "Android 17+ detected: skipping DeviceSpoofer (reflection-based Build spoofing is unsupported)")
-            return
-        }
-
         if (prefs == null) {
             Log.w(TAG, "Remote preferences unavailable, using defaults")
         }
 
         val verboseLog = prefs?.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS, false) ?: false
 
-        // ── Resolve device to spoof ──
-        // Read the device name from preferences; fall back to the default (Pixel 5).
         val deviceName = prefs?.getString(Constants.PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
             ?: DeviceProps.defaultDeviceName
-        if (verboseLog) Log.d(TAG, "Device spoof: $deviceName")
+        Log.d(TAG, "Device spoof: $deviceName (sdk=${Build.VERSION.SDK_INT})")
 
         val deviceEntries = DeviceProps.getDeviceProps(deviceName)
 
@@ -72,6 +60,14 @@ object DeviceSpoofer {
         if (deviceEntries == null || deviceName == "None" || deviceEntries.props.isEmpty()) {
             Log.d(TAG, "No device spoofing configured, skipping")
             return
+        }
+
+        if (Build.VERSION.SDK_INT >= ANDROID_17_SDK_INT) {
+            Log.d(
+                TAG,
+                "Android 17+ detected: applying Build reflection spoof " +
+                    "(not skipped; API 101 is unrelated to Build field writes)",
+            )
         }
 
         // ── Spoof android.os.Build static fields ──
@@ -109,6 +105,29 @@ object DeviceSpoofer {
                 Log.e(TAG, "Failed to spoof Build.VERSION.$key", t)
             }
         }
+
+        verifySpoof(deviceEntries.props, verboseLog)
+    }
+
+    private fun verifySpoof(props: Map<String, String>, verboseLog: Boolean) {
+        props.forEach { (key, expected) ->
+            try {
+                val targetClass = targetClassForField(key)
+                val field = targetClass.getDeclaredField(key)
+                field.isAccessible = true
+                val actual = field.get(null)?.toString()
+                if (actual != expected) {
+                    Log.w(
+                        TAG,
+                        "VERIFY FAIL ${targetClass.simpleName}.$key: actual='$actual' expected='$expected'",
+                    )
+                } else if (verboseLog) {
+                    Log.d(TAG, "VERIFY OK ${targetClass.simpleName}.$key='$actual'")
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "VERIFY error for $key", t)
+            }
+        }
     }
 
     private fun targetClassForField(fieldName: String): Class<*> =
@@ -119,13 +138,7 @@ object DeviceSpoofer {
      *
      * Removes the `final` modifier if present so that the field can be written
      * (standard technique via `Field.accessFlags`).
-     *
-     * @param clazz The class containing the static field (e.g. `Build::class.java`).
-     * @param fieldName The name of the static field to set.
-     * @param value The value to assign. Primitive types will be auto-unwrapped
-     *              by [Field.set].
      */
-    // Cache the accessFlags field from the Field class hierarchy
     private val accessFlagsField: Field? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         var cls: Class<*> = Field::class.java
         while (true) {
@@ -146,13 +159,13 @@ object DeviceSpoofer {
             val field: Field = clazz.getDeclaredField(fieldName)
             field.isAccessible = true
 
-            // Remove the final modifier so we can write to the field.
-            // On some runtimes (Android 17+) accessFlagsField may be null,
-            // in which case we skip final-removal and attempt the set anyway.
             if (accessFlagsField == null) {
-                Log.w(TAG, "Cannot remove final modifier for $fieldName — accessFlags field not found; may fail on final fields")
+                Log.w(
+                    TAG,
+                    "Cannot remove final modifier for $fieldName — accessFlags field not found; " +
+                        "may fail on final fields",
+                )
             }
-            // Use safe-call to avoid NPE if accessFlagsField is null
             accessFlagsField?.setInt(field, field.modifiers and Modifier.FINAL.inv())
 
             field.set(null, value)

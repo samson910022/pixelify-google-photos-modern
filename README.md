@@ -26,7 +26,7 @@ Pixelify Photos is an independently maintained Xposed module that spoofs selecte
 
 Legacy XposedBridge/EdXposed environments are not supported by this modern-API build.
 
-**Android 17+ compatibility:** build-property spoofing is intentionally disabled on Android API 37 and later because modifying those fields is unsafe. Feature-flag spoofing may still work, so support on those Android versions is partial and depends on the device, ROM, framework, and Google Photos version.
+**Android 17+ compatibility:** Build-property spoofing is attempted on all supported Android versions, including API 37+. Reflection failures are logged rather than treated as a hard skip. Feature-flag spoofing and device profiles still depend on the device, ROM, framework, and Google Photos version.
 
 ## Installation
 
