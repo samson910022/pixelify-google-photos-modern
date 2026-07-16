@@ -46,7 +46,7 @@ jobs:
           set -euo pipefail
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$sdkmanager"
-          "$sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          yes | "$sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Audit source publication readiness
         run: ./scripts/check-publication-readiness.py
