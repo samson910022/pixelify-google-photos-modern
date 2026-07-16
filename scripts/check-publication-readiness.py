@@ -110,7 +110,7 @@ def check_identity_and_versions() -> None:
         check(mirror_scope == [SCOPE], "Xposed repository SCOPE must contain only Google Photos")
 
     changelog = text("CHANGELOG.md")
-    check(f"## [{VERSION_NAME}] - Unreleased" in changelog, "CHANGELOG current version heading is missing")
+    check(f"## [{VERSION_NAME}] - " in changelog, "CHANGELOG current version heading is missing")
     check(f"versionCode {VERSION_CODE}" in changelog, "CHANGELOG versionCode is missing")
     for strings_file in ("app/src/main/res/values/strings.xml", "app/src/main/res/values-zh-rTW/strings.xml"):
         check(VERSION_NAME in text(strings_file), f"{strings_file} does not mention versionName")
