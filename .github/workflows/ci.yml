@@ -46,7 +46,11 @@ jobs:
           set -euo pipefail
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           test -x "$sdkmanager"
+          # Disable pipefail temporarily because 'yes' exits with SIGPIPE (exit code 141)
+          # which would otherwise fail the pipeline when pipefail is enabled.
+          set +o pipefail
           yes | "$sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          set -o pipefail
 
       - name: Audit source publication readiness
         run: ./scripts/check-publication-readiness.py
