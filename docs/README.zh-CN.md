@@ -1,10 +1,12 @@
-# Pixelify Photos
+# Pixelify Infinity（无限解锁）
 
 [English](../README.md) · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+![Pixelify Infinity banner](../branding/banner.png)
+
 > 本文档是简体中文翻译；如有差异，以[英文 README](../README.md)为准。
 
-Pixelify Photos 是一个独立维护的 Xposed 模块，可为 Google 相册模拟部分 Google Pixel 设备属性和系统功能标志。本项目使用现代 libxposed API，并拥有独立的软件包名称、版本历史和签名身份。
+Pixelify Infinity 是一个独立维护的 Xposed 模块，可为 Google 相册模拟部分 Google Pixel 设备属性和系统功能标志。本项目使用现代 libxposed API，并拥有独立的软件包名称、版本历史和签名身份。
 
 > [!IMPORTANT]
 > 本项目与 Google、Google 相册、Pixel、LSPosed 或原上游维护者没有隶属或背书关系。功能可能随 Google 相册、服务端配置、账号、地区、设备或 Android 更新而变化。使用风险由用户自行承担。
@@ -34,7 +36,7 @@ Pixelify Photos 是一个独立维护的 Xposed 模块，可为 Google 相册模
 
 1. 从本仓库的 [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) 页面下载 APK。
 2. 安装 APK。
-3. 在 Xposed 模块管理器中启用 **Pixelify Photos**。
+3. 在 Xposed 模块管理器中启用 **Pixelify Infinity**（无限解锁）。
 4. 仅将模块作用域设置为 **Google 相册**。
 5. 强制停止并重新打开 Google 相册；如果模块管理器要求，请重启设备。
 
@@ -60,7 +62,7 @@ io.github.samson910022.pixelifyphotos
 
 ## 隐私和网络访问
 
-Pixelify Photos 不包含分析或广告 SDK。应用使用网络权限检查所配置的 GitHub／Xposed 发布源是否有更新，并打开项目链接。模块设置和导出的配置文件由用户自行控制。
+Pixelify Infinity 不包含分析或广告 SDK。应用使用网络权限检查所配置的 GitHub／Xposed 发布源是否有更新，并打开项目链接。模块设置和导出的配置文件由用户自行控制。
 
 详细信息请参阅 [PRIVACY.md](../PRIVACY.md)。
 

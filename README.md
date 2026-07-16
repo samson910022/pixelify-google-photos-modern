@@ -1,8 +1,10 @@
-# Pixelify Photos
+# Pixelify Infinity
 
 [English](README.md) · [繁體中文](docs/README.zh-TW.md) · [简体中文](docs/README.zh-CN.md) · [日本語](docs/README.ja.md)
 
-Pixelify Photos is an independently maintained Xposed module that spoofs selected Google Pixel device properties and system feature flags for Google Photos. It uses the modern libxposed API and has its own package name, release history, and signing identity.
+![Pixelify Infinity banner](branding/banner.png)
+
+Pixelify Infinity is an independently maintained Xposed module that spoofs selected Google Pixel device properties and system feature flags for Google Photos. It uses the modern libxposed API and has its own package name, release history, and signing identity.
 
 > [!IMPORTANT]
 > This project is not affiliated with or endorsed by Google, Google Photos, Pixel, LSPosed, or the original upstream maintainers. Feature availability can change with Google Photos, server-side configuration, account, region, device, or Android updates. Use the module at your own risk.
@@ -32,7 +34,7 @@ Legacy XposedBridge/EdXposed environments are not supported by this modern-API b
 
 1. Download the APK from this repository's [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) page.
 2. Install the APK.
-3. Enable **Pixelify Photos** in your Xposed module manager.
+3. Enable **Pixelify Infinity** in your Xposed module manager.
 4. Set the module scope to **Google Photos** only.
 5. Force-stop and reopen Google Photos. Reboot the device if the module manager requires it.
 
@@ -58,7 +60,7 @@ The public certificate is available at [`certificates/pixelifyphotos-release-cer
 
 ## Privacy and network access
 
-Pixelify Photos does not include analytics or advertising SDKs. The app uses network access to check the configured GitHub/Xposed release metadata for updates and to open project links. Module settings and exported configuration files remain under the user's control.
+Pixelify Infinity does not include analytics or advertising SDKs. The app uses network access to check the configured GitHub/Xposed release metadata for updates and to open project links. Module settings and exported configuration files remain under the user's control.
 
 See [PRIVACY.md](PRIVACY.md) for details.
 

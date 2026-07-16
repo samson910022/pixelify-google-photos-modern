@@ -1,10 +1,12 @@
-# Pixelify Photos
+# Pixelify Infinity
 
 [English](../README.md) · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+![Pixelify Infinity banner](../branding/banner.png)
+
 > この文書は日本語訳です。内容に差異がある場合は、[英語版 README](../README.md) が優先されます。
 
-Pixelify Photos は、Google フォトに対して一部の Google Pixel 端末プロパティとシステム機能フラグを偽装する、独立メンテナンスの Xposed モジュールです。Modern libxposed API を使用し、独自のパッケージ名、リリース履歴、署名 ID を持ちます。
+Pixelify Infinity は、Google フォトに対して一部の Google Pixel 端末プロパティとシステム機能フラグを偽装する、独立メンテナンスの Xposed モジュールです。Modern libxposed API を使用し、独自のパッケージ名、リリース履歴、署名 ID を持ちます。
 
 > [!IMPORTANT]
 > 本プロジェクトは Google、Google フォト、Pixel、LSPosed、または元の上流メンテナーとは提携しておらず、承認も受けていません。機能の利用可否は、Google フォト、サーバー側の設定、アカウント、地域、端末、Android の更新によって変わる可能性があります。自己責任で使用してください。
@@ -34,7 +36,7 @@ Pixelify Photos は、Google フォトに対して一部の Google Pixel 端末�
 
 1. このリポジトリの [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) ページから APK をダウンロードします。
 2. APK をインストールします。
-3. Xposed モジュールマネージャーで **Pixelify Photos** を有効にします。
+3. Xposed モジュールマネージャーで **Pixelify Infinity** を有効にします。
 4. モジュールのスコープを **Google フォトのみ**に設定します。
 5. Google フォトを強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。
 
@@ -60,7 +62,7 @@ io.github.samson910022.pixelifyphotos
 
 ## プライバシーとネットワークアクセス
 
-Pixelify Photos には分析 SDK や広告 SDK は含まれていません。アプリは、設定済みの GitHub／Xposed リリース情報から更新を確認し、プロジェクトリンクを開くためにネットワーク権限を使用します。モジュール設定とエクスポートした設定ファイルはユーザーが管理します。
+Pixelify Infinity には分析 SDK や広告 SDK は含まれていません。アプリは、設定済みの GitHub／Xposed リリース情報から更新を確認し、プロジェクトリンクを開くためにネットワーク権限を使用します。モジュール設定とエクスポートした設定ファイルはユーザーが管理します。
 
 詳細は [PRIVACY.md](../PRIVACY.md) を参照してください。
 

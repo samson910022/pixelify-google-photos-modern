@@ -1,6 +1,8 @@
-# Pixelify Photos
+# Pixelify Infinity
 
-Pixelify Photos is an independently maintained modern-libxposed module that spoofs selected Pixel device properties and feature flags for Google Photos.
+![Pixelify Infinity banner](../../branding/banner.png)
+
+Pixelify Infinity is an independently maintained modern-libxposed module that spoofs selected Pixel device properties and feature flags for Google Photos.
 
 The canonical source, user documentation, privacy policy, security policy, release certificate fingerprint, and issue tracker are maintained at:
 

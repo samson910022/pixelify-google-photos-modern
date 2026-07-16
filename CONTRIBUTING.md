@@ -1,6 +1,6 @@
-# Contributing to Pixelify Photos
+# Contributing to Pixelify Infinity
 
-Thank you for helping improve Pixelify Photos. This repository is an independently maintained derivative project; changes must preserve its independent package and signing identity.
+Thank you for helping improve Pixelify Infinity. This repository is an independently maintained derivative project; changes must preserve its independent package and signing identity.
 
 ## Before opening an issue
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed checks for Pixelify Photos source and release artifacts."""
+"""Fail-closed checks for Pixelify Infinity source and release artifacts."""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.samson910022.pixelifyphotos"
 ENTRY_POINT = f"{APP_ID}.PixelifyModule"
 SCOPE = "com.google.android.apps.photos"
-VERSION_CODE = 2
-VERSION_NAME = "1.0.1"
+VERSION_CODE = 3
+VERSION_NAME = "1.0.2"
 CERT_SHA256 = "37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
 PUBLIC_CERT = Path("certificates/pixelifyphotos-release-cert.pem")
 
@@ -301,7 +301,7 @@ def check_artifacts(required: bool) -> None:
                 check(f"name='{APP_ID}'" in package_line, "release APK applicationId mismatch")
                 check(f"versionCode='{VERSION_CODE}'" in package_line, "release APK versionCode mismatch")
                 check(f"versionName='{VERSION_NAME}'" in package_line, "release APK versionName mismatch")
-                check("application-label:'Pixelify Photos'" in badging, "release APK label mismatch")
+                check("application-label:'Pixelify Infinity'" in badging, "release APK label mismatch")
     if len(aabs) == 1:
         verify_xposed_zip(aabs[0], "base/root/")
 

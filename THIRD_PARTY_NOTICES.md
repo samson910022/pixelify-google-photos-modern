@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Pixelify Photos is derived from [BaltiApps/Pixelify-Google-Photos](https://github.com/BaltiApps/Pixelify-Google-Photos). The upstream MIT copyright and permission notice are preserved in the repository's [LICENSE](LICENSE).
+Pixelify Infinity is derived from [BaltiApps/Pixelify-Google-Photos](https://github.com/BaltiApps/Pixelify-Google-Photos). The upstream MIT copyright and permission notice are preserved in the repository's [LICENSE](LICENSE).
 
 ## Apache License 2.0 components
 

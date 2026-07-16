@@ -6,7 +6,7 @@ This file contains repository-specific instructions for automated coding agents 
 
 The following values form one atomic identity and must remain consistent:
 
-- Display name: `Pixelify Photos`
+- Display name: `Pixelify Infinity`
 - Application ID / namespace / Kotlin package: `io.github.samson910022.pixelifyphotos`
 - Xposed entry point: `io.github.samson910022.pixelifyphotos.PixelifyModule`
 - Xposed scope: `com.google.android.apps.photos`

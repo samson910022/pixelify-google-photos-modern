@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.2] - 2026-07-16
+
+### Changed
+
+- Renamed the user-facing display name to **Pixelify Infinity** (Traditional Chinese launcher label: **Pixelify 無限解鎖**) to better distinguish this module from the legacy Pixelify Google Photos package and to match the infinity/unlocker branding.
+- Replaced the launcher icon with a new adaptive icon (infinity + keyhole, four-color geometry).
+- Added a project banner image for the README landing page.
+- Bumped version to `1.0.2` (`versionCode 3`).
+
 ## [1.0.1] - 2026-07-16
 
 ### Fixed

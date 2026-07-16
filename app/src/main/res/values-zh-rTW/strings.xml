@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Pixelify Photos</string>
+    <string name="app_name">Pixelify 無限解鎖</string>
 
     <!-- 主畫面 -->
     <string name="reset">重設</string>
@@ -10,15 +10,15 @@
     <string name="override_rom_feature_levels">覆寫 ROM 功能層級</string>
     <string name="override_rom_feature_levels_desc">選擇較舊的 Pixel 設定檔時，忽略 ROM 已提供的較高功能層級。<b>（建議）</b></string>
     <string name="force_stop_google_photos">強制停止\nGoogle 相簿</string>
-    <string name="module_not_enabled">模組尚未啟用。請在相容的 Xposed 管理器中啟用 Pixelify Photos，將作用範圍僅設為 Google 相簿，然後重新開啟本 App。若 Xposed 管理器要求，請重新啟動裝置。</string>
+    <string name="module_not_enabled">模組尚未啟用。請在相容的 Xposed 管理器中啟用 Pixelify 無限解鎖，將作用範圍僅設為 Google 相簿，然後重新開啟本 App。若 Xposed 管理器要求，請重新啟動裝置。</string>
     <string name="close">關閉</string>
     <string name="open_google_photos">開啟 Google 相簿</string>
     <string name="support_link">支援／回報問題</string>
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.0.1</string>
-    <string name="version_desc">獨立維護版本，採用新的 application ID、固定發佈身分，以及由本專案控制的更新來源。</string>
+    <string name="version_head">版本 1.0.2</string>
+    <string name="version_desc">品牌更新：顯示名稱改為 Pixelify 無限解鎖、全新啟動器圖示，並維持獨立套件與簽署身分。</string>
     <string name="changelog">變更記錄</string>
 
     <!-- 設定匯入／匯出 -->
@@ -30,7 +30,7 @@
     <string name="select_a_location">選擇儲存位置</string>
     <string name="share_config_file">分享設定檔</string>
     <string name="import_config">匯入設定</string>
-    <string name="import_config_desc">選擇 Pixelify Photos 的 JSON 設定檔。</string>
+    <string name="import_config_desc">選擇 Pixelify 無限解鎖的 JSON 設定檔。</string>
     <string name="share_error">無法分享或匯出設定。</string>
     <string name="read_error">無法讀取所選的設定檔。</string>
     <string name="import_complete">匯入完成</string>

@@ -11,7 +11,7 @@ class PixelifyModule : XposedModule() {
     }
 
     override fun onModuleLoaded(params: XposedModuleInterface.ModuleLoadedParam) {
-        Log.d(TAG, "Pixelify Photos module loaded (libxposed Modern API)")
+        Log.d(TAG, "Pixelify Infinity module loaded (libxposed Modern API)")
     }
 
     override fun onPackageReady(params: XposedModuleInterface.PackageReadyParam) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify signed Pixelify Photos release artifacts without reading signing secrets."""
+"""Verify signed Pixelify Infinity release artifacts without reading signing secrets."""
 
 from __future__ import annotations
 

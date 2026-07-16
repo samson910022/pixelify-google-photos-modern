@@ -8,13 +8,13 @@
 4. Force-stop and reopen Google Photos; reboot if required by the Xposed manager.
 5. Search existing issues and release notes.
 
-Pixelify Photos is a separate application from the legacy `balti.xposed.pixelifygooglephotos` package. Enabling or configuring the legacy package does not configure this one.
+Pixelify Infinity is a separate application from the legacy `balti.xposed.pixelifygooglephotos` package. Enabling or configuring the legacy package does not configure this one.
 
 ## Useful diagnostic information
 
 A reproducible report should include:
 
-- Pixelify Photos version and version code;
+- Pixelify Infinity version and version code;
 - Android version, device/ROM, and architecture;
 - Xposed manager/framework and API version;
 - Google Photos version;
