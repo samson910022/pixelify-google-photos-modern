@@ -1,80 +1,87 @@
 package io.github.samson910022.pixelifyphotos
 
 import android.annotation.SuppressLint
+import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
+import io.github.libxposed.api.XposedModule
+import java.io.File
 import java.lang.reflect.Field
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.zip.ZipFile
 
 /**
- * Spoofs device properties by rewriting [android.os.Build] static fields.
+ * Spoofs device properties by rewriting [android.os.Build] static fields and
+ * intercepting [android.os.SystemProperties] reads as a secondary signal path.
  *
- * Called from [PixelifyModule.onPackageReady] when Google Photos is detected.
+ * Write strategies (success = post-write readback match):
+ * 1. Clear reflected `final` + [Field.set]
+ * 2. Multi-variant Unsafe static put (`putObject` / `putReference` / volatile,
+ *    `staticFieldBase` and declaring-class bases)
+ * 3. JNI fallback (`libpixelify_build`): `SetStatic*Field` + readback
+ *    (no ArtField memory patching — unsafe on modern ART layouts)
  *
- * Write strategy (in order):
- * 1. Classic reflection: clear the Java `final` bit via `Field.accessFlags`, then [Field.set]
- * 2. Fallback: `sun.misc.Unsafe` / `jdk.internal.misc.Unsafe` static field put
- *    (required on newer ART, where static final [Field.set] throws
- *    [IllegalAccessException] even after clearing the reflected modifier bit)
+ * Native library is loaded from the **module** [ApplicationInfo.nativeLibraryDir]
+ * first, then extracted into the **host** process `codeCacheDir` when needed
+ * (LSPosed runs inside Google Photos; bare `System.loadLibrary` usually fails).
  *
- * After writes, fields are re-read. On VERIFY failure the user is notified
- * (Toast + system notification) instead of failing silently.
- *
- * Legacy module used [de.robv.android.xposed.XposedHelpers.setStaticObjectField],
- * which is also plain [Field.set] after [Field.setAccessible]; on Android 17 ART
- * that path alone is insufficient. libxposed API 101 is unrelated to field writes.
- *
- * Inspired by:
- * https://github.com/itsuki-t/FakeDeviceData/blob/master/src/jp/rmitkt/xposed/fakedevicedata/FakeDeviceData.java
+ * VERIFY failures surface via Toast + notification (once per process).
  */
 object DeviceSpoofer {
 
     private const val TAG = "Pixelify"
-    private val VERSION_FIELD_NAMES = setOf("INCREMENTAL", "SECURITY_PATCH")
+    private val VERSION_FIELD_NAMES = setOf("INCREMENTAL", "SECURITY_PATCH", "RELEASE", "SDK", "SDK_INT")
 
-    /**
-     * Canonical Android 17 SDK_INT from [DeviceProps.AndroidVersion]
-     * ("Android 17", SDK=37). Diagnostic only — not used as a hard skip.
-     */
+    /** Diagnostic only — not a hard skip. */
     private const val ANDROID_17_SDK_INT = 37
 
     private const val NOTIFY_ID = 0x50495846 // 'PIXF'
     private const val CHANNEL_ID = "pixelify_infinity_device_spoof"
     private const val CHANNEL_NAME = "Pixelify Infinity"
 
-    /** Ensures failure UI is shown at most once per process load. */
     private val failureUiShown = AtomicBoolean(false)
+    private val hiddenApiExempted = AtomicBoolean(false)
+    private val systemPropertiesHooked = AtomicBoolean(false)
+    private val nativeLoadLock = Any()
+    @Volatile private var nativeReady = false
+    private val pendingFailureUi = mutableListOf<Runnable>()
+    private val pendingFailureUiLock = Any()
+
+    private fun mainHandlerOrNull(): Handler? {
+        return try {
+            val looper = Looper.getMainLooper() ?: return null
+            Handler(looper)
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
     /**
-     * Hook entry point: spoof [android.os.Build] static fields for the target app.
-     *
-     * @param prefs Remote preferences obtained in the hooked process.
+     * @param allowFailureUi when false (early package load), VERIFY still logs but does not
+     * toast/notify — package-ready re-apply may succeed after host Application exists.
      */
-    fun hook(prefs: SharedPreferences?) {
+    fun hook(module: XposedModule?, prefs: SharedPreferences?, allowFailureUi: Boolean = true) {
         if (prefs == null) {
             Log.w(TAG, "Remote preferences unavailable, using defaults")
         }
 
         val verboseLog = prefs?.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS, false) ?: false
-
         val deviceName = prefs?.getString(Constants.PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
             ?: DeviceProps.defaultDeviceName
         Log.d(TAG, "Device spoof: $deviceName (sdk=${Build.VERSION.SDK_INT})")
 
         val deviceEntries = DeviceProps.getDeviceProps(deviceName)
-
-        // Skip if device is unset, explicitly "None", or has no props to spoof.
         if (deviceEntries == null || deviceName == "None" || deviceEntries.props.isEmpty()) {
             Log.d(TAG, "No device spoofing configured, skipping")
             return
@@ -83,57 +90,71 @@ object DeviceSpoofer {
         if (Build.VERSION.SDK_INT >= ANDROID_17_SDK_INT) {
             Log.d(
                 TAG,
-                "Android 17+ detected: applying Build spoof with reflection+Unsafe fallback " +
-                    "(not skipped; API 101 is unrelated to Build field writes)",
+                "Android 17+ detected: applying Build spoof with multi-strategy writes " +
+                    "(Field.set + Unsafe + JNI; not skipped; API 101 unrelated)",
             )
         }
 
-        // ── Spoof android.os.Build static fields ──
+        ensureNativeLoaded(module)
+        exemptHiddenApis()
+
         deviceEntries.props.forEach { (key, value) ->
             val targetClass = targetClassForField(key)
             val ok = setStaticField(targetClass, key, value)
             if (verboseLog) {
-                Log.d(
-                    TAG,
-                    "DEVICE PROPS: ${targetClass.simpleName}.$key - $value (ok=$ok)",
-                )
+                Log.d(TAG, "DEVICE PROPS: ${targetClass.simpleName}.$key - $value (ok=$ok)")
             }
         }
 
-        // ── Spoof android.os.Build.VERSION fields ──
         val followDevice = prefs?.getBoolean(
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, false
         ) ?: false
-
         val androidVersion = if (followDevice) {
             deviceEntries.androidVersion
         } else {
-            val manualVersionLabel = prefs?.getString(
-                Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL, null
-            )
-            manualVersionLabel?.let { DeviceProps.getAndroidVersionFromLabel(it) }
+            prefs?.getString(Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
+                ?.let { DeviceProps.getAndroidVersionFromLabel(it) }
         }
-
+        val versionProps = linkedMapOf<String, String>()
         androidVersion?.getAsMap()?.forEach { (key, value) ->
             val ok = setStaticField(Build.VERSION::class.java, key, value)
             if (verboseLog) Log.d(TAG, "VERSION SPOOF: $key - $value (ok=$ok)")
+            versionProps[key] = value.toString()
         }
 
-        val failed = verifySpoof(deviceEntries.props, verboseLog)
+        if (module != null) {
+            try {
+                hookSystemProperties(module, deviceEntries.props, verboseLog)
+            } catch (t: Throwable) {
+                Log.e(TAG, "SystemProperties hooks failed", t)
+            }
+        }
+
+        val verifyProps = linkedMapOf<String, String>()
+        verifyProps.putAll(deviceEntries.props)
+        // VERSION_* keys share names with Build fields; verify against Build.VERSION class via key set.
+        verifyProps.putAll(versionProps)
+        val failed = verifySpoof(verifyProps, verboseLog)
         if (failed.isNotEmpty()) {
             Log.e(
                 TAG,
-                "Device spoof VERIFY failed for $deviceName: ${failed.joinToString()}",
+                "Device spoof VERIFY failed for $deviceName: ${failed.joinToString()} " +
+                    "(nativeReady=$nativeReady allowFailureUi=$allowFailureUi)",
             )
-            scheduleSpoofFailureUi(deviceName, failed)
+            if (allowFailureUi) {
+                scheduleSpoofFailureUi(deviceName, failed)
+            } else {
+                Log.d(TAG, "Skipping VERIFY failure UI on early apply; will re-check on package ready")
+            }
         } else {
-            Log.d(TAG, "Device spoof VERIFY OK for $deviceName")
+            Log.d(TAG, "Device spoof VERIFY OK for $deviceName (nativeReady=$nativeReady)")
+            cancelSpoofFailureUi()
         }
     }
 
-    /**
-     * Re-read spoofed fields and return human-readable failure entries.
-     */
+    /** Back-compat for unit tests. */
+    fun hook(prefs: SharedPreferences?) = hook(module = null, prefs = prefs, allowFailureUi = true)
+
     private fun verifySpoof(props: Map<String, String>, verboseLog: Boolean): List<String> {
         val failed = mutableListOf<String>()
         props.forEach { (key, expected) ->
@@ -169,30 +190,38 @@ object DeviceSpoofer {
                 val f = cls.getDeclaredField("accessFlags")
                 f.isAccessible = true
                 return@lazy f
-            } catch (t: Throwable) {
+            } catch (_: Throwable) {
                 cls = cls.superclass as? Class<*> ?: break
             }
         }
-        null
+        try {
+            val f = Field::class.java.getDeclaredField("modifiers")
+            f.isAccessible = true
+            f
+        } catch (_: Throwable) {
+            null
+        }
     }
 
-    /**
-     * Sets a static field. Returns true only if a subsequent read matches [value].
-     */
     private fun setStaticField(clazz: Class<*>, fieldName: String, value: Any?): Boolean {
         Log.v(TAG, "setStaticField: ${clazz.name}.$fieldName = $value")
         return try {
-            val field: Field = clazz.getDeclaredField(fieldName)
+            val field = clazz.getDeclaredField(fieldName)
             field.isAccessible = true
             val coerced = coerceValue(field, value)
 
-            // Strategy 1: clear reflected FINAL bit + Field.set (legacy path).
             clearFinalModifier(field)
-            var wrote = false
             try {
                 field.set(null, coerced)
-                wrote = true
-                Log.v(TAG, "setStaticField $fieldName via Field.set")
+                if (fieldValueMatches(field, coerced)) {
+                    Log.v(TAG, "setStaticField $fieldName via Field.set")
+                    return true
+                }
+                Log.w(
+                    TAG,
+                    "Field.set returned without matching readback for " +
+                        "${clazz.simpleName}.$fieldName (actual='${field.get(null)}')",
+                )
             } catch (t: Throwable) {
                 Log.w(
                     TAG,
@@ -201,23 +230,36 @@ object DeviceSpoofer {
                 )
             }
 
-            // Strategy 2: Unsafe static put (needed when ART rejects final Field.set).
-            if (!fieldValueMatches(field, coerced)) {
-                if (UnsafeStatic.put(field, coerced)) {
-                    wrote = true
-                    Log.d(TAG, "setStaticField $fieldName via Unsafe")
+            if (UnsafeStatic.put(field, coerced) && fieldValueMatches(field, coerced)) {
+                Log.d(TAG, "setStaticField $fieldName via Unsafe")
+                return true
+            }
+            if (!nativeReady) {
+                Log.w(
+                    TAG,
+                    "Unsafe put failed or readback mismatch for ${clazz.simpleName}.$fieldName; " +
+                        "JNI unavailable (nativeReady=false)",
+                )
+            } else {
+                Log.w(
+                    TAG,
+                    "Unsafe put failed or readback mismatch for ${clazz.simpleName}.$fieldName; trying JNI",
+                )
+                if (
+                    BuildFieldNative.setStatic(clazz, fieldName, coerced) &&
+                    fieldValueMatches(field, coerced)
+                ) {
+                    Log.d(TAG, "setStaticField $fieldName via JNI")
+                    return true
                 }
             }
 
-            val ok = fieldValueMatches(field, coerced)
-            if (!ok) {
-                Log.e(
-                    TAG,
-                    "Failed to set static field $fieldName on ${clazz.name} " +
-                        "(wroteAttempt=$wrote, actual='${field.get(null)}')",
-                )
-            }
-            ok
+            Log.e(
+                TAG,
+                "Failed to set static field $fieldName on ${clazz.name} " +
+                    "(actual='${runCatching { field.get(null) }.getOrNull()}')",
+            )
+            false
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to set static field $fieldName on ${clazz.name}", t)
             false
@@ -226,7 +268,15 @@ object DeviceSpoofer {
 
     private fun clearFinalModifier(field: Field) {
         try {
-            accessFlagsField?.setInt(field, field.modifiers and Modifier.FINAL.inv())
+            // Only clear FINAL on the real access-flags int. Using Field.modifiers
+            // (masked Java bits) would zero ART/hidden-API high bits and can make
+            // subsequent reflection/JNI worse on Android 17+.
+            val flagsField = accessFlagsField ?: return
+            val current = flagsField.getInt(field)
+            val cleared = current and Modifier.FINAL.inv()
+            if (cleared != current) {
+                flagsField.setInt(field, cleared)
+            }
         } catch (t: Throwable) {
             Log.v(TAG, "clearFinalModifier failed for ${field.name}: ${t.message}")
         }
@@ -303,34 +353,176 @@ object DeviceSpoofer {
                         expected.toDouble() == actual.toDouble()
                 else -> actual == expected || actual.toString() == expected.toString()
             }
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
             false
         }
     }
 
-    /**
-     * Defer UI until the hooked app has an Application / main looper.
-     * Runs inside the Google Photos process.
-     */
+    private fun exemptHiddenApis() {
+        if (!hiddenApiExempted.compareAndSet(false, true)) return
+        try {
+            val vmRuntimeClass = Class.forName("dalvik.system.VMRuntime")
+            val getRuntime = vmRuntimeClass.getDeclaredMethod("getRuntime")
+            getRuntime.isAccessible = true
+            val runtime = getRuntime.invoke(null)
+            val setExemptions = vmRuntimeClass.getDeclaredMethod(
+                "setHiddenApiExemptions",
+                Array<String>::class.java,
+            )
+            setExemptions.isAccessible = true
+            setExemptions.invoke(runtime, arrayOf("L"))
+            Log.d(TAG, "Hidden API exemptions applied for device spoof")
+        } catch (t: Throwable) {
+            Log.v(TAG, "Hidden API exemption unavailable: ${t.message}")
+        }
+    }
+
+    private fun hookSystemProperties(
+        module: XposedModule,
+        props: Map<String, String>,
+        verboseLog: Boolean,
+    ) {
+        val overrides = buildSystemPropertyOverrides(props)
+        if (overrides.isEmpty()) return
+
+        val clazz = try {
+            Class.forName("android.os.SystemProperties")
+        } catch (t: Throwable) {
+            Log.w(TAG, "SystemProperties class not found", t)
+            return
+        }
+
+        if (systemPropertiesHooked.get()) {
+            Log.d(TAG, "SystemProperties hooks already registered")
+            return
+        }
+
+        fun resolve(key: Any?): String? = if (key is String) overrides[key] else null
+
+        var hooked = 0
+        try {
+            val m = clazz.getDeclaredMethod("get", String::class.java)
+            module.hook(m).intercept { chain ->
+                val spoofed = resolve(chain.getArg(0))
+                if (spoofed != null) {
+                    if (verboseLog) Log.v(TAG, "SystemProperties.get(${chain.getArg(0)}) -> $spoofed")
+                    spoofed
+                } else {
+                    chain.proceed()
+                }
+            }
+            hooked++
+        } catch (t: Throwable) {
+            Log.w(TAG, "Hook SystemProperties.get(String) failed: ${t.message}")
+        }
+
+        try {
+            val m = clazz.getDeclaredMethod("get", String::class.java, String::class.java)
+            module.hook(m).intercept { chain ->
+                val spoofed = resolve(chain.getArg(0))
+                if (spoofed != null) {
+                    if (verboseLog) {
+                        Log.v(TAG, "SystemProperties.get(${chain.getArg(0)}, def) -> $spoofed")
+                    }
+                    spoofed
+                } else {
+                    chain.proceed()
+                }
+            }
+            hooked++
+        } catch (t: Throwable) {
+            Log.w(TAG, "Hook SystemProperties.get(String,String) failed: ${t.message}")
+        }
+
+        if (hooked > 0) {
+            systemPropertiesHooked.set(true)
+            Log.d(TAG, "SystemProperties hooks registered ($hooked methods, ${overrides.size} keys)")
+        } else {
+            Log.w(TAG, "SystemProperties hooks failed for all overloads; will retry on re-apply")
+        }
+    }
+
+    private fun buildSystemPropertyOverrides(props: Map<String, String>): Map<String, String> {
+        val out = linkedMapOf<String, String>()
+        fun putKey(key: String, value: String?) {
+            if (!value.isNullOrEmpty()) out[key] = value
+        }
+        putKey("ro.product.brand", props["BRAND"])
+        putKey("ro.product.manufacturer", props["MANUFACTURER"])
+        putKey("ro.product.device", props["DEVICE"])
+        putKey("ro.product.name", props["PRODUCT"])
+        putKey("ro.product.model", props["MODEL"])
+        putKey("ro.product.model.marketname", props["MODEL"])
+        putKey("ro.build.product", props["PRODUCT"])
+        putKey("ro.build.fingerprint", props["FINGERPRINT"])
+        putKey("ro.vendor.build.fingerprint", props["FINGERPRINT"])
+        putKey("ro.system.build.fingerprint", props["FINGERPRINT"])
+        putKey("ro.bootimage.build.fingerprint", props["FINGERPRINT"])
+        putKey("ro.odm.build.fingerprint", props["FINGERPRINT"])
+        putKey("ro.product.system.brand", props["BRAND"])
+        putKey("ro.product.system.device", props["DEVICE"])
+        putKey("ro.product.system.model", props["MODEL"])
+        putKey("ro.product.system.name", props["PRODUCT"])
+        putKey("ro.product.system.manufacturer", props["MANUFACTURER"])
+        putKey("ro.product.vendor.brand", props["BRAND"])
+        putKey("ro.product.vendor.device", props["DEVICE"])
+        putKey("ro.product.vendor.model", props["MODEL"])
+        putKey("ro.product.vendor.name", props["PRODUCT"])
+        putKey("ro.product.vendor.manufacturer", props["MANUFACTURER"])
+        putKey("ro.product.odm.brand", props["BRAND"])
+        putKey("ro.product.odm.device", props["DEVICE"])
+        putKey("ro.product.odm.model", props["MODEL"])
+        putKey("ro.product.odm.name", props["PRODUCT"])
+        putKey("ro.product.odm.manufacturer", props["MANUFACTURER"])
+        putKey("ro.build.id", props["ID"])
+        putKey("ro.build.version.incremental", props["INCREMENTAL"])
+        putKey("ro.build.version.security_patch", props["SECURITY_PATCH"])
+        return out
+    }
+
     private fun scheduleSpoofFailureUi(deviceName: String, failed: List<String>) {
-        val looper = Looper.getMainLooper()
-        if (looper == null) {
+        val handler = mainHandlerOrNull()
+        if (handler == null) {
             Log.w(TAG, "No main looper; cannot show spoof-failure UI")
             return
         }
-        val handler = Handler(looper)
+        cancelPendingFailureUiRunnablesOnly()
         val show = Runnable { showSpoofFailureUi(deviceName, failed) }
+        synchronized(pendingFailureUiLock) {
+            pendingFailureUi += show
+        }
         handler.post(show)
-        // PackageReady can run before Application is attached; retry a few times.
         handler.postDelayed(show, 2500L)
         handler.postDelayed(show, 6000L)
+    }
+
+    /** Called when a later re-apply VERIFY succeeds. */
+    private fun cancelSpoofFailureUi() {
+        cancelPendingFailureUiRunnablesOnly()
+        failureUiShown.set(false)
+        try {
+            currentApplication()?.getSystemService(NotificationManager::class.java)
+                ?.cancel(NOTIFY_ID)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun cancelPendingFailureUiRunnablesOnly() {
+        val handler = mainHandlerOrNull()
+        synchronized(pendingFailureUiLock) {
+            if (handler != null) {
+                for (r in pendingFailureUi) {
+                    handler.removeCallbacks(r)
+                }
+            }
+            pendingFailureUi.clear()
+        }
     }
 
     private fun showSpoofFailureUi(deviceName: String, failed: List<String>) {
         if (!failureUiShown.compareAndSet(false, true)) return
         val app = currentApplication()
         if (app == null) {
-            // Allow the delayed retry to try again.
             failureUiShown.set(false)
             Log.w(TAG, "Application not ready; will retry spoof-failure UI")
             return
@@ -346,7 +538,6 @@ object DeviceSpoofer {
         } catch (t: Throwable) {
             Log.e(TAG, "Toast failed for spoof failure", t)
         }
-
         try {
             postFailureNotification(app, title, text)
         } catch (t: Throwable) {
@@ -362,7 +553,7 @@ object DeviceSpoofer {
     ): String {
         val lang = try {
             context.resources.configuration.locales[0]?.language
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
             null
         }
         return if (lang == "zh") {
@@ -372,83 +563,262 @@ object DeviceSpoofer {
         }
     }
 
-    /**
-     * Best-effort notification inside the hooked process.
-     *
-     * Declares [android.Manifest.permission.POST_NOTIFICATIONS] in our manifest for lint /
-     * module-process use. When running inside Google Photos, the host app's grant state
-     * applies; Toast remains the always-on fallback if notify is blocked.
-     */
     @SuppressLint("NotificationPermission")
     private fun postFailureNotification(context: Context, title: String, text: String) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             ?: return
-
-        // Android 13+: if the host process revoked notifications, skip quietly.
         if (Build.VERSION.SDK_INT >= 33 && !nm.areNotificationsEnabled()) {
             Log.w(TAG, "Notifications disabled in host process; Toast-only spoof failure alert")
             return
         }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply {
-                description = "Device spoof diagnostics for Pixelify Infinity"
-            }
-            nm.createNotificationChannel(channel)
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    CHANNEL_NAME,
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Device spoof diagnostics for Pixelify Infinity"
+                },
+            )
         }
-
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(context, CHANNEL_ID)
         } else {
             @Suppress("DEPRECATION")
             Notification.Builder(context)
         }
-
-        val notification = builder
-            .setContentTitle(title)
-            .setContentText(text)
-            .setStyle(Notification.BigTextStyle().bigText(text))
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setAutoCancel(true)
-            .setOngoing(false)
-            .build()
-
-        nm.notify(NOTIFY_ID, notification)
+        nm.notify(
+            NOTIFY_ID,
+            builder
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(Notification.BigTextStyle().bigText(text))
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setAutoCancel(true)
+                .build(),
+        )
         Log.d(TAG, "Posted spoof-failure notification")
     }
 
     private fun currentApplication(): Application? {
         return try {
-            val activityThreadClass = Class.forName("android.app.ActivityThread")
-            val currentApplication = activityThreadClass.getMethod("currentApplication")
-            currentApplication.invoke(null) as? Application
+            val at = Class.forName("android.app.ActivityThread")
+            at.getMethod("currentApplication").invoke(null) as? Application
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+
+    /**
+     * Load [libpixelify_build] for JNI Build field writes under LSPosed.
+     * Prefer module [ApplicationInfo.nativeLibraryDir], then extract into host codeCacheDir.
+     */
+    private fun ensureNativeLoaded(module: XposedModule?) {
+        if (nativeReady) return
+        synchronized(nativeLoadLock) {
+            if (nativeReady) return
+            loadNativeLibrary(module)
+        }
+    }
+
+    private fun loadNativeLibrary(module: XposedModule?) {
+        val appInfo = resolveModuleApplicationInfo(module)
+        val hostApp = currentApplication()
+        val candidates = mutableListOf<File>()
+
+        fun addAbiCandidates(dir: File?) {
+            if (dir == null || !dir.isDirectory) return
+            // Prefer device ABI order.
+            val abis = Build.SUPPORTED_ABIS?.toList().orEmpty()
+            for (abi in abis) {
+                candidates += File(dir, "libpixelify_build.so") // dir may already be abi-specific
+                candidates += File(File(dir, abi), "libpixelify_build.so")
+            }
+            candidates += File(dir, "libpixelify_build.so")
+            dir.listFiles()?.filter { it.isDirectory }?.forEach { child ->
+                candidates += File(child, "libpixelify_build.so")
+            }
+        }
+
+        if (appInfo != null) {
+            appInfo.nativeLibraryDir?.takeIf { it.isNotBlank() }?.let { dir ->
+                addAbiCandidates(File(dir))
+                addAbiCandidates(File(dir).parentFile)
+            }
+            // Fallback: extract from module APK into writable dirs (host first, then module).
+            appInfo.sourceDir?.let { src ->
+                candidates += extractNativeFromApk(src, appInfo, hostApp)
+            }
+            appInfo.splitSourceDirs?.forEach { split ->
+                candidates += extractNativeFromApk(split, appInfo, hostApp)
+            }
+        }
+
+        // Last resort: System.loadLibrary (works only if the host classloader path includes module libs).
+        var loaded = false
+        val tried = linkedSetOf<String>()
+        for (so in candidates) {
+            val path = so.absolutePath
+            if (!tried.add(path)) continue
+            if (!so.isFile) continue
+            try {
+                System.load(path)
+                nativeReady = true
+                loaded = true
+                Log.d(TAG, "Loaded libpixelify_build from $path")
+                break
+            } catch (t: Throwable) {
+                Log.w(TAG, "System.load($path) failed: ${t.message}")
+            }
+        }
+        if (!loaded) {
+            try {
+                System.loadLibrary("pixelify_build")
+                nativeReady = true
+                loaded = true
+                Log.d(TAG, "Loaded libpixelify_build via System.loadLibrary")
+            } catch (t: Throwable) {
+                Log.w(TAG, "System.loadLibrary(pixelify_build) failed: ${t.message}")
+            }
+        }
+        if (!loaded) {
+            Log.e(
+                TAG,
+                "JNI Build field writer unavailable (libpixelify_build not loaded); " +
+                    "nativeReady=false reason=load_failed candidates=${tried.size}",
+            )
+        }
+    }
+
+    private fun resolveModuleApplicationInfo(module: XposedModule?): ApplicationInfo? {
+        if (module == null) return null
+        return try {
+            module.moduleApplicationInfo
         } catch (t: Throwable) {
-            Log.v(TAG, "currentApplication unavailable: ${t.message}")
+            Log.w(TAG, "getModuleApplicationInfo failed: ${t.message}")
             null
         }
     }
 
     /**
-     * Reflective access to Unsafe for static field writes when [Field.set] is rejected.
+     * Extract libpixelify_build.so for the preferred ABI into a writable cache dir.
+     * Prefer host process dirs (Photos UID under LSPosed); module data dirs are fallback only.
      */
+    private fun extractNativeFromApk(
+        apkPath: String,
+        appInfo: ApplicationInfo,
+        hostApp: Application?,
+    ): List<File> {
+        val apk = File(apkPath)
+        if (!apk.isFile) return emptyList()
+        val abis = Build.SUPPORTED_ABIS?.toList().orEmpty().ifEmpty {
+            listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+        val outDir = resolveExtractDir(appInfo, hostApp) ?: return emptyList()
+        val results = mutableListOf<File>()
+        try {
+            ZipFile(apk).use { zip ->
+                for (abi in abis) {
+                    val entryName = "lib/$abi/libpixelify_build.so"
+                    val entry = zip.getEntry(entryName) ?: continue
+                    val out = File(outDir, "libpixelify_build-$abi.so")
+                    if (!out.isFile || out.length() != entry.size) {
+                        zip.getInputStream(entry).use { input ->
+                            out.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        // Host process must be able to map/exec the library.
+                        out.setReadable(true, false)
+                        out.setExecutable(true, false)
+                    }
+                    results += out
+                    Log.d(TAG, "Extracted $entryName -> ${out.absolutePath}")
+                    // Prefer first matching supported ABI.
+                    break
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "APK native extract failed for $apkPath: ${t.message}")
+        }
+        return results
+    }
+
+    private fun resolveExtractDir(appInfo: ApplicationInfo, hostApp: Application?): File? {
+        // Under LSPosed, code runs as Google Photos UID. Prefer host-writable dirs.
+        val candidates = mutableListOf<File>()
+        try {
+            hostApp?.codeCacheDir?.let { candidates += File(it, "pixelify_native") }
+        } catch (_: Throwable) {
+        }
+        try {
+            hostApp?.cacheDir?.let { candidates += File(it, "pixelify_native") }
+        } catch (_: Throwable) {
+        }
+        try {
+            hostApp?.filesDir?.let { candidates += File(it, "pixelify_native") }
+        } catch (_: Throwable) {
+        }
+        // Module private dirs rarely writable from the host process; still try.
+        appInfo.dataDir?.let { candidates += File(it, "code_cache/pixelify_native") }
+        appInfo.deviceProtectedDataDir?.let {
+            candidates += File(it, "code_cache/pixelify_native")
+        }
+        appInfo.nativeLibraryDir?.let { nld ->
+            File(nld).parentFile?.let { candidates += File(it, "pixelify_native") }
+        }
+        for (dir in candidates) {
+            try {
+                if (dir.exists() || dir.mkdirs()) {
+                    if (dir.canWrite()) {
+                        Log.d(TAG, "Native extract dir: ${dir.absolutePath}")
+                        return dir
+                    }
+                }
+            } catch (_: Throwable) {
+            }
+        }
+        Log.w(TAG, "No writable native extract dir (host+module candidates exhausted)")
+        return null
+    }
+
+    /**
+     * JNI bridge for [libpixelify_build]. Methods kept for ProGuard/R8.
+     */
+    private object BuildFieldNative {
+        @JvmStatic
+        external fun nativeSetStatic(clazz: Class<*>, fieldName: String, value: Any?): Boolean
+
+        fun setStatic(clazz: Class<*>, fieldName: String, value: Any?): Boolean {
+            return try {
+                nativeSetStatic(clazz, fieldName, value)
+            } catch (t: Throwable) {
+                Log.w(TAG, "JNI nativeSetStatic failed for $fieldName: ${t.message}")
+                false
+            }
+        }
+    }
+
     private object UnsafeStatic {
         private data class Handle(
             val unsafe: Any,
             val staticFieldBase: Method,
             val staticFieldOffset: Method,
-            val putObject: Method,
-            val putInt: Method,
-            val putLong: Method,
-            val putBoolean: Method,
-            val putFloat: Method,
-            val putDouble: Method,
-            val putShort: Method,
-            val putByte: Method,
-            val putChar: Method,
+            val putObject: Method?,
+            val putObjectVolatile: Method?,
+            val putReference: Method?,
+            val putReferenceVolatile: Method?,
+            val putInt: Method?,
+            val putIntVolatile: Method?,
+            val putLong: Method?,
+            val putLongVolatile: Method?,
+            val putBoolean: Method?,
+            val putFloat: Method?,
+            val putDouble: Method?,
+            val putShort: Method?,
+            val putByte: Method?,
+            val putChar: Method?,
+            val source: String,
         )
 
         private val handle: Handle? by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
@@ -459,64 +829,47 @@ object DeviceSpoofer {
             return try {
                 val cls = Class.forName(className)
                 val instance = resolveUnsafeInstance(cls) ?: return null
+                fun methodOrNull(name: String, vararg params: Class<*>): Method? =
+                    try {
+                        cls.getMethod(name, *params).also { it.isAccessible = true }
+                    } catch (_: Throwable) {
+                        null
+                    }
+
+                val obj = Object::class.java
+                val l = Long::class.javaPrimitiveType!!
+                val i = Int::class.javaPrimitiveType!!
+                val z = Boolean::class.javaPrimitiveType!!
+                val f = Float::class.javaPrimitiveType!!
+                val d = Double::class.javaPrimitiveType!!
+                val s = Short::class.javaPrimitiveType!!
+                val b = Byte::class.javaPrimitiveType!!
+                val c = Char::class.javaPrimitiveType!!
+
+                val staticFieldBase = cls.getMethod("staticFieldBase", Field::class.java)
+                val staticFieldOffset = cls.getMethod("staticFieldOffset", Field::class.java)
+                staticFieldBase.isAccessible = true
+                staticFieldOffset.isAccessible = true
+
                 Handle(
                     unsafe = instance,
-                    staticFieldBase = cls.getMethod("staticFieldBase", Field::class.java),
-                    staticFieldOffset = cls.getMethod("staticFieldOffset", Field::class.java),
-                    putObject = cls.getMethod(
-                        "putObject",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Object::class.java,
-                    ),
-                    putInt = cls.getMethod(
-                        "putInt",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Int::class.javaPrimitiveType,
-                    ),
-                    putLong = cls.getMethod(
-                        "putLong",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Long::class.javaPrimitiveType,
-                    ),
-                    putBoolean = cls.getMethod(
-                        "putBoolean",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Boolean::class.javaPrimitiveType,
-                    ),
-                    putFloat = cls.getMethod(
-                        "putFloat",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Float::class.javaPrimitiveType,
-                    ),
-                    putDouble = cls.getMethod(
-                        "putDouble",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Double::class.javaPrimitiveType,
-                    ),
-                    putShort = cls.getMethod(
-                        "putShort",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Short::class.javaPrimitiveType,
-                    ),
-                    putByte = cls.getMethod(
-                        "putByte",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Byte::class.javaPrimitiveType,
-                    ),
-                    putChar = cls.getMethod(
-                        "putChar",
-                        Object::class.java,
-                        Long::class.javaPrimitiveType,
-                        Char::class.javaPrimitiveType,
-                    ),
+                    staticFieldBase = staticFieldBase,
+                    staticFieldOffset = staticFieldOffset,
+                    putObject = methodOrNull("putObject", obj, l, obj),
+                    putObjectVolatile = methodOrNull("putObjectVolatile", obj, l, obj),
+                    putReference = methodOrNull("putReference", obj, l, obj),
+                    putReferenceVolatile = methodOrNull("putReferenceVolatile", obj, l, obj),
+                    putInt = methodOrNull("putInt", obj, l, i),
+                    putIntVolatile = methodOrNull("putIntVolatile", obj, l, i),
+                    putLong = methodOrNull("putLong", obj, l, l),
+                    putLongVolatile = methodOrNull("putLongVolatile", obj, l, l),
+                    putBoolean = methodOrNull("putBoolean", obj, l, z),
+                    putFloat = methodOrNull("putFloat", obj, l, f),
+                    putDouble = methodOrNull("putDouble", obj, l, d),
+                    putShort = methodOrNull("putShort", obj, l, s),
+                    putByte = methodOrNull("putByte", obj, l, b),
+                    putChar = methodOrNull("putChar", obj, l, c),
+                    source = className,
                 ).also {
                     Log.d(TAG, "Unsafe static writer ready via $className")
                 }
@@ -527,9 +880,7 @@ object DeviceSpoofer {
         }
 
         private fun resolveUnsafeInstance(cls: Class<*>): Any? {
-            // Prefer theUnsafe / THE_ONE fields; avoid getUnsafe() which checks caller.
-            val fieldNames = listOf("theUnsafe", "THE_ONE", "unsafe")
-            for (name in fieldNames) {
+            for (name in listOf("theUnsafe", "THE_ONE", "unsafe")) {
                 try {
                     val f = cls.getDeclaredField(name)
                     f.isAccessible = true
@@ -547,34 +898,114 @@ object DeviceSpoofer {
             }
         }
 
+        private fun toOffset(raw: Any?): Long = when (raw) {
+            is Long -> raw
+            is Int -> raw.toLong()
+            is Number -> raw.toLong()
+            else -> error("Unexpected staticFieldOffset type: ${raw?.javaClass?.name}")
+        }
+
         fun put(field: Field, value: Any?): Boolean {
             val h = handle
             if (h == null) {
                 Log.w(TAG, "Unsafe handle not available; cannot put ${field.name}")
                 return false
             }
-            return try {
-                val base = h.staticFieldBase.invoke(h.unsafe, field)
-                val offset = (h.staticFieldOffset.invoke(h.unsafe, field) as Long)
-                when (field.type) {
-                    Integer.TYPE -> h.putInt.invoke(h.unsafe, base, offset, value as Int)
-                    java.lang.Long.TYPE -> h.putLong.invoke(h.unsafe, base, offset, value as Long)
-                    java.lang.Boolean.TYPE ->
-                        h.putBoolean.invoke(h.unsafe, base, offset, value as Boolean)
-                    java.lang.Float.TYPE ->
-                        h.putFloat.invoke(h.unsafe, base, offset, value as Float)
-                    java.lang.Double.TYPE ->
-                        h.putDouble.invoke(h.unsafe, base, offset, value as Double)
-                    java.lang.Short.TYPE ->
-                        h.putShort.invoke(h.unsafe, base, offset, value as Short)
-                    java.lang.Byte.TYPE ->
-                        h.putByte.invoke(h.unsafe, base, offset, value as Byte)
-                    Character.TYPE -> h.putChar.invoke(h.unsafe, base, offset, value as Char)
-                    else -> h.putObject.invoke(h.unsafe, base, offset, value)
-                }
-                true
+
+            val bases = linkedSetOf<Any?>()
+            try {
+                bases += h.staticFieldBase.invoke(h.unsafe, field)
             } catch (t: Throwable) {
-                Log.e(TAG, "Unsafe.put failed for ${field.declaringClass.name}.${field.name}", t)
+                Log.w(TAG, "staticFieldBase failed for ${field.name}: ${t.message}")
+            }
+            bases += field.declaringClass
+
+            val offset = try {
+                toOffset(h.staticFieldOffset.invoke(h.unsafe, field))
+            } catch (t: Throwable) {
+                Log.e(TAG, "staticFieldOffset failed for ${field.name}", t)
+                return false
+            }
+
+            val attempts = mutableListOf<Pair<String, Method?>>()
+            when (field.type) {
+                Integer.TYPE -> {
+                    attempts += "putIntVolatile" to h.putIntVolatile
+                    attempts += "putInt" to h.putInt
+                }
+                java.lang.Long.TYPE -> {
+                    attempts += "putLongVolatile" to h.putLongVolatile
+                    attempts += "putLong" to h.putLong
+                }
+                java.lang.Boolean.TYPE -> attempts += "putBoolean" to h.putBoolean
+                java.lang.Float.TYPE -> attempts += "putFloat" to h.putFloat
+                java.lang.Double.TYPE -> attempts += "putDouble" to h.putDouble
+                java.lang.Short.TYPE -> attempts += "putShort" to h.putShort
+                java.lang.Byte.TYPE -> attempts += "putByte" to h.putByte
+                Character.TYPE -> attempts += "putChar" to h.putChar
+                else -> {
+                    attempts += "putReferenceVolatile" to h.putReferenceVolatile
+                    attempts += "putObjectVolatile" to h.putObjectVolatile
+                    attempts += "putReference" to h.putReference
+                    attempts += "putObject" to h.putObject
+                }
+            }
+
+            for (base in bases) {
+                for ((name, method) in attempts) {
+                    if (method == null) continue
+                    try {
+                        when (field.type) {
+                            Integer.TYPE -> method.invoke(h.unsafe, base, offset, value as Int)
+                            java.lang.Long.TYPE -> method.invoke(h.unsafe, base, offset, value as Long)
+                            java.lang.Boolean.TYPE ->
+                                method.invoke(h.unsafe, base, offset, value as Boolean)
+                            java.lang.Float.TYPE ->
+                                method.invoke(h.unsafe, base, offset, value as Float)
+                            java.lang.Double.TYPE ->
+                                method.invoke(h.unsafe, base, offset, value as Double)
+                            java.lang.Short.TYPE ->
+                                method.invoke(h.unsafe, base, offset, value as Short)
+                            java.lang.Byte.TYPE ->
+                                method.invoke(h.unsafe, base, offset, value as Byte)
+                            Character.TYPE -> method.invoke(h.unsafe, base, offset, value as Char)
+                            else -> method.invoke(h.unsafe, base, offset, value)
+                        }
+                        Log.v(
+                            TAG,
+                            "Unsafe.$name via ${h.source} base=${base?.javaClass?.simpleName} " +
+                                "offset=$offset field=${field.declaringClass.simpleName}.${field.name}",
+                        )
+                        // Caller verifies with readback.
+                        if (fieldValueMatches(field, value)) return true
+                    } catch (t: Throwable) {
+                        Log.v(
+                            TAG,
+                            "Unsafe.$name failed for ${field.name} " +
+                                "base=${base?.javaClass?.simpleName}: ${t.message}",
+                        )
+                    }
+                }
+            }
+            Log.e(
+                TAG,
+                "Unsafe.put exhausted strategies for ${field.declaringClass.name}.${field.name}",
+            )
+            return false
+        }
+
+        private fun fieldValueMatches(field: Field, expected: Any?): Boolean {
+            return try {
+                val actual = field.get(null)
+                when {
+                    actual == null && expected == null -> true
+                    actual == null || expected == null -> false
+                    expected is Number && actual is Number ->
+                        expected.toLong() == actual.toLong() ||
+                            expected.toDouble() == actual.toDouble()
+                    else -> actual == expected || actual.toString() == expected.toString()
+                }
+            } catch (_: Throwable) {
                 false
             }
         }

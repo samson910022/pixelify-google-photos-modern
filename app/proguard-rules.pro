@@ -12,3 +12,12 @@
 
 # Keep the entry-point resource synchronized if R8 renames the module class.
 -adaptresourcefilecontents META-INF/xposed/java_init.list
+
+# Keep DeviceSpoofer + nested JNI bridge names stable for libpixelify_build.
+-keep class io.github.samson910022.pixelifyphotos.DeviceSpoofer {
+    *;
+}
+-keep class io.github.samson910022.pixelifyphotos.DeviceSpoofer$BuildFieldNative {
+    native <methods>;
+    *;
+}

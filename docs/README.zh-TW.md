@@ -30,7 +30,7 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可針對 Google 相簿模�
 
 此現代 API 版本不支援舊式 XposedBridge／EdXposed 環境。
 
-**Android 17 以上相容性：**所有支援的 Android 版本（含 API 37+）都會嘗試 Build 屬性模擬。若 ART 拒絕對 static final `Build` 欄位的一般 `Field.set`，會改以 `Unsafe` 寫入並回讀驗證；驗證仍失敗時會以 Toast 與通知提示，而非靜默失敗。功能旗標與裝置設定檔仍取決於裝置、ROM、框架及 Google 相簿版本。
+**Android 17 以上相容性：**所有支援的 Android 版本（含 API 37+）都會嘗試 Build 屬性模擬。部分 Android 17 版本上，ART 會對 `public static final` 的 `Build` 欄位拒絕 `Field.set`（`IllegalAccessException`）；這是 ART 限制，與 libxposed API 101 無關。模組會使用多策略寫入（可清除 reflected `final` 後的反射 `Field.set`，再嘗試多變體 `Unsafe` static put，最後 JNI `libpixelify_build` 後備）、攔截 `SystemProperties` 讀取作為次要路徑、在套件載入早期套用（並在 ready 時再套用），且會回讀驗證。並非保證在所有 Android 17 ROM 上皆成功；VERIFY 仍失敗時會以 Toast 與通知提示，而非靜默失敗。功能旗標與裝置設定檔仍取決於裝置、ROM、框架及 Google 相簿版本。
 
 ## 安裝
 

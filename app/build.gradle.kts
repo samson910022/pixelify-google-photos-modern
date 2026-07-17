@@ -77,9 +77,30 @@ android {
         applicationId = "io.github.samson910022.pixelifyphotos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.4"
+
+        ndk {
+            // Primary device ABIs + emulator.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags += listOf("-std=c++17", "-fno-exceptions", "-fno-rtti")
+                arguments += listOf("-DANDROID_STL=c++_static")
+            }
+        }
     }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    ndkVersion = "27.0.12077973"
 
     signingConfigs {
         if (releaseSigningConfigured) {
@@ -122,6 +143,10 @@ android {
         resources {
             merges += "META-INF/xposed/*"
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // Ensure libpixelify_build.so is stored uncompressed/extractable for LSPosed.
+            useLegacyPackaging = true
         }
     }
 
@@ -192,6 +217,8 @@ dependencies {
     implementation(libs.material)
 
     compileOnly(libs.libxposed.api)
+    // Available at unit-test runtime so DeviceSpoofer/FeatureSpoofer can load.
+    testImplementation(libs.libxposed.api)
     implementation(libs.libxposed.service)
 
     // Unit testing

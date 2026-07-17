@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.0.4] - 2026-07-17
+
+### Fixed
+
+- Hardened Android 17+ device spoofing after field writes still failed on some devices with 1.0.3.
+- On Android 17 (API 37+), ART can block `Field.set` on `public static final` `android.os.Build` / `Build.VERSION` fields with `IllegalAccessException`. That restriction is an ART field-write limitation; it is **not** caused by libxposed API 101.
+- Multi-strategy Build static writes (success = post-write readback match):
+  - clear only the Java `FINAL` bit on the real reflected access-flags int (preserve ART/hidden-API high bits), then reflection `Field.set`
+  - multi-variant `Unsafe` static puts (`putObject` / `putReference` / volatile forms, alternate static bases)
+  - JNI fallback via `libpixelify_build` using `SetStatic*Field` + readback (**no** heuristic ArtField memory patching, which could corrupt ART metadata)
+  - best-effort hidden-API exemption before reflective access
+- Secondary path: intercept `android.os.SystemProperties.get` for `ro.product.*` / fingerprint-related keys when Xposed hooks are available.
+- Apply device spoof early on `onPackageLoaded` and re-apply on `onPackageReady`.
+- VERIFY failures continue to surface via Toast and a high-importance notification (once per process) instead of silent log-only failure; optional Android-version spoof keys are included in VERIFY.
+
+### Notes
+
+- This release does **not** claim universal success on every Android 17 build/ROM. Some firmwares may still leave `Build` fields unchanged after all write strategies; check logcat tag `Pixelify` for `Loaded libpixelify_build` / `via Field.set` / `via Unsafe` / `via JNI` / `VERIFY FAIL` and the on-device VERIFY alert if the Google Photos model string does not change.
+- The native library is loaded from the **module** `nativeLibraryDir` first, then extracted into the **host** process `codeCacheDir` when needed, because under LSPosed the code runs inside Google Photos and bare `System.loadLibrary` usually fails.
+
+### Changed
+
+- Bumped version to `1.0.4` (`versionCode 5`).
+
 ## [1.0.3] - 2026-07-17
 
 ### Fixed

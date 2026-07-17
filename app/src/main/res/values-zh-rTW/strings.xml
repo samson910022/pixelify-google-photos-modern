@@ -17,8 +17,8 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.0.3</string>
-    <string name="version_desc">Android 17+ 透過 Unsafe 備援修正 Build 偽裝；VERIFY 失敗時以 Toast 與通知提示使用者。</string>
+    <string name="version_head">版本 1.0.4</string>
+    <string name="version_desc">Android 17+ 多策略 Build 寫入（Field.set + Unsafe + JNI）、SystemProperties 攔截、套件載入早期套用，VERIFY 失敗時 Toast／通知。不保證所有 A17 ROM 皆成功。</string>
     <string name="changelog">變更記錄</string>
 
     <!-- 設定匯入／匯出 -->
