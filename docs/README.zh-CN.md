@@ -40,7 +40,13 @@ Pixelify Infinity 是一个独立维护的 Xposed 模块，可为 Google 相册�
 4. 仅将模块作用域设置为 **Google 相册**。
 5. 强制停止并重新打开 Google 相册；如果模块管理器要求，请重启设备。
 
-请只安装来自上述仓库或未来官方 Xposed Modules Repository 镜像的版本。安装前请阅读[版本验证](#版本验证)。
+请只安装来自本仓库或官方 Xposed Modules Repository 镜像的版本：
+
+- 源码仓库 Releases：https://github.com/samson910022/pixelify-google-photos-modern/releases
+- Xposed 镜像 Releases：https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases
+- 官方网站列表：https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos
+
+安装前请阅读[版本验证](#版本验证)。
 
 ## 从旧版项目迁移
 

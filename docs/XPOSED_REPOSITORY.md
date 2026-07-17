@@ -1,25 +1,60 @@
 # Xposed Modules Repository Publication
 
-The canonical source repository and an `Xposed-Modules-Repo` distribution mirror serve different purposes. Do not convert this source repository into the mirror and do not publish the template automatically.
+The canonical source repository and the `Xposed-Modules-Repo` distribution mirror serve different purposes. Do not convert this source repository into the mirror and do not publish the template automatically.
+
+## Live mirror
+
+| Item | Value |
+| --- | --- |
+| Mirror repository | https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos |
+| Official website page | https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos |
+| Package / repo name | `io.github.samson910022.pixelifyphotos` |
+| Module display name | `Pixelify Infinity` |
+
+Prefer the `modules.lsposed.org` URL above. The alternate host form `https://xposed.app/modules/<package>` is not the canonical path used by the published site generator (`siteUrl` is `https://modules.lsposed.org`, and pages are under `/module/<package>`).
 
 ## Prepared mirror metadata
 
-The files under [`distribution/xposed-repository/`](../distribution/xposed-repository/) are templates for a future repository named:
+The files under [`distribution/xposed-repository/`](../distribution/xposed-repository/) are templates for the mirror repository root:
 
-```text
-Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos
-```
+- `README.md` — full module description rendered on the website
+- `SUMMARY` — short plain-text summary for list cards
+- `SOURCE_URL` — source repository URL
+- `SCOPE` — recommended scope JSON array
+- `update_info.json` — app-specific update feed consumed by the module UI (not an official Xposed meta file, but required by this project)
+- `banner.png` — image referenced by the mirror README
 
 Before submitting or updating that mirror:
 
 1. Confirm the application ID and Xposed package remain `io.github.samson910022.pixelifyphotos`.
-2. Copy the prepared `README.md`, `SUMMARY`, `SOURCE_URL`, `SCOPE`, and `update_info.json` into the mirror root.
+2. Copy the prepared mirror files into the mirror repository root.
 3. Keep `SCOPE` limited to `com.google.android.apps.photos` unless a reviewed source change requires otherwise.
-4. Build with `verifiedRelease` and verify the stable signer fingerprint.
-5. Publish the APK using the repository's required release naming convention. For version code `1` and version name `1.0.0`, the expected tag is `1-1.0.0`.
-6. Verify the mirror release asset after upload before announcing it.
+4. Set GitHub repository **About** fields on the mirror:
+   - **Description** = module display name (`Pixelify Infinity`)
+   - **Website / homepage** = support URL (`https://github.com/samson910022/pixelify-google-photos-modern/issues`)
+5. Build with `verifiedRelease` and verify the stable signer fingerprint.
+6. Publish a GitHub Release with:
+   - **Tag**: `{versionCode}-{versionName}` (example: `3-1.0.2`)
+   - **Title**: version name (example: `1.0.2`)
+   - **Body**: changelog
+   - **Asset**: signed APK (`content-type` must be an Android package archive)
+7. Verify the mirror release asset after upload before announcing it.
 
 Submission, mirror creation, release creation, and repository-visibility changes require explicit maintainer approval.
+
+## Why a module may not appear on the website
+
+The official site generator marks a repository as a published module only when all of the following are true:
+
+1. Repository name contains a `.` (package-style name)
+2. Repository **Description** is non-empty
+3. At least one non-draft release has:
+   - tag matching `^[0-9]+-.+$`
+   - at least one APK asset
+4. Repository is public and not hidden by a `HIDE` file
+5. Name is not the example repository
+
+Incomplete repositories will not be shown. After a valid metadata or release update, the organization build usually refreshes the public index within about five minutes.
 
 ## Update metadata
 

@@ -38,7 +38,13 @@ Legacy XposedBridge/EdXposed environments are not supported by this modern-API b
 4. Set the module scope to **Google Photos** only.
 5. Force-stop and reopen Google Photos. Reboot the device if the module manager requires it.
 
-Only install releases obtained from the repository above or its future official Xposed Modules Repository mirror. See [Release verification](#release-verification) before installing a downloaded APK.
+Only install releases obtained from this repository or the official Xposed Modules Repository mirror:
+
+- Source releases: https://github.com/samson910022/pixelify-google-photos-modern/releases
+- Xposed mirror releases: https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases
+- Website listing: https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos
+
+See [Release verification](#release-verification) before installing a downloaded APK.
 
 ## Upgrading from the legacy project
 

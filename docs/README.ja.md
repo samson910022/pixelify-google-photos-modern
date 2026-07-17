@@ -40,7 +40,13 @@ Pixelify Infinity は、Google フォトに対して一部の Google Pixel 端�
 4. モジュールのスコープを **Google フォトのみ**に設定します。
 5. Google フォトを強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。
 
-上記リポジトリ、または将来の公式 Xposed Modules Repository ミラー以外から取得した APK はインストールしないでください。インストール前に[リリースの検証](#リリースの検証)を確認してください。
+上記リポジトリ、または公式 Xposed Modules Repository ミラー以外から取得した APK はインストールしないでください。
+
+- ソースリポジトリの Releases: https://github.com/samson910022/pixelify-google-photos-modern/releases
+- Xposed ミラーの Releases: https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases
+- 公式サイト掲載ページ: https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos
+
+インストール前に[リリースの検証](#リリースの検証)を確認してください。
 
 ## 旧プロジェクトからの移行
 

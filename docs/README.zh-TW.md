@@ -40,7 +40,13 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可針對 Google 相簿模�
 4. 僅將模組作用範圍設為 **Google 相簿**。
 5. 強制停止並重新開啟 Google 相簿；若模組管理器要求，請重新啟動裝置。
 
-請只安裝來自上述 repository 或未來官方 Xposed Modules Repository 鏡像的版本。安裝前請參閱[版本驗證](#版本驗證)。
+請只安裝來自本 repository 或官方 Xposed Modules Repository 鏡像的版本：
+
+- 原始碼倉庫 Releases：https://github.com/samson910022/pixelify-google-photos-modern/releases
+- Xposed 鏡像 Releases：https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases
+- 官方網站列表：https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos
+
+安裝前請參閱[版本驗證](#版本驗證)。
 
 ## 從舊版專案轉移
 
