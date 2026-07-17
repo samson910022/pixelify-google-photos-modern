@@ -30,7 +30,7 @@ Pixelify Infinity 是一个独立维护的 Xposed 模块，可为 Google 相册�
 
 此现代 API 版本不支持旧式 XposedBridge／EdXposed 环境。
 
-**Android 17 及更高版本兼容性：**所有受支持的 Android 版本（含 API 37+）都会尝试 Build 属性模拟；反射写入失败仅记录日志，不再硬性跳过。功能标志与设备配置仍取决于设备、ROM、框架和 Google 相册版本。
+**Android 17 及更高版本兼容性：**所有受支持的 Android 版本（含 API 37+）都会尝试 Build 属性模拟。若 ART 拒绝 static final `Build` 字段的普通 `Field.set`，会回退到 `Unsafe` 写入并回读校验；校验仍失败时会通过 Toast 与通知提示，而不是静默失败。功能标志与设备配置仍取决于设备、ROM、框架和 Google 相册版本。
 
 ## 安装
 

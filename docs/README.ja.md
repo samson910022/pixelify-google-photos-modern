@@ -30,7 +30,7 @@ Pixelify Infinity は、Google フォトに対して一部の Google Pixel 端�
 
 この Modern API ビルドは、旧式の XposedBridge／EdXposed 環境には対応していません。
 
-**Android 17 以降の互換性：**対応するすべての Android バージョン（API 37+ を含む）で Build プロパティの偽装を試行します。リフレクション書き込みの失敗はログに記録し、ハードスキップはしません。機能フラグと端末プロファイルは、端末・ROM・フレームワーク・Google フォトのバージョンに依存します。
+**Android 17 以降の互換性：**対応するすべての Android バージョン（API 37+ を含む）で Build プロパティの偽装を試行します。ART が static final の `Build` フィールドへの通常の `Field.set` を拒否した場合は `Unsafe` 書き込みにフォールバックし、検証します。検証失敗時はサイレントではなく Toast と通知で知らせます。機能フラグと端末プロファイルは、端末・ROM・フレームワーク・Google フォトのバージョンに依存します。
 
 ## インストール
 

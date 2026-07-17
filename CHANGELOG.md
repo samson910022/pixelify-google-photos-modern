@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.3] - 2026-07-17
+
+### Fixed
+
+- Android 17+ Build spoofing: when ART rejects `Field.set` on `public static final` `Build` fields (`IllegalAccessException`), fall back to `Unsafe` static field writes so model spoofing can actually take effect.
+- Device spoof VERIFY failures now surface to the user via Toast and a high-importance notification (once per process), instead of only silent logcat errors.
+
+### Changed
+
+- `DeviceSpoofer.setStaticField` returns success based on post-write readback and logs which write strategy succeeded.
+- Bumped version to `1.0.3` (`versionCode 4`).
+
 ## [1.0.2] - 2026-07-16
 
 ### Changed

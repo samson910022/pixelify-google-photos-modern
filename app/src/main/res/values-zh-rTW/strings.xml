@@ -17,8 +17,8 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.0.2</string>
-    <string name="version_desc">品牌更新：顯示名稱改為 Pixelify 無限解鎖、全新啟動器圖示，並維持獨立套件與簽署身分。</string>
+    <string name="version_head">版本 1.0.3</string>
+    <string name="version_desc">Android 17+ 透過 Unsafe 備援修正 Build 偽裝；VERIFY 失敗時以 Toast 與通知提示使用者。</string>
     <string name="changelog">變更記錄</string>
 
     <!-- 設定匯入／匯出 -->

@@ -28,7 +28,7 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 
 Legacy XposedBridge/EdXposed environments are not supported by this modern-API build.
 
-**Android 17+ compatibility:** Build-property spoofing is attempted on all supported Android versions, including API 37+. Reflection failures are logged rather than treated as a hard skip. Feature-flag spoofing and device profiles still depend on the device, ROM, framework, and Google Photos version.
+**Android 17+ compatibility:** Build-property spoofing is attempted on all supported Android versions, including API 37+. When ART rejects ordinary `Field.set` on static final `Build` fields, the module falls back to `Unsafe` writes and re-reads fields for verification. Persistent VERIFY failures raise a Toast and notification instead of failing silently. Feature-flag spoofing and device profiles still depend on the device, ROM, framework, and Google Photos version.
 
 ## Installation
 

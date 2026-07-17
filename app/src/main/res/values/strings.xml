@@ -17,8 +17,8 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.0.2</string>
-    <string name="version_desc">Branding update: Pixelify Infinity display name, new launcher icon, and continued independent package/signing identity.</string>
+    <string name="version_head">Version 1.0.3</string>
+    <string name="version_desc">Android 17+ Build spoof fix via Unsafe fallback, plus user-visible toast and notification on VERIFY failure.</string>
     <string name="changelog">Change log</string>
 
     <!-- Configuration import/export -->

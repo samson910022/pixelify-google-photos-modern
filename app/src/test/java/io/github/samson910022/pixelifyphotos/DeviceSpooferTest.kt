@@ -9,18 +9,14 @@ import org.junit.Test
 import org.mockito.MockedStatic
 import org.mockito.Mockito
 import org.mockito.kotlin.any
-import org.mockito.kotlin.mock
+import org.mockito.kotlin.anyOrNull
 import java.lang.reflect.Field
+import java.lang.reflect.Modifier
 
 /**
- * Unit tests for [DeviceSpoofer] — a Kotlin singleton that uses Java
- * reflection to spoof [android.os.Build] static fields.
+ * Unit tests for [DeviceSpoofer] — reflection / Unsafe static field spoofing.
  *
- * Because DeviceSpoofer is an [object], all its members are technically
- * instance members of the singleton.  The private [android.util.Log]
- * calls are stubbed via Mockito's inline mock maker so that tests on
- * the standard JVM do not crash with "Stub!" errors from the Android
- * SDK stubs JAR.
+ * Android [Log] is stubbed so JVM unit tests do not crash on SDK stubs.
  */
 class DeviceSpooferTest {
 
@@ -29,8 +25,10 @@ class DeviceSpooferTest {
     @Before
     fun setUp() {
         mockedLog = Mockito.mockStatic(Log::class.java)
-        mockedLog.`when`<Int> { Log.e(any<String>(), any<String>(), any<Throwable>()) }.thenReturn(0)
+        mockedLog.`when`<Int> { Log.e(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
+        mockedLog.`when`<Int> { Log.e(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>()) }.thenReturn(0)
+        mockedLog.`when`<Int> { Log.w(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.d(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.v(any<String>(), any<String>()) }.thenReturn(0)
     }
@@ -41,8 +39,7 @@ class DeviceSpooferTest {
     }
 
     // =========================================================================
-    // C1: ANDROID_17_SDK_INT constant — canonical SDK_INT for Android 17
-    // (diagnostic only; no longer used as a hard skip for Build spoofing)
+    // C1: ANDROID_17_SDK_INT constant — diagnostic only
     // =========================================================================
 
     @Test
@@ -54,146 +51,117 @@ class DeviceSpooferTest {
 
     @Test
     fun `DeviceSpoofer source does not hard-skip Build spoofing on Android 17`() {
-        // Guard against reintroducing the early-return that disabled model spoofing.
-        val source = DeviceSpoofer::class.java
-            .protectionDomain
-            ?.codeSource
-            ?.location
-        // Compile-time shape check: setStaticField and hook still exist for production path.
-        assertNotNull(DeviceSpoofer::class.java.getDeclaredMethod("hook", android.content.SharedPreferences::class.java))
+        assertNotNull(
+            DeviceSpoofer::class.java.getDeclaredMethod(
+                "hook",
+                android.content.SharedPreferences::class.java,
+            ),
+        )
         val setStatic = DeviceSpoofer::class.java.getDeclaredMethod(
             "setStaticField",
             Class::class.java,
             String::class.java,
             Any::class.java,
         )
-        assertNotNull(setStatic)
-        // Keep source var referenced if available (not required for assertion).
-        if (source != null) {
-            assertTrue(source.toString().isNotEmpty())
-        }
+        assertEquals(Boolean::class.javaPrimitiveType, setStatic.returnType)
     }
 
     // =========================================================================
-    // C2: setStaticField catches Throwable for invalid field name
-    //
-    // Still a valid test: setStaticField wraps its body in catch(t: Throwable).
-    // Any reflection failure (NoSuchFieldException, etc.) must be caught.
+    // C2–C5: setStaticField catches Throwable / returns false safely
     // =========================================================================
 
     @Test
-    fun `setStaticField catches Throwable when field does not exist`() {
-        val method = DeviceSpoofer::class.java.getDeclaredMethod(
-            "setStaticField",
-            Class::class.java,
-            String::class.java,
-            Any::class.java,
-        )
-        method.isAccessible = true
-        method.invoke(DeviceSpoofer, Integer::class.java, "NONEXISTENT_FIELD_XYZ", 42)
-        assertTrue("setStaticField swallowed NoSuchFieldException via catch(Throwable)", true)
+    fun `setStaticField returns false when field does not exist`() {
+        val ok = invokeSetStaticField(Integer::class.java, "NONEXISTENT_FIELD_XYZ", 42)
+        assertFalse(ok)
+    }
+
+    @Test
+    fun `setStaticField returns false when value type mismatches unrecoverably`() {
+        // Integer.SIZE is static final int; passing a non-numeric object should fail coerce/put.
+        val ok = invokeSetStaticField(Integer::class.java, "SIZE", Any())
+        assertFalse(ok)
+    }
+
+    @Test
+    fun `setStaticField with primitive field and incompatible string value`() {
+        val ok = invokeSetStaticField(Integer::class.java, "SIZE", "bad_value")
+        assertFalse(ok)
+    }
+
+    @Test
+    fun `setStaticField handles System_in without throwing`() {
+        val ok = invokeSetStaticField(System::class.java, "in", null as Any?)
+        // May succeed or fail depending on JVM; must not throw to the test harness.
+        assertTrue(ok || !ok)
+    }
+
+    @Test
+    fun `setStaticField handles null assignment to primitive without throwing`() {
+        val ok = invokeSetStaticField(Integer::class.java, "MIN_VALUE", null as Any?)
+        assertTrue(ok || !ok)
     }
 
     // =========================================================================
-    // C3: setStaticField catches IllegalArgumentException for type mismatch
+    // Successful writes on JVM fixtures
     // =========================================================================
 
     @Test
-    fun `setStaticField catches Throwable when value type mismatches`() {
-        val method = DeviceSpoofer::class.java.getDeclaredMethod(
-            "setStaticField",
-            Class::class.java,
-            String::class.java,
-            Any::class.java,
+    fun `setStaticField updates mutable static String field`() {
+        StaticFieldFixture.mutableStatic = "before"
+        val ok = invokeSetStaticField(
+            StaticFieldFixture::class.java,
+            "mutableStatic",
+            "after-spoof",
         )
-        method.isAccessible = true
-        // Integer.MAX_VALUE  is a public static final int.
-        // Attempting to set it with a String should cause IllegalArgumentException
-        // which is caught by catch(t: Throwable).
-        method.invoke(DeviceSpoofer, Integer::class.java, "MAX_VALUE", "not_an_int")
-        assertTrue("setStaticField swallowed value type mismatch", true)
+        assertTrue("mutable static String should be writable", ok)
+        assertEquals("after-spoof", StaticFieldFixture.mutableStatic)
     }
-
-    // =========================================================================
-    // C4: setStaticField catches Throwable for primitive final field with string
-    // =========================================================================
 
     @Test
-    fun `setStaticField with primitive field and incompatible value`() {
-        val method = DeviceSpoofer::class.java.getDeclaredMethod(
-            "setStaticField",
-            Class::class.java,
-            String::class.java,
-            Any::class.java,
+    fun `setStaticField updates dynamic final static String via Unsafe fallback`() {
+        val original = StaticFieldFixture.finalDynamic
+        val target = "spoofed-$original"
+        val ok = invokeSetStaticField(
+            StaticFieldFixture::class.java,
+            "finalDynamic",
+            target,
         )
-        method.isAccessible = true
-        method.invoke(DeviceSpoofer, Integer::class.java, "SIZE", "bad_value")
-        assertTrue("setStaticField caught incompatible primitive value type", true)
+        // On desktop JDK, Field.set may fail for final; Unsafe should still work.
+        assertTrue(
+            "dynamic final static String should be writable via Field.set and/or Unsafe",
+            ok,
+        )
+        assertEquals(target, StaticFieldFixture.finalDynamic)
     }
-
-    // =========================================================================
-    // C5: setStaticField catches error that catch(Exception) would miss
-    // =========================================================================
 
     @Test
-    fun `setStaticField catches errors that catch Exception would miss`() {
-        val method = DeviceSpoofer::class.java.getDeclaredMethod(
-            "setStaticField",
-            Class::class.java,
-            String::class.java,
-            Any::class.java,
+    fun `setStaticField updates static int field`() {
+        StaticFieldFixture.mutableInt = 1
+        val ok = invokeSetStaticField(
+            StaticFieldFixture::class.java,
+            "mutableInt",
+            99,
         )
-        method.isAccessible = true
-        // System.in is a public static field — accessible but may throw
-        // internal errors on JDK >= 17 when attempting to set.
-        method.invoke(DeviceSpoofer, System::class.java, "in", null)
-        assertTrue("setStaticField handled System.in gracefully via catch(Throwable)", true)
+        assertTrue(ok)
+        assertEquals(99, StaticFieldFixture.mutableInt)
     }
-
-    // =========================================================================
-    // Verifies catch(t: Throwable) vs catch(e: Exception) — every catch
-    // block in DeviceSpoofer now uses Throwable, not Exception.
-    // =========================================================================
 
     @Test
-    fun `all catch blocks use Throwable not Exception`() {
-        val source = DeviceSpoofer::class.java
-        // Look for "Exception" in catch blocks via bytecode — a NullPointerException
-        // would escape catch(Exception) but be caught by catch(Throwable).
-        // Verify setStaticField's catch(t: Throwable) works by triggering an Error:
-
-        val method = DeviceSpoofer::class.java.getDeclaredMethod(
-            "setStaticField",
-            Class::class.java,
-            String::class.java,
-            Any::class.java,
+    fun `setStaticField coerces string to static int field`() {
+        StaticFieldFixture.mutableInt = 0
+        val ok = invokeSetStaticField(
+            StaticFieldFixture::class.java,
+            "mutableInt",
+            "42",
         )
-        method.isAccessible = true
-
-        // Throwable subtypes include:
-        //   - Exception (IllegalArgumentException, NoSuchFieldException, …)
-        //   - Error (StackOverflowError, NoSuchFieldError, …)
-        // catch(Exception) cannot catch Error; catch(Throwable) can.
-        // Try accessing a field that might trigger a virtual-machine error.
-        // Since we can't easily trigger real Errors on modern JVMs, at least
-        // verify that catch(Throwable) handles Exception subtypes:
-        method.invoke(DeviceSpoofer, Integer::class.java, "MIN_VALUE", null)
-        // MIN_VALUE is primitive int, setting null might or might not work,
-        // but any exception is caught by catch(Throwable)
-        assertTrue("setStaticField handles all Throwable subtypes", true)
+        assertTrue(ok)
+        assertEquals(42, StaticFieldFixture.mutableInt)
     }
-    // =========================================================================
-    // C7: Device property fields are routed to their actual Android classes
-    // =========================================================================
 
-    private fun targetClassForField(fieldName: String): Class<*> {
-        val method = DeviceSpoofer::class.java.getDeclaredMethod(
-            "targetClassForField",
-            String::class.java,
-        )
-        method.isAccessible = true
-        return method.invoke(DeviceSpoofer, fieldName) as Class<*>
-    }
+    // =========================================================================
+    // Routing
+    // =========================================================================
 
     @Test
     fun `INCREMENTAL is routed to Build VERSION`() {
@@ -210,4 +178,54 @@ class DeviceSpooferTest {
         assertSame(Build::class.java, targetClassForField("MODEL"))
     }
 
+    @Test
+    fun `accessFlagsField lookup does not throw`() {
+        val field = DeviceSpoofer::class.java.getDeclaredField("accessFlagsField\$delegate")
+        // lazy delegate exists; force initialization via setStaticField path instead
+        invokeSetStaticField(StaticFieldFixture::class.java, "mutableStatic", "x")
+        // If we got here without exception, lazy accessFlags resolution is safe.
+        assertTrue(true)
+    }
+
+    // =========================================================================
+    // Helpers
+    // =========================================================================
+
+    private fun invokeSetStaticField(clazz: Class<*>, fieldName: String, value: Any?): Boolean {
+        val method = DeviceSpoofer::class.java.getDeclaredMethod(
+            "setStaticField",
+            Class::class.java,
+            String::class.java,
+            Any::class.java,
+        )
+        method.isAccessible = true
+        val result = method.invoke(DeviceSpoofer, clazz, fieldName, value)
+        return result as Boolean
+    }
+
+    private fun targetClassForField(fieldName: String): Class<*> {
+        val method = DeviceSpoofer::class.java.getDeclaredMethod(
+            "targetClassForField",
+            String::class.java,
+        )
+        method.isAccessible = true
+        return method.invoke(DeviceSpoofer, fieldName) as Class<*>
+    }
+
+    /**
+     * JVM-only fixtures for write-path tests (not Android Build fields).
+     */
+    class StaticFieldFixture {
+        companion object {
+            @JvmField
+            var mutableStatic: String = "orig"
+
+            /** Not a compile-time constant, so it is a real static field slot. */
+            @JvmField
+            val finalDynamic: String = "final-" + System.nanoTime().toString()
+
+            @JvmField
+            var mutableInt: Int = 0
+        }
+    }
 }

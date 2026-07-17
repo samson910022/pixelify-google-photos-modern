@@ -30,7 +30,7 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可針對 Google 相簿模�
 
 此現代 API 版本不支援舊式 XposedBridge／EdXposed 環境。
 
-**Android 17 以上相容性：**所有支援的 Android 版本（含 API 37+）都會嘗試 Build 屬性模擬；反射寫入失敗只會記錄 log，不再硬性跳過。功能旗標與裝置設定檔仍取決於裝置、ROM、框架及 Google 相簿版本。
+**Android 17 以上相容性：**所有支援的 Android 版本（含 API 37+）都會嘗試 Build 屬性模擬。若 ART 拒絕對 static final `Build` 欄位的一般 `Field.set`，會改以 `Unsafe` 寫入並回讀驗證；驗證仍失敗時會以 Toast 與通知提示，而非靜默失敗。功能旗標與裝置設定檔仍取決於裝置、ROM、框架及 Google 相簿版本。
 
 ## 安裝
 
