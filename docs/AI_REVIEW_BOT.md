@@ -31,14 +31,18 @@ Title: `Pixelify Infinity Issue Investigation`
 
 Includes:
 
-- local completeness hints (deterministic field coverage)
+- decision-first sections (`CLASSIFICATION`, `ACTIONABILITY`, blocking missing info)
+- local field-quality hints (`strong | weak | missing`, not mere keyword presence)
+- thread-aware context: recent issue comments + already-asked suppression
+- Pixelify load/VERIFY playbook grounding (toast/notification interpretation)
 - `ISSUE_QUALITY_SCORE` 0–100 with band `actionable | needs-info | insufficient`
 - quality breakdown across problem clarity / environment / reproduction / expected vs actual / evidence
-- missing-info checklist
-- ranked root-cause hypotheses with confidence and validation steps
-- suggested labels, risk, security routing, reporter asks, maintainer notes
+- missing-info checklist and ranked root-cause hypotheses with confidence + validation steps
+- suggested labels, risk, security routing, reporter/maintainer next steps
 
 Issue quality scoring follows an OpenClaw-style completeness mindset: score only fields grounded in observed evidence; prefer `NOT_ENOUGH_INFO` over speculation.
+
+Incomplete or truncated model drafts are **fail-closed**: the bot retries/repairs once, then publishes a structured stub instead of a mid-sentence fragment. Public comments never disclose model names.
 
 ### PR code review report
 

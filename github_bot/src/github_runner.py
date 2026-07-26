@@ -13,8 +13,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Any
 
-from agent_orchestrator import AgentOrchestrator, ReviewContext
+from agent_orchestrator import (
+    AgentOrchestrator,
+    ReviewContext,
+    is_triage_report_publishable,
+    validate_triage_report,
+)
 
 
 BOT_DIR = Path(__file__).resolve().parents[1]
@@ -59,13 +65,27 @@ def main(argv: list[str] | None = None) -> int:
         title = os.environ.get("ISSUE_TITLE") or _event_field("issue", "title") or "Issue"
         body = os.environ.get("ISSUE_BODY") or _event_field("issue", "body") or ""
         body = _redact_secrets(body)
+        max_body = int(CONFIG.get("maxIssueBodyChars", 40000))
+        if len(body) > max_body:
+            body = body[:max_body] + "\n\n[issue body truncated for model context]\n"
+
+        thread_comments = _fetch_issue_comments()
+        # OCR may also see media linked from comments.
+        ocr_body = body
+        if thread_comments:
+            ocr_body = body + "\n" + "\n".join(str(c.get("body") or "") for c in thread_comments)
         media_context, _media_labels = orchestrator.enrich_with_media_ocr(
             title=title,
-            body=body,
+            body=ocr_body,
             changed_files=[],
         )
-        report = orchestrator.run_triage(title, body, media_context=media_context)
-        return _publish(report, marker=CONFIG["triageMarker"], dry_run=args.dry_run)
+        report = orchestrator.run_triage(
+            title,
+            body,
+            media_context=media_context,
+            thread_comments=thread_comments,
+        )
+        return _publish_triage(report, dry_run=args.dry_run)
 
     ctx = _build_review_context(orchestrator)
     if mode == "explain":
@@ -75,7 +95,6 @@ def main(argv: list[str] | None = None) -> int:
     report = orchestrator.run_multi_agent_review(ctx)
     marker = CONFIG["commentMarker"] if mode == "review" else CONFIG["commandMarker"]
     return _publish(report, marker=marker, dry_run=args.dry_run)
-
 
 
 def _is_pull_request_context() -> bool:
@@ -138,44 +157,89 @@ def _extract_git_context() -> tuple[str, str, str, list[str]]:
     )
     head_ref = os.environ.get("PR_HEAD_SHA") or _event_field("pull_request", "head", "sha") or "HEAD"
 
-    # For issue_comment on a PR, prefer explicit env SHAs from the workflow.
-    diff = _run_git(["diff", f"{base_ref}...{head_ref}"])
-    if not diff.strip():
-        diff = _run_git(["diff", f"{base_ref}..{head_ref}"])
-    if not diff.strip():
-        diff = _run_git(["diff", "HEAD~1"])
+    # For issue_comment on a PR, prefer event SHAs when available.
+    if base_ref == "HEAD":
+        base_ref = _detect_default_base()
 
-    files_output = _run_git(["diff", "--name-only", f"{base_ref}...{head_ref}"])
-    if not files_output.strip():
-        files_output = _run_git(["diff", "--name-only", f"{base_ref}..{head_ref}"])
-    changed_files = [line.strip() for line in files_output.splitlines() if line.strip()]
-    return base_ref, head_ref, diff, changed_files
+    git_diff = _run_git(["diff", "--no-color", f"{base_ref}...{head_ref}"])
+    if not git_diff.strip():
+        git_diff = _run_git(["diff", "--no-color", f"{base_ref}", f"{head_ref}"])
+    name_only = _run_git(["diff", "--name-only", f"{base_ref}...{head_ref}"])
+    if not name_only.strip():
+        name_only = _run_git(["diff", "--name-only", f"{base_ref}", f"{head_ref}"])
+    changed_files = [line.strip() for line in name_only.splitlines() if line.strip()]
+    return str(base_ref), str(head_ref), git_diff, changed_files
 
 
 def _detect_default_base() -> str:
-    for candidate in CONFIG.get("defaultBranchCandidates", ["master", "main"]):
-        ref = f"origin/{candidate}"
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", ref],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            return ref
+    for candidate in ("origin/master", "origin/main", "master", "main"):
+        probe = _run_git(["rev-parse", "--verify", candidate])
+        if probe.strip():
+            return candidate
     return "HEAD~1"
 
 
 def _run_git(args: list[str]) -> str:
-    result = subprocess.run(
-        ["git", *args],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
+    try:
+        completed = subprocess.run(
+            ["git", *args],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode != 0:
+            return ""
+        return completed.stdout
+    except Exception:  # noqa: BLE001
         return ""
-    return result.stdout
+
+
+def _publish_triage(report: str, *, dry_run: bool) -> int:
+    triage_cfg = CONFIG.get("triage") or {}
+    required = list(triage_cfg.get("requiredSections") or [])
+    problems = validate_triage_report(report, required_sections=required or None)
+    is_stub = (
+        "fail-closed stub" in report.lower()
+        or "could not publish a complete analysis" in report.lower()
+    )
+    if problems and triage_cfg.get("failClosedOnIncomplete", True) and not is_stub:
+        print(
+            "Triage completeness gate problems: " + "; ".join(problems),
+            file=sys.stderr,
+        )
+        if triage_cfg.get("publishIncompleteStub", True):
+            # Last-resort local stub so public comments never carry truncated drafts.
+            from agent_orchestrator import (
+                AgentOrchestrator,
+                build_fail_closed_triage_stub,
+            )
+
+            orch = AgentOrchestrator()
+            title = os.environ.get("ISSUE_TITLE") or _event_field("issue", "title") or "Issue"
+            body = os.environ.get("ISSUE_BODY") or _event_field("issue", "body") or ""
+            fields = orch.assess_issue_field_quality(str(title), str(body))
+            score = orch.issue_quality_score_estimate(fields)
+            stub_body = build_fail_closed_triage_stub(
+                title=str(title),
+                problems=problems,
+                fields=fields,
+                local_score=score,
+                prior_questions=[],
+            )
+            report = (
+                "# Pixelify Infinity Issue Investigation\n\n"
+                "- Generated: local fail-closed gate\n"
+                "- Mode: **issue investigation** (not a PR code review)\n\n"
+                f"{stub_body}\n"
+            )
+            print("Replaced incomplete triage draft with fail-closed stub", file=sys.stderr)
+        else:
+            print("Refusing to publish incomplete triage report", file=sys.stderr)
+            return 3
+    if "ISSUE_QUALITY_SCORE" not in report:
+        print("Triage report missing score after fail-closed handling", file=sys.stderr)
+        return 3
+    return _publish(report, marker=CONFIG["triageMarker"], dry_run=dry_run)
 
 
 def _publish(body: str, *, marker: str, dry_run: bool) -> int:
@@ -231,6 +295,93 @@ def _publish(body: str, *, marker: str, dry_run: bool) -> int:
         )
         print(f"Created bot comment on #{number}")
     return 0
+
+
+def _fetch_issue_comments(*, max_pages: int = 2) -> list[dict[str, Any]]:
+    """Fetch redacted issue comments for thread-aware triage."""
+    fixture = os.environ.get("ISSUE_COMMENTS_JSON")
+    if fixture:
+        try:
+            raw_items = json.loads(fixture)
+        except json.JSONDecodeError:
+            raw_items = []
+        return [_normalize_comment(item) for item in raw_items if isinstance(item, dict)]
+
+    token = os.environ.get("GITHUB_TOKEN")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    number = _event_field("issue", "number") or _event_field("pull_request", "number")
+    if not token or not repo or not number:
+        return []
+
+    owner, name = repo.split("/", 1)
+    triage_cfg = CONFIG.get("triage") or {}
+    thread_cfg = triage_cfg.get("thread") or {}
+    max_comments = int(thread_cfg.get("maxComments", 30))
+    max_chars = int(thread_cfg.get("maxChars", 20000))
+    markers = [
+        CONFIG.get("triageMarker", ""),
+        CONFIG.get("commentMarker", ""),
+        CONFIG.get("commandMarker", ""),
+    ]
+    markers = [m for m in markers if m]
+
+    collected: list[dict[str, Any]] = []
+    used_chars = 0
+    for page in range(1, max_pages + 1):
+        path = f"/repos/{owner}/{name}/issues/{number}/comments?per_page=100&page={page}"
+        try:
+            batch = _github_request("GET", path, token=token)
+        except Exception as exc:  # noqa: BLE001
+            print(f"Warning: failed to fetch issue comments: {exc}", file=sys.stderr)
+            break
+        if not isinstance(batch, list) or not batch:
+            break
+        for item in batch:
+            body = _redact_secrets(str(item.get("body") or ""))
+            if not body.strip():
+                continue
+            # Skip pure sticky reports to avoid self-echo; keep a compact signal via is_bot.
+            is_sticky = any(marker in body for marker in markers)
+            user = item.get("user") or {}
+            login = str(user.get("login") or "unknown")
+            user_type = str(user.get("type") or "")
+            is_bot = (
+                is_sticky
+                or user_type.lower() == "bot"
+                or login.endswith("[bot]")
+                or login.endswith("-bot")
+            )
+            normalized = {
+                "login": login,
+                "author": login,
+                "body": body,
+                "is_bot": is_bot,
+                "role": "bot" if is_bot else "user",
+                "created_at": item.get("created_at"),
+            }
+            if used_chars + len(body) > max_chars:
+                normalized["body"] = body[: max(0, max_chars - used_chars)] + "\n[truncated]"
+                collected.append(normalized)
+                return collected[:max_comments]
+            collected.append(normalized)
+            used_chars += len(body)
+            if len(collected) >= max_comments:
+                return collected
+    return collected
+
+
+def _normalize_comment(item: dict[str, Any]) -> dict[str, Any]:
+    body = _redact_secrets(str(item.get("body") or ""))
+    login = str(item.get("login") or item.get("author") or "unknown")
+    is_bot = bool(item.get("is_bot"))
+    return {
+        "login": login,
+        "author": login,
+        "body": body,
+        "is_bot": is_bot,
+        "role": "bot" if is_bot else str(item.get("role") or "user"),
+        "created_at": item.get("created_at"),
+    }
 
 
 def _github_request(method: str, path: str, *, token: str, payload: dict | None = None):

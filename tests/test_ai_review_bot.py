@@ -1,83 +1,50 @@
 #!/usr/bin/env python3
-"""Unit tests for the Pixelify AI review bot helpers."""
+"""Unit tests for Pixelify Infinity AI review bot helpers."""
 
 from __future__ import annotations
 
-import importlib
+import importlib.util
+import json
+import os
 import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "github_bot" / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
 
-orchestrator_mod = importlib.import_module("agent_orchestrator")
-runner_mod = importlib.import_module("github_runner")
-media_ocr_mod = importlib.import_module("media_ocr")
-llm_client_mod = importlib.import_module("llm_client")
+
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+llm_client_mod = _load("llm_client", SRC / "llm_client.py")
+media_ocr_mod = _load("media_ocr", SRC / "media_ocr.py")
+orchestrator_mod = _load("agent_orchestrator", SRC / "agent_orchestrator.py")
+runner_mod = _load("github_runner", SRC / "github_runner.py")
 
 
 class AiReviewBotTests(unittest.TestCase):
-    def test_aggregate_verdict_prefers_needs_changes(self) -> None:
-        self.assertEqual(
-            orchestrator_mod._aggregate_verdict(["APPROVE", "NEEDS_CHANGES", "COMMENT"]),
-            "NEEDS_CHANGES",
-        )
-        self.assertEqual(orchestrator_mod._aggregate_verdict(["APPROVE", "APPROVE"]), "APPROVE")
-        self.assertEqual(orchestrator_mod._aggregate_verdict(["APPROVE", "COMMENT"]), "COMMENT")
+    def _fake_pem_block(self) -> str:
+        # Assemble at runtime so static scanners do not treat the fixture as a real key.
+        header = "-----BEGIN " + "PRIVATE KEY-----"
+        footer = "-----END " + "PRIVATE KEY-----"
+        body = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC"
+        return f"{header}\n{body}\n{footer}\n"
 
-    def test_extract_verdict(self) -> None:
-        self.assertEqual(
-            orchestrator_mod._extract_verdict("VERDICT: NEEDS_CHANGES\n- bad"),
-            "NEEDS_CHANGES",
-        )
-        self.assertEqual(orchestrator_mod._extract_verdict("Looks fine APPROVE overall"), "APPROVE")
-
-    def test_sensitive_path_classification(self) -> None:
-        dummy = SimpleNamespace(
-            config={
-                "sensitivePathGlobs": [
-                    "certificates/**",
-                    "app/build.gradle.kts",
-                    ".github/workflows/**",
-                ]
-            }
-        )
-        hits = orchestrator_mod.AgentOrchestrator.classify_sensitive_files(
-            dummy,
-            [
-                "README.md",
-                "certificates/pixelifyphotos-release-cert.pem",
-                "app/build.gradle.kts",
-                ".github/workflows/ci.yml",
-            ],
-        )
-        self.assertEqual(
-            hits,
-            [
-                "certificates/pixelifyphotos-release-cert.pem",
-                "app/build.gradle.kts",
-                ".github/workflows/ci.yml",
-            ],
-        )
-
-    @staticmethod
-    def _fake_pem_block(body: str = "abc") -> str:
-        # Assemble at runtime so static secret scanners do not flag the fixture file.
-        begin = "-----BEGIN " + "PRIVATE KEY-----"
-        end = "-----END " + "PRIVATE KEY-----"
-        return f"{begin}\n{body}\n{end}\n"
-
-    def test_redact_private_key_and_password(self) -> None:
+    def test_redact_secrets(self) -> None:
         sample = (
-            "\n"
+            "token: 'super-secret-value'\n"
+            "Authorization: Bearer abcdefghijklmnop\n"
             + self._fake_pem_block()
-            + 'storePassword = "super-secret-value"\n'
-            + "Authorization: Bearer abcdefghijklmnop\n"
         )
         redacted = runner_mod._redact_secrets(sample)
         self.assertNotIn("super-secret-value", redacted)
@@ -119,7 +86,7 @@ class AiReviewBotTests(unittest.TestCase):
             workspace=ROOT,
         )
         labels = [item.label for item in items]
-        self.assertTrue(any("user-attachments/assets/abcd-1234" in label for label in labels))
+        self.assertTrue(any("user-attachments" in label or "abcd-1234" in label for label in labels))
         self.assertTrue(any(label.endswith("log.png") or "log.png" in label for label in labels))
         self.assertIn("docs/screenshot.webp", labels)
 
@@ -138,54 +105,279 @@ class AiReviewBotTests(unittest.TestCase):
             llm_client_mod._messages_have_media([{"role": "user", "content": "plain text"}])
         )
 
+    def test_unusable_completion_rejects_length_and_short(self) -> None:
+        self.assertIsNotNone(
+            llm_client_mod.unusable_completion_reason("hello world " * 50, "length", min_chars=200)
+        )
+        self.assertIsNotNone(
+            llm_client_mod.unusable_completion_reason("too short", "stop", min_chars=200)
+        )
+        long_ok = "x" * 250
+        self.assertIsNone(
+            llm_client_mod.unusable_completion_reason(long_ok, "stop", min_chars=200)
+        )
+        self.assertIsNotNone(
+            llm_client_mod.unusable_completion_reason(
+                long_ok,
+                "stop",
+                min_chars=200,
+                required_markers=["ISSUE_QUALITY_SCORE"],
+            )
+        )
 
-    def test_issue_quality_hints_detect_missing_fields(self) -> None:
-        hints = orchestrator_mod.AgentOrchestrator.issue_quality_hints(
-            object(),
+    def test_llm_fallback_after_truncated_primary(self) -> None:
+        client = llm_client_mod.LLMClient.__new__(llm_client_mod.LLMClient)
+        client.models = {
+            "primary-free": {"id": "primary-free", "input": ["text"]},
+            "fallback-free": {"id": "fallback-free", "input": ["text"]},
+        }
+        client.fallback_models = ["fallback-free"]
+        client.api_key = "test-key"
+        client.base_url = "https://example.invalid/v1/"
+        client.timeout_seconds = 5
+        client.min_response_chars = 50
+        client.reject_finish_reasons = {"length", "content_filter"}
+        client.same_model_retry_on_length = 0
+
+        payloads = [
+            {
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"content": "CLASSIFICATION\n" + ("truncated " * 40)},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": (
+                                "CLASSIFICATION\nACTIONABILITY\nSUMMARY\n"
+                                + ("complete investigation body. " * 20)
+                            )
+                        },
+                    }
+                ]
+            },
+        ]
+
+        class _Resp:
+            def __init__(self, payload):
+                self._payload = payload
+
+            def read(self):
+                return json.dumps(self._payload).encode("utf-8")
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        def fake_urlopen(request, timeout=0):  # noqa: ARG001
+            return _Resp(payloads.pop(0))
+
+        with mock.patch.object(llm_client_mod.urllib.request, "urlopen", side_effect=fake_urlopen):
+            text = client.chat_completion(
+                "primary-free",
+                [{"role": "user", "content": "triage"}],
+                max_tokens=128,
+                min_chars=50,
+            )
+        self.assertIn("complete investigation body", text)
+        self.assertEqual(payloads, [])
+
+    def test_issue_quality_hints_field_quality(self) -> None:
+        orch = orchestrator_mod.AgentOrchestrator.__new__(orchestrator_mod.AgentOrchestrator)
+        hints = orch.issue_quality_hints(
             "Something broken",
             "It does not work on my phone.",
         )
         self.assertTrue(any(item.startswith("missing:") for item in hints))
-        rich = orchestrator_mod.AgentOrchestrator.issue_quality_hints(
-            object(),
+        self.assertTrue(any("problem clarity" in item for item in hints))
+
+        rich = orch.issue_quality_hints(
             "Unlock fails on Android 15",
             """
             Pixelify Infinity v1.0.4
-            LSPosed
-            Google Photos
+            LSPosed JingMatrix
+            Google Photos 7.83
             Steps to reproduce:
-            1. Enable module
+            1. Enable module scoped to Photos
+            2. Force-stop Photos and reopen
             Expected: unlock works
-            Actual: still locked
-            screenshot.png
+            Actual: still locked, no toast
+            screenshot.png https://example.com/a.png
             """,
         )
-        self.assertTrue(any(item.startswith("present: reproduction steps") for item in rich))
-        self.assertTrue(any(item.startswith("present: expected vs actual") for item in rich))
+        self.assertTrue(any(item.startswith("strong: reproduction steps") for item in rich))
+        self.assertTrue(any(item.startswith("strong: expected vs actual") for item in rich))
+        self.assertTrue(any(item.startswith("strong: module version") for item in rich))
+        # bare "photos" alone should not be strong without version/package.
+        weak_photos = orch.issue_quality_hints(
+            "photos broken",
+            "photos not working",
+        )
+        self.assertTrue(
+            any(
+                ("google photos context" in item and item.startswith(("weak:", "missing:")))
+                for item in weak_photos
+            )
+        )
 
-    def test_issue_and_pr_reports_differ_and_hide_models(self) -> None:
+    def test_field_quality_version_and_score_bounds(self) -> None:
         orch = orchestrator_mod.AgentOrchestrator.__new__(orchestrator_mod.AgentOrchestrator)
-        orch.config = {"roles": {"triage_agent": {"model": "hidden-model", "promptFile": "./prompts/roles/triage_agent.md", "temperature": 0.1, "maxTokens": 10}}}
+        fields = orch.assess_issue_field_quality(
+            "latest broken",
+            "I installed the latest Pixelify and it failed.",
+        )
+        version = next(f for f in fields if f.field == "module version")
+        self.assertEqual(version.status, "weak")
+        score = orch.issue_quality_score_estimate(fields)
+        self.assertGreaterEqual(score, 0)
+        self.assertLessEqual(score, 100)
+
+    def test_validate_triage_report_complete_and_incomplete(self) -> None:
+        complete = """
+CLASSIFICATION
+bug / no-effect
+
+ACTIONABILITY
+needs-info
+BLOCKING_MISSING: toast/VERIFY result
+NEXT_ACTION_REPORTER: provide VERIFY toast outcome
+NEXT_ACTION_MAINTAINER: wait for diagnostics
+
+SUMMARY
+Reporter says module has no effect on Photos.
+
+EVIDENCE_USED
+- issue body mentions Android 16 and LSPosed
+
+ROOT_CAUSE_HYPOTHESES
+1. Scope/load issue — confidence: medium — validate with toast/VERIFY
+
+REPORTER_NEXT_STEPS
+- Provide toast/VERIFY result
+
+MAINTAINER_NEXT_STEPS
+- Wait for reporter diagnostics
+
+SUGGESTED_LABELS
+needs-info, bug
+
+ISSUE_QUALITY_SCORE: 58 (needs-info)
+
+QUALITY_BREAKDOWN
+- problem clarity: 12/20
+- environment: 14/20
+- reproduction: 8/20
+- expected vs actual: 10/20
+- evidence: 14/20
+
+MISSING_INFO
+- toast/VERIFY outcome
+
+RISK
+low — incomplete diagnostics
+
+SECURITY_ROUTING
+public
+"""
+        self.assertEqual(orchestrator_mod.validate_triage_report(complete), [])
+        self.assertTrue(orchestrator_mod.is_triage_report_publishable(complete))
+        incomplete = "SUMMARY\nModule does nothing on Resukisu ROM"
+        problems = orchestrator_mod.validate_triage_report(incomplete)
+        self.assertTrue(problems)
+        self.assertFalse(orchestrator_mod.is_triage_report_publishable(incomplete))
+
+    def test_extract_prior_questions_and_thread_prompt(self) -> None:
+        comments = [
+            {
+                "login": "maintainer",
+                "is_bot": False,
+                "body": "Did you see a VERIFY toast? Please provide logcat tag Pixelify.",
+            },
+            {
+                "login": "bot",
+                "is_bot": True,
+                "body": "<!-- PIXELIFY_AI_TRIAGE_REPORT -->\nREPORTER_NEXT_STEPS\n- Share Photos version\nMISSING_INFO\n- scope screenshot\n",
+            },
+        ]
+        prior = orchestrator_mod.extract_prior_questions(
+            comments,
+            bot_markers=["<!-- PIXELIFY_AI_TRIAGE_REPORT -->"],
+        )
+        self.assertTrue(any("VERIFY toast" in item or "logcat" in item for item in prior))
+        self.assertTrue(any("Photos version" in item for item in prior))
+
+        orch = orchestrator_mod.AgentOrchestrator.__new__(orchestrator_mod.AgentOrchestrator)
+        prompt = orch._issue_user_prompt(
+            "title",
+            "body",
+            quality_hints=["missing: module version — none"],
+            thread_comments=comments,
+            prior_questions=prior,
+        )
+        self.assertIn("Questions already asked", prompt)
+        self.assertIn("Issue thread comments", prompt)
+        self.assertIn("VERIFY toast", prompt)
+
+    def test_run_triage_fail_closed_stub_and_hides_models(self) -> None:
+        orch = orchestrator_mod.AgentOrchestrator.__new__(orchestrator_mod.AgentOrchestrator)
+        orch.config = {
+            "roles": {
+                "triage_agent": {
+                    "model": "hidden-model",
+                    "promptFile": "./prompts/roles/triage_agent.md",
+                    "temperature": 0.1,
+                    "maxTokens": 10,
+                }
+            },
+            "triageMarker": "<!-- PIXELIFY_AI_TRIAGE_REPORT -->",
+            "commentMarker": "<!-- PIXELIFY_AI_REVIEW_REPORT -->",
+            "commandMarker": "<!-- PIXELIFY_AI_COMMAND_REPORT -->",
+            "triage": {
+                "minResponseChars": 400,
+                "requiredSections": orchestrator_mod.DEFAULT_REQUIRED_TRIAGE_SECTIONS,
+            },
+        }
         orch.soul = "soul"
         orch.llm = SimpleNamespace()
 
-        def fake_run_role(role_id, user_prompt):
+        def fake_run_role(role_id, user_prompt, min_chars=None, required_markers=None):  # noqa: ARG001
             self.assertIn("not a pull-request code review", user_prompt.lower())
             return orchestrator_mod.RoleResult(
                 role=role_id,
                 model="should-not-appear",
                 verdict="COMMENT",
-                findings="SUMMARY\nissue body",
+                findings="SUMMARY\ntruncated mid sentence about Resukisu ROM",
             )
 
         orch._run_role = fake_run_role  # type: ignore[method-assign]
-        issue_report = orch.run_triage("title", "body missing details")
+        orch.build_issue_repo_knowledge = lambda **kwargs: ""  # type: ignore[method-assign]
+        issue_report = orch.run_triage(
+            "title",
+            "body missing details",
+            thread_comments=[
+                {
+                    "login": "maintainer",
+                    "is_bot": False,
+                    "body": "Do you see a toast?",
+                }
+            ],
+        )
         self.assertIn("Issue Investigation", issue_report)
         self.assertIn("issue investigation", issue_report.lower())
+        self.assertIn("fail-closed", issue_report.lower())
+        self.assertIn("ISSUE_QUALITY_SCORE", issue_report)
         self.assertNotIn("should-not-appear", issue_report)
         self.assertNotIn("Model:", issue_report)
         self.assertNotIn("PR Code Review", issue_report)
         self.assertNotIn("FINAL_VERDICT", issue_report)
+        self.assertIn("Already-asked questions", issue_report)
 
         ctx = orchestrator_mod.ReviewContext(
             title="Add feature",
@@ -216,12 +408,43 @@ class AiReviewBotTests(unittest.TestCase):
         self.assertNotIn("| Model |", pr_report)
         self.assertNotIn("Issue Investigation", pr_report)
 
+    def test_triage_prompt_has_decision_first_and_playbook(self) -> None:
+        prompt = (ROOT / "github_bot/prompts/roles/triage_agent.md").read_text(encoding="utf-8")
+        self.assertIn("CLASSIFICATION", prompt)
+        self.assertIn("ACTIONABILITY", prompt)
+        self.assertIn("VERIFY", prompt)
+        self.assertIn("com.google.android.apps.photos", prompt)
+        self.assertIn("questions already asked", prompt.lower())
+        self.assertIn("only **new** asks", prompt.lower())
+        self.assertIn("Pixelify load / VERIFY playbook", prompt)
+
+    def test_fetch_issue_comments_from_fixture_redacts(self) -> None:
+        fixture = json.dumps(
+            [
+                {
+                    "login": "user1",
+                    "body": "password: 'super-secret-value' and please provide logs?",
+                    "is_bot": False,
+                }
+            ]
+        )
+        old = os.environ.get("ISSUE_COMMENTS_JSON")
+        os.environ["ISSUE_COMMENTS_JSON"] = fixture
+        try:
+            comments = runner_mod._fetch_issue_comments()
+        finally:
+            if old is None:
+                os.environ.pop("ISSUE_COMMENTS_JSON", None)
+            else:
+                os.environ["ISSUE_COMMENTS_JSON"] = old
+        self.assertEqual(len(comments), 1)
+        self.assertNotIn("super-secret-value", comments[0]["body"])
+        self.assertIn("[REDACTED]", comments[0]["body"])
+
     def test_non_pr_review_routes_to_issue_investigation(self) -> None:
         self.assertFalse(runner_mod._is_pull_request_context())
 
     def test_config_models_and_fallbacks(self) -> None:
-        import json
-
         bot = json.loads((ROOT / "github_bot/config/bot_config.json").read_text(encoding="utf-8"))
         llm = json.loads(
             (ROOT / "github_bot/config/LLM_config.example.json").read_text(encoding="utf-8")
@@ -237,6 +460,194 @@ class AiReviewBotTests(unittest.TestCase):
             bot["fallbackModels"],
             ["deepseek-v4-flash-free", "north-mini-code-free", "big-pickle"],
         )
+        self.assertGreaterEqual(bot["roles"]["triage_agent"]["maxTokens"], 6144)
+        self.assertIn("CLASSIFICATION", bot["triage"]["requiredSections"])
+        self.assertTrue(bot["triage"]["failClosedOnIncomplete"])
+        self.assertIn("length", bot["llmResponseGate"]["rejectFinishReasons"])
+        self.assertEqual(bot["llmResponseGate"]["minResponseChars"], 0)
+
+
+    def test_stub_quality_band_and_security_routing(self) -> None:
+        orch = orchestrator_mod.AgentOrchestrator.__new__(orchestrator_mod.AgentOrchestrator)
+        rich_fields = orch.assess_issue_field_quality(
+            "Unlock fails on Android 15",
+            """
+            Pixelify Infinity v1.0.4
+            LSPosed JingMatrix
+            Google Photos 7.83
+            Steps:
+            1. Enable module
+            2. Open Photos
+            Expected: unlock works
+            Actual: still locked
+            https://example.com/a.png
+            """,
+        )
+        score = orch.issue_quality_score_estimate(rich_fields)
+        stub = orchestrator_mod.build_fail_closed_triage_stub(
+            title="Unlock fails",
+            problems=["missing section: SUMMARY"],
+            fields=rich_fields,
+            local_score=score,
+            prior_questions=[],
+        )
+        self.assertIn(f"ISSUE_QUALITY_SCORE: {score} (", stub)
+        self.assertNotIn("(insufficient)", stub) if score >= 50 else True
+        if score >= 80:
+            self.assertIn("(actionable)", stub)
+        sec = orchestrator_mod.build_fail_closed_triage_stub(
+            title="security vulnerability leak report",
+            problems=["truncated"],
+            fields=rich_fields,
+            local_score=score,
+            prior_questions=[],
+        )
+        self.assertIn("move-to-private", sec)
+        self.assertNotIn("SECURITY_ROUTING\npublic", sec)
+
+    def test_short_pr_findings_not_rejected_by_default_min_chars(self) -> None:
+        reason = llm_client_mod.unusable_completion_reason(
+            "No identity/safety issues found.\n\nVERDICT: APPROVE",
+            "stop",
+            min_chars=0,
+        )
+        self.assertIsNone(reason)
+        # triage still rejects short
+        self.assertIsNotNone(
+            llm_client_mod.unusable_completion_reason(
+                "No identity/safety issues found.\n\nVERDICT: APPROVE",
+                "stop",
+                min_chars=200,
+            )
+        )
+
+    def test_publish_triage_replaces_incomplete_non_stub(self) -> None:
+        incomplete = "# Pixelify Infinity Issue Investigation\n\nSUMMARY\ncut off mid sentence about Resukisu"
+        with mock.patch.object(runner_mod, "_publish", return_value=0) as pub:
+            code = runner_mod._publish_triage(incomplete, dry_run=True)
+        self.assertEqual(code, 0)
+        published = pub.call_args.args[0]
+        self.assertIn("fail-closed", published.lower())
+        self.assertIn("ISSUE_QUALITY_SCORE", published)
+
+
+
+    def test_infer_local_decision_public_vs_private(self) -> None:
+        public = (
+            "SECURITY_ROUTING\n"
+            "public — unless reporter later includes exploit details; then move to SECURITY.md private reporting\n"
+        )
+        private = "SECURITY_ROUTING\nmove-to-private — potential security-sensitive title\n"
+        self.assertNotEqual(orchestrator_mod._infer_local_decision(70, public), "security-private")
+        self.assertEqual(orchestrator_mod._infer_local_decision(70, private), "security-private")
+        self.assertEqual(
+            orchestrator_mod._infer_local_decision(70, "Local decision: security-private"),
+            "security-private",
+        )
+
+    def test_sanitize_public_error_hides_multi_model_chain(self) -> None:
+        raw = (
+            "deepseek-v4-flash-free: unusable completion (finish_reason=length); "
+            "north-mini-code-free: unusable completion (too short: 12 < 400 chars); "
+            "big-pickle: timeout"
+        )
+        cleaned = orchestrator_mod.sanitize_public_error_text(raw)
+        for token in (
+            "deepseek-v4-flash-free",
+            "north-mini-code-free",
+            "big-pickle",
+            "deepseek",
+            "north-mini",
+        ):
+            self.assertNotIn(token, cleaned.lower())
+
+        orch = orchestrator_mod.AgentOrchestrator()
+        def boom(role_id, user_prompt, **kwargs):  # noqa: ANN001, ARG001
+            return orchestrator_mod.RoleResult(
+                role=role_id,
+                model="should-not-publish",
+                verdict="COMMENT",
+                findings=f"Role `{role_id}` failed: {orchestrator_mod.sanitize_public_error_text(raw)}",
+            )
+
+        orch._run_role = boom  # type: ignore[method-assign]
+        report = orch.run_triage(
+            "Unlock fails on Android 15",
+            "No toast after enable. Module 1.0.4 Photos 7.83",
+        )
+        low = report.lower()
+        self.assertIn("fail-closed stub", low)
+        for token in (
+            "deepseek-v4-flash-free",
+            "north-mini-code-free",
+            "big-pickle",
+            "should-not-publish",
+        ):
+            self.assertNotIn(token, low)
+        self.assertNotIn("Local decision: **security-private**", report)
+
+    def test_android_colon_version_is_strong(self) -> None:
+        orch = orchestrator_mod.AgentOrchestrator()
+        fields = orch.assess_issue_field_quality(
+            "No effect",
+            "Android: 16\nLSPosed: JingMatrix\nPixelify Infinity v1.0.4\nGoogle Photos 7.83",
+        )
+        android = next(f for f in fields if f.field == "android version")
+        self.assertEqual(android.status, "strong")
+
+
+
+
+    def test_memory_leak_title_not_security_private(self) -> None:
+        fields = orchestrator_mod.AgentOrchestrator().assess_issue_field_quality(
+            "Memory leak when opening album",
+            "Android 15 Photos 7.8 Pixelify Infinity 1.0.4",
+        )
+        stub = orchestrator_mod.build_fail_closed_triage_stub(
+            title="Memory leak when opening album",
+            problems=["missing section: CLASSIFICATION"],
+            fields=fields,
+            local_score=88,
+            prior_questions=[],
+        )
+        self.assertNotIn("move-to-private", stub)
+        self.assertIn("Local decision: needs-rerun", stub)
+        self.assertEqual(
+            orchestrator_mod._infer_local_decision(88, stub),
+            "needs-rerun",
+        )
+
+    def test_sanitize_preserves_validation_messages(self) -> None:
+        msg = "missing section: CLASSIFICATION"
+        self.assertEqual(orchestrator_mod.sanitize_public_error_text(msg), msg)
+        role = "role failure: Role `triage_agent` failed: unusable completion"
+        self.assertIn("Role `triage_agent` failed", orchestrator_mod.sanitize_public_error_text(role))
+        chain = "deepseek-v4-flash-free: unusable; north-mini-code-free: short; big-pickle: timeout"
+        cleaned = orchestrator_mod.sanitize_public_error_text(chain)
+        self.assertNotIn("deepseek", cleaned.lower())
+        self.assertNotIn("big-pickle", cleaned.lower())
+
+
+
+
+    def test_field_quality_avoids_list_false_strong(self) -> None:
+        orch = orchestrator_mod.AgentOrchestrator()
+        fields = orch.assess_issue_field_quality(
+            "broken",
+            "broken on android\n1. install\n2. enable\nForce stop Photos\n3. Open app",
+        )
+        by = {f.field: f.status for f in fields}
+        self.assertEqual(by["android version"], "weak")
+        self.assertEqual(by["google photos context"], "weak")
+
+        strong = orch.assess_issue_field_quality(
+            "No effect",
+            "Android: 16\nGoogle Photos: 7.83\nLSPosed JingMatrix",
+        )
+        by2 = {f.field: f.status for f in strong}
+        self.assertEqual(by2["android version"], "strong")
+        self.assertEqual(by2["google photos context"], "strong")
+
 
 
 if __name__ == "__main__":

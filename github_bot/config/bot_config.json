@@ -1,6 +1,6 @@
 {
   "name": "Pixelify-Infinity-GitHub-AI-Bot",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Issue investigation (quality score + root-cause hypotheses) and multi-agent PR code review for Pixelify Infinity using OpenCode free models.",
   "llmConfigFile": "./config/LLM_config.example.json",
   "defaultProvider": "opencode",
@@ -70,10 +70,10 @@
     },
     "triage_agent": {
       "model": "deepseek-v4-flash-free",
-      "description": "Issue investigator: quality scoring, missing info, root-cause hypotheses, security routing",
+      "description": "Issue investigator: decision-first classification, quality scoring, thread-aware missing-info, root-cause hypotheses",
       "promptFile": "./prompts/roles/triage_agent.md",
       "temperature": 0.2,
-      "maxTokens": 3072
+      "maxTokens": 6144
     },
     "explainer_agent": {
       "model": "deepseek-v4-flash-free",
@@ -109,5 +109,41 @@
     "/review": "On PRs: multi-agent code review. On issues: issue investigation.",
     "/triage": "Issue investigation with quality score and missing-info checklist",
     "/explain": "On PRs: plain-language explanation. On issues: issue investigation."
+  },
+  "triage": {
+    "minResponseChars": 400,
+    "requiredSections": [
+      "CLASSIFICATION",
+      "ACTIONABILITY",
+      "SUMMARY",
+      "EVIDENCE_USED",
+      "ROOT_CAUSE_HYPOTHESES",
+      "REPORTER_NEXT_STEPS",
+      "MAINTAINER_NEXT_STEPS",
+      "SUGGESTED_LABELS",
+      "ISSUE_QUALITY_SCORE",
+      "QUALITY_BREAKDOWN",
+      "MISSING_INFO",
+      "RISK",
+      "SECURITY_ROUTING"
+    ],
+    "failClosedOnIncomplete": true,
+    "publishIncompleteStub": true,
+    "maxThreadCommentChars": 12000,
+    "thread": {
+      "enabled": true,
+      "maxComments": 30,
+      "maxChars": 20000,
+      "excludeBotMarkers": true
+    }
+  },
+  "llmResponseGate": {
+    "rejectFinishReasons": [
+      "length",
+      "max_tokens",
+      "content_filter"
+    ],
+    "minResponseChars": 0,
+    "sameModelRetryOnLength": 1
   }
 }
