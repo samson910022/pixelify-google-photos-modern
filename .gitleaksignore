@@ -1,0 +1,9 @@
+# gitleaks fingerprint allowlist
+#
+# This entry is NOT a real secret. Commit 1187a8f briefly introduced a synthetic
+# PEM/password fixture in unit tests (private-key body was literally "abc") so
+# redaction/deterministic-blocking helpers could be exercised.
+#
+# The working tree was corrected in 46a9bab to assemble markers at runtime.
+# Full-history CI still scans the old commit, so only that fingerprint is ignored.
+1187a8fbb106400f9434738d2d382da0e032dc9b:tests/test_ai_review_bot.py:private-key:70
