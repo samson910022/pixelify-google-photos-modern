@@ -1,0 +1,138 @@
+name: AI Review Bot
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Manual mode"
+        required: true
+        default: review
+        type: choice
+        options:
+          - review
+          - triage
+          - explain
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    name: OpenCode multi-agent review
+    if: >
+      github.event_name != 'issue_comment' ||
+      (
+        contains(github.event.comment.body, '/review') ||
+        contains(github.event.comment.body, '/triage') ||
+        contains(github.event.comment.body, '/explain')
+      )
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Skip draft pull requests
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" && "${{ github.event.pull_request.draft }}" == "true" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping draft pull request"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure OpenCode API key is configured
+        if: steps.gate.outputs.skip != 'true'
+        shell: bash
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${OPENCODE_API_KEY}" ]]; then
+            echo "Repository secret OPENCODE_API_KEY is not set." >&2
+            echo "Add the OpenCode Zen API key as a repository secret named OPENCODE_API_KEY." >&2
+            exit 1
+          fi
+
+      - name: Check out repository
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve PR head for comment-triggered runs
+        if: steps.gate.outputs.skip != 'true' && github.event_name == 'issue_comment' && github.event.issue.pull_request
+        id: pr_ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.issue.number }}")"
+          base_sha="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["base"]["sha"])')"
+          head_sha="$(printf '%s' "$pr_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["head"]["sha"])')"
+          git fetch --no-tags origin "pull/${{ github.event.issue.number }}/head:refs/bot/pr-${{ github.event.issue.number }}"
+          git checkout --force "refs/bot/pr-${{ github.event.issue.number }}"
+          {
+            echo "base_sha=${base_sha}"
+            echo "head_sha=${head_sha}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Determine bot mode
+        if: steps.gate.outputs.skip != 'true'
+        id: mode
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode="review"
+          case "${{ github.event_name }}" in
+            issues)
+              mode="triage"
+              ;;
+            issue_comment)
+              mode="comment"
+              ;;
+            workflow_dispatch)
+              mode="${{ inputs.mode }}"
+              ;;
+            pull_request)
+              mode="review"
+              ;;
+          esac
+          echo "mode=${mode}" >> "$GITHUB_OUTPUT"
+
+      - name: Run AI bot
+        if: steps.gate.outputs.skip != 'true'
+        shell: bash
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          COMMENT_BODY: ${{ github.event.comment.body || '' }}
+          ISSUE_TITLE: ${{ github.event.issue.title || '' }}
+          ISSUE_BODY: ${{ github.event.issue.body || '' }}
+          PR_BASE_SHA: ${{ steps.pr_ref.outputs.base_sha || github.event.pull_request.base.sha || '' }}
+          PR_HEAD_SHA: ${{ steps.pr_ref.outputs.head_sha || github.event.pull_request.head.sha || '' }}
+          PYTHONPATH: github_bot/src
+        run: |
+          set -euo pipefail
+          python3 github_bot/src/github_runner.py --mode="${{ steps.mode.outputs.mode }}"

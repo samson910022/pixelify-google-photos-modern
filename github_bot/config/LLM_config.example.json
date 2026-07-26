@@ -1,0 +1,146 @@
+{
+  "opencode": {
+    "baseUrl": "https://opencode.ai/zen/v1/",
+    "api": "openai-completions",
+    "apikey": "${OPENCODE_API_KEY}",
+    "timeoutSeconds": 180,
+    "models": [
+      {
+        "id": "mimo-v2.5-free",
+        "name": "mimo-v2.5-free",
+        "input": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "reasoning": true,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 1000000,
+        "compat": {
+          "requiresStringContent": true
+        },
+        "maxTokens": 8192
+      },
+      {
+        "id": "deepseek-v4-flash-free",
+        "name": "deepseek-v4-flash-free",
+        "input": [
+          "text"
+        ],
+        "reasoning": true,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 200000,
+        "compat": {
+          "requiresStringContent": true
+        },
+        "maxTokens": 8192
+      },
+      {
+        "id": "big-pickle",
+        "name": "big-pickle",
+        "input": [
+          "text"
+        ],
+        "reasoning": true,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 200000,
+        "compat": {
+          "requiresStringContent": true
+        },
+        "maxTokens": 8192
+      },
+      {
+        "id": "nemotron-3-ultra-free",
+        "name": "nemotron-3-ultra-free",
+        "input": [
+          "text"
+        ],
+        "reasoning": true,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 1000000,
+        "compat": {
+          "requiresStringContent": true
+        },
+        "maxTokens": 8192
+      },
+      {
+        "id": "north-mini-code-free",
+        "name": "north-mini-code-free",
+        "input": [
+          "text"
+        ],
+        "reasoning": true,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 256000,
+        "compat": {
+          "requiresStringContent": true
+        },
+        "maxTokens": 8192
+      },
+      {
+        "id": "laguna-s-2.1-free",
+        "name": "laguna-s-2.1-free",
+        "input": [
+          "text"
+        ],
+        "reasoning": true,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 256000,
+        "compat": {
+          "requiresStringContent": true
+        },
+        "maxTokens": 8192
+      },
+      {
+        "id": "ling-3.0-flash-free",
+        "name": "ling-3.0-flash-free",
+        "input": [
+          "text"
+        ],
+        "reasoning": true,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0
+        },
+        "contextWindow": 262144,
+        "maxTokens": 8192,
+        "compat": {
+          "requiresStringContent": true
+        }
+      }
+    ]
+  }
+}

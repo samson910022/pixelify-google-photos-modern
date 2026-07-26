@@ -1,0 +1,113 @@
+{
+  "name": "Pixelify-Infinity-GitHub-AI-Bot",
+  "version": "1.1.0",
+  "description": "Issue triage and multi-agent PR review bot for Pixelify Infinity using OpenCode free models.",
+  "llmConfigFile": "./config/LLM_config.example.json",
+  "defaultProvider": "opencode",
+  "commentMarker": "<!-- PIXELIFY_AI_REVIEW_REPORT -->",
+  "triageMarker": "<!-- PIXELIFY_AI_TRIAGE_REPORT -->",
+  "commandMarker": "<!-- PIXELIFY_AI_COMMAND_REPORT -->",
+  "defaultBranchCandidates": [
+    "master",
+    "main"
+  ],
+  "maxDiffChars": 180000,
+  "maxIssueBodyChars": 40000,
+  "codingModels": [
+    "ling-3.0-flash-free",
+    "laguna-s-2.1-free"
+  ],
+  "fallbackModels": [
+    "deepseek-v4-flash-free",
+    "north-mini-code-free",
+    "big-pickle"
+  ],
+  "fallbackModel": "deepseek-v4-flash-free",
+  "mediaOcr": {
+    "enabled": true,
+    "model": "mimo-v2.5-free",
+    "maxItems": 4,
+    "maxBytesPerItem": 5000000,
+    "maxSummaryChars": 12000,
+    "timeoutSeconds": 180,
+    "extensions": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".webp",
+      ".bmp",
+      ".mp4",
+      ".webm",
+      ".mov",
+      ".mp3",
+      ".wav",
+      ".m4a",
+      ".ogg"
+    ]
+  },
+  "roles": {
+    "identity_safety": {
+      "model": "ling-3.0-flash-free",
+      "description": "Identity, signing, secrets, package/Xposed scope integrity reviewer",
+      "promptFile": "./prompts/roles/reviewer_identity_safety.md",
+      "temperature": 0.1,
+      "maxTokens": 6144
+    },
+    "android_xposed": {
+      "model": "laguna-s-2.1-free",
+      "description": "Android/Kotlin/Xposed behavior and regression reviewer",
+      "promptFile": "./prompts/roles/reviewer_android_xposed.md",
+      "temperature": 0.1,
+      "maxTokens": 6144
+    },
+    "docs_public": {
+      "model": "ling-3.0-flash-free",
+      "description": "Public docs, templates, and contributor surface reviewer",
+      "promptFile": "./prompts/roles/reviewer_docs_public.md",
+      "temperature": 0.2,
+      "maxTokens": 4096
+    },
+    "triage_agent": {
+      "model": "deepseek-v4-flash-free",
+      "description": "Issue triage for labels, completeness, and security routing",
+      "promptFile": "./prompts/roles/triage_agent.md",
+      "temperature": 0.2,
+      "maxTokens": 3072
+    },
+    "explainer_agent": {
+      "model": "deepseek-v4-flash-free",
+      "description": "Plain-language PR explainer for maintainers",
+      "promptFile": "./prompts/roles/explainer_agent.md",
+      "temperature": 0.3,
+      "maxTokens": 4096
+    }
+  },
+  "reviewPipeline": [
+    "identity_safety",
+    "android_xposed",
+    "docs_public"
+  ],
+  "sensitivePathGlobs": [
+    ".github/workflows/**",
+    "certificates/**",
+    "gradle/wrapper/**",
+    "gradlew",
+    "gradlew.bat",
+    "app/build.gradle.kts",
+    "build.gradle.kts",
+    "settings.gradle.kts",
+    "gradle/libs.versions.toml",
+    "update_info.json",
+    "docs/RELEASE_SIGNING.md",
+    "docs/PUBLICATION_CHECKLIST.md",
+    "scripts/check-publication-readiness.py",
+    "scripts/verify-release-artifacts.py",
+    "github_bot/**"
+  ],
+  "slashCommands": {
+    "/review": "Run full multi-agent PR review",
+    "/triage": "Run issue triage analysis",
+    "/explain": "Explain PR changes in plain language"
+  }
+}

@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""GitHub Actions entrypoint for Pixelify Infinity AI review bot."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+from agent_orchestrator import AgentOrchestrator, ReviewContext
+
+
+BOT_DIR = Path(__file__).resolve().parents[1]
+CONFIG = json.loads((BOT_DIR / "config" / "bot_config.json").read_text(encoding="utf-8"))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Pixelify Infinity GitHub AI bot")
+    parser.add_argument(
+        "--mode",
+        choices=["review", "triage", "comment", "explain"],
+        default="review",
+        help="Execution mode",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print output instead of posting to GitHub",
+    )
+    args = parser.parse_args(argv)
+
+    if not os.environ.get("OPENCODE_API_KEY") and not args.dry_run:
+        # dry-run without key can still validate local scaffolding with mocked path.
+        print("OPENCODE_API_KEY is required", file=sys.stderr)
+        return 2
+
+    orchestrator = AgentOrchestrator()
+    mode = args.mode
+
+    if mode == "comment":
+        mode = _resolve_comment_mode(os.environ.get("COMMENT_BODY", ""))
+        if mode is None:
+            print("No supported slash command found; skipping")
+            return 0
+
+    if mode == "triage":
+        title = os.environ.get("ISSUE_TITLE") or _event_field("issue", "title") or "Issue"
+        body = os.environ.get("ISSUE_BODY") or _event_field("issue", "body") or ""
+        body = _redact_secrets(body)
+        media_context, _media_labels = orchestrator.enrich_with_media_ocr(
+            title=title,
+            body=body,
+            changed_files=[],
+        )
+        report = orchestrator.run_triage(title, body, media_context=media_context)
+        return _publish(report, marker=CONFIG["triageMarker"], dry_run=args.dry_run)
+
+    ctx = _build_review_context(orchestrator)
+    if mode == "explain":
+        report = orchestrator.run_explainer(ctx)
+        return _publish(report, marker=CONFIG["commandMarker"], dry_run=args.dry_run)
+
+    report = orchestrator.run_multi_agent_review(ctx)
+    marker = CONFIG["commentMarker"] if mode == "review" else CONFIG["commandMarker"]
+    return _publish(report, marker=marker, dry_run=args.dry_run)
+
+
+def _resolve_comment_mode(comment_body: str) -> str | None:
+    text = comment_body.lower()
+    if "/review" in text:
+        return "review"
+    if "/explain" in text:
+        return "explain"
+    if "/triage" in text:
+        return "triage"
+    return None
+
+
+def _build_review_context(orchestrator: AgentOrchestrator) -> ReviewContext:
+    title = _event_field("pull_request", "title") or _event_field("issue", "title") or "PR Review"
+    body = _event_field("pull_request", "body") or _event_field("issue", "body") or ""
+    base_ref, head_ref, git_diff, changed_files = _extract_git_context()
+    max_diff = int(CONFIG.get("maxDiffChars", 180000))
+    if len(git_diff) > max_diff:
+        git_diff = git_diff[:max_diff] + "\n\n[diff truncated for model context]\n"
+    git_diff = _redact_secrets(git_diff)
+    body = _redact_secrets(body)
+    sensitive = orchestrator.classify_sensitive_files(changed_files)
+    media_context, media_labels = orchestrator.enrich_with_media_ocr(
+        title=title,
+        body=body,
+        changed_files=changed_files,
+    )
+    return ReviewContext(
+        title=title,
+        body=body,
+        git_diff=git_diff,
+        changed_files=changed_files,
+        base_ref=base_ref,
+        head_ref=head_ref,
+        sensitive_files=sensitive,
+        media_context=media_context,
+        media_labels=media_labels,
+    )
+
+
+def _extract_git_context() -> tuple[str, str, str, list[str]]:
+    base_ref = (
+        os.environ.get("PR_BASE_SHA")
+        or _event_field("pull_request", "base", "sha")
+        or _detect_default_base()
+    )
+    head_ref = os.environ.get("PR_HEAD_SHA") or _event_field("pull_request", "head", "sha") or "HEAD"
+
+    # For issue_comment on a PR, prefer explicit env SHAs from the workflow.
+    diff = _run_git(["diff", f"{base_ref}...{head_ref}"])
+    if not diff.strip():
+        diff = _run_git(["diff", f"{base_ref}..{head_ref}"])
+    if not diff.strip():
+        diff = _run_git(["diff", "HEAD~1"])
+
+    files_output = _run_git(["diff", "--name-only", f"{base_ref}...{head_ref}"])
+    if not files_output.strip():
+        files_output = _run_git(["diff", "--name-only", f"{base_ref}..{head_ref}"])
+    changed_files = [line.strip() for line in files_output.splitlines() if line.strip()]
+    return base_ref, head_ref, diff, changed_files
+
+
+def _detect_default_base() -> str:
+    for candidate in CONFIG.get("defaultBranchCandidates", ["master", "main"]):
+        ref = f"origin/{candidate}"
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", ref],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            return ref
+    return "HEAD~1"
+
+
+def _run_git(args: list[str]) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout
+
+
+def _publish(body: str, *, marker: str, dry_run: bool) -> int:
+    full_body = f"{marker}\n{body.strip()}\n"
+    if dry_run or not os.environ.get("GITHUB_TOKEN") or not os.environ.get("GITHUB_REPOSITORY"):
+        print(full_body)
+        return 0
+
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path or not Path(event_path).exists():
+        print(full_body)
+        return 0
+
+    event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    number = (
+        (event.get("pull_request") or {}).get("number")
+        or (event.get("issue") or {}).get("number")
+    )
+    if not number:
+        print("Could not determine issue/PR number; printing report only", file=sys.stderr)
+        print(full_body)
+        return 0
+
+    owner, repo = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+    token = os.environ["GITHUB_TOKEN"]
+    comments = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/issues/{number}/comments?per_page=100",
+        token=token,
+    )
+    existing = None
+    for comment in comments:
+        text = comment.get("body") or ""
+        if marker in text:
+            existing = comment
+            break
+
+    payload = {"body": full_body}
+    if existing:
+        _github_request(
+            "PATCH",
+            f"/repos/{owner}/{repo}/issues/comments/{existing['id']}",
+            token=token,
+            payload=payload,
+        )
+        print(f"Updated existing bot comment {existing['id']}")
+    else:
+        _github_request(
+            "POST",
+            f"/repos/{owner}/{repo}/issues/{number}/comments",
+            token=token,
+            payload=payload,
+        )
+        print(f"Created bot comment on #{number}")
+    return 0
+
+
+def _github_request(method: str, path: str, *, token: str, payload: dict | None = None):
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://api.github.com{path}",
+        data=data,
+        method=method,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "User-Agent": "pixelify-infinity-ai-review-bot/1.0",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"GitHub API {method} {path} failed: HTTP {exc.code}: {detail[:500]}") from exc
+
+
+def _event_field(*keys: str):
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path or not Path(event_path).exists():
+        return None
+    data = json.loads(Path(event_path).read_text(encoding="utf-8"))
+    cursor = data
+    for key in keys:
+        if not isinstance(cursor, dict) or key not in cursor:
+            return None
+        cursor = cursor[key]
+    return cursor
+
+
+def _redact_secrets(text: str) -> str:
+    patterns = [
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+        r"(?i)(api[_-]?key|token|password|secret|storePassword|keyPassword)\s*[:=]\s*['\"][^'\"]{6,}['\"]",
+        r"(?i)(authorization:\s*bearer\s+)[a-z0-9._\-]+",
+    ]
+    redacted = text
+    for pattern in patterns:
+        redacted = re.sub(pattern, "[REDACTED]", redacted, flags=re.DOTALL)
+    return redacted
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:  # noqa: BLE001
+        print(f"Bot failed: {exc}", file=sys.stderr)
+        raise

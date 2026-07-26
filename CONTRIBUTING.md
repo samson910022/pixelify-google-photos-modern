@@ -39,6 +39,16 @@ Outputs are written below `app/build/outputs/` and are ignored by Git.
 - `docs/` — user translations and maintainer documentation
 - `certificates/` — public release certificate only
 
+## Automated review comments
+
+Pull requests and issues may receive advisory comments from the repository AI review bot when `OPENCODE_API_KEY` is configured for GitHub Actions.
+
+- PR open/update: multi-agent review comment
+- Issue open: triage comment
+- Slash commands in comments: `/review`, `/triage`, `/explain`
+
+The bot is advisory only. CI and maintainer review remain required. Setup details live in [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md).
+
 ## Pull request expectations
 
 1. Keep changes focused and explain the user-visible effect.
