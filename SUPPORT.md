@@ -16,10 +16,19 @@ A reproducible report should include:
 
 - Pixelify Infinity version and version code;
 - Android version, device/ROM, and architecture;
-- Xposed manager/framework and API version;
-- Google Photos version;
-- exact reproduction steps and expected/actual behavior; and
-- the smallest relevant, sanitized log excerpt.
+- Xposed manager/framework and API version (for example LSPosed variant);
+- Google Photos version (exact build string when possible);
+- exact reproduction steps and expected/actual behavior;
+- whether a VERIFY toast/notification appeared after force-stopping and reopening Google Photos; and
+- the smallest relevant, sanitized log excerpt (prefer logcat lines for tag `Pixelify`).
+
+### Load / VERIFY signals
+
+After enable + correct scope + force-stop/reopen Photos:
+
+- **No toast and no notification** often means the module did not load or did not reach VERIFY.
+- **Toast or notification about VERIFY / device spoof failed** means the module loaded, but Build spoof VERIFY failed (common on some Android 17+ ROMs; multi-strategy writes are attempted, success is not guaranteed on every ROM).
+- **No visible failure and Photos still shows the real device model** still needs sanitized `Pixelify` logcat lines to distinguish load failure from VERIFY failure.
 
 Remove account identifiers, device serials, file-system paths, tokens, exported preferences, and unrelated application data before sharing diagnostics. Enable verbose logging only while reproducing a problem, then disable it.
 
@@ -27,4 +36,6 @@ Remove account identifiers, device serials, file-system paths, tokens, exported 
 
 Use GitHub Issues for reproducible bugs and feature requests. Use the structured issue forms when available. Do not use public issues for vulnerabilities; follow [SECURITY.md](SECURITY.md).
 
-Feature availability may depend on Google Photos, server-side configuration, account, region, device, ROM, or Android version. Build-property spoofing is intentionally limited on Android versions where modifying those fields is unsafe.
+Opened issues (and `/triage` / `/review` comments on issues) may receive an **advisory issue investigation** comment that scores report completeness, lists missing evidence, and proposes root-cause hypotheses. That bot is advisory only and does not replace maintainer triage. Details: [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md).
+
+Feature availability may depend on Google Photos, server-side configuration, account, region, device, ROM, or Android version. Build-property spoofing is attempted on all supported Android versions, including API 37+, but success is not guaranteed on every ROM.

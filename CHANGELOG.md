@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Repository
+
+- Documented the advisory GitHub AI bot for **issue investigation** vs **PR code review**, including fail-closed quality gates, thread-aware triage, slash commands, OCR, and maintainer dry-run/test instructions (`docs/AI_REVIEW_BOT.md`, `github_bot/README.md`, `CONTRIBUTING.md`, `SUPPORT.md`, `AGENTS.md`).
+
 ## [1.0.4] - 2026-07-17
 
 ### Fixed

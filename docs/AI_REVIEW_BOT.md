@@ -9,14 +9,14 @@ It is inspired by:
 
 The bot never replaces CI or human review. Required hard gates remain `./.github/workflows/ci.yml` and the maintainer release process.
 
-Public bot comments intentionally **do not disclose model names**. Model routing is maintainer configuration only.
+Public bot comments intentionally **do not disclose model names**. Model routing is maintainer configuration only (`github_bot/config/bot_config.json`, currently bot config version `1.2.0`).
 
 ## What it does
 
 | Trigger | Mode | Behavior |
 | --- | --- | --- |
 | PR opened / reopened / synchronize / ready_for_review | `review` | Parallel PR roles: identity/safety, Android/Xposed, docs/public surface + aggregate verdict |
-| Issue opened | `triage` | Issue investigation: quality score, missing info, root-cause hypotheses, labels, security routing |
+| Issue opened | `triage` | Issue investigation: quality score, missing info, root-cause hypotheses, suggested labels, security routing |
 | Comment containing `/review` on a **PR** | `review` | Re-run multi-agent PR code review |
 | Comment containing `/review` or `/triage` on an **issue** | `triage` | Issue investigation (never PR-style verdicts) |
 | Comment containing `/explain` on a **PR** | `explain` | Plain-language PR explanation |
@@ -33,7 +33,7 @@ Includes:
 
 - decision-first sections (`CLASSIFICATION`, `ACTIONABILITY`, blocking missing info)
 - local field-quality hints (`strong | weak | missing`, not mere keyword presence)
-- thread-aware context: recent issue comments + already-asked suppression
+- thread-aware context: up to N issue comments (bounded; currently oldest-first) + already-asked suppression
 - Pixelify load/VERIFY playbook grounding (toast/notification interpretation)
 - `ISSUE_QUALITY_SCORE` 0–100 with band `actionable | needs-info | insufficient`
 - quality breakdown across problem clarity / environment / reproduction / expected vs actual / evidence
@@ -42,7 +42,18 @@ Includes:
 
 Issue quality scoring follows an OpenClaw-style completeness mindset: score only fields grounded in observed evidence; prefer `NOT_ENOUGH_INFO` over speculation.
 
-Incomplete or truncated model drafts are **fail-closed**: the bot retries/repairs once, then publishes a structured stub instead of a mid-sentence fragment. Public comments never disclose model names.
+#### Response quality gates (fail-closed)
+
+Before publishing, the bot:
+
+1. Rejects unusable model completions (`finish_reason` in `{length, max_tokens, content_filter}`, empty/short, or truncated-looking text)
+2. On length/truncation, retries the same model once (higher `max_tokens`); otherwise walks the free-model fallback chain
+3. Validates required triage sections and minimum length
+4. Attempts one repair pass when the draft is incomplete
+5. Publishes a structured **fail-closed stub** instead of a mid-sentence fragment when still incomplete
+6. Re-checks publishability before posting and can replace an incomplete non-stub draft
+
+Public comments never disclose model names or provider routing. Validation/error text is sanitized for public display.
 
 ### PR code review report
 
@@ -55,6 +66,8 @@ Includes:
 - deterministic safety prechecks
 - per-role findings
 - aggregate `FINAL_VERDICT`
+
+Short but complete PR findings are allowed (default `minResponseChars=0` for non-triage roles). Issue investigation still enforces a higher minimum length and required sections.
 
 ## Sticky comment markers
 
@@ -103,7 +116,6 @@ When an issue/PR body contains image/media URLs (Markdown images, GitHub user-at
 
 OCR failures are non-fatal: the run continues with an OCR error note.
 
-
 ## Local dry run
 
 ```bash
@@ -111,9 +123,16 @@ export OPENCODE_API_KEY='...'   # do not commit
 export PYTHONPATH=github_bot/src
 python3 github_bot/src/github_runner.py --mode=review --dry-run
 python3 github_bot/src/github_runner.py --mode=triage --dry-run
+python3 github_bot/src/github_runner.py --mode=explain --dry-run
 ```
 
-Without GitHub event context, the runner prints the report to stdout.
+Without GitHub event context, the runner prints the report to stdout. For triage dry-runs you may also supply `ISSUE_TITLE`, `ISSUE_BODY`, and optional `ISSUE_COMMENTS_JSON`.
+
+Unit tests for routing, quality gates, sanitization, and fail-closed publish behavior:
+
+```bash
+PYTHONPATH=github_bot/src python3 -m unittest tests.test_ai_review_bot -v
+```
 
 ## Safety posture for this repo
 
@@ -127,10 +146,21 @@ The bot prompts encode Pixelify Infinity invariants:
 
 Sensitive path hits are highlighted when a PR touches workflows, certificates, wrapper scripts, signing docs, or publication checks.
 
+## Layout
+
+| Path | Purpose |
+| --- | --- |
+| `.github/workflows/ai-review.yml` | Triggers and runner entry |
+| `github_bot/config/bot_config.json` | Roles, models, triage gates, markers |
+| `github_bot/prompts/` | Soul + role prompts |
+| `github_bot/src/` | Orchestrator, GitHub runner, LLM client, OCR |
+| `tests/test_ai_review_bot.py` | Bot unit tests |
+| `github_bot/README.md` | Short package-local overview |
+
 ## Tuning
 
 1. Edit role prompts under `github_bot/prompts/`.
-2. Adjust models or pipeline order in `github_bot/config/bot_config.json`.
+2. Adjust models, pipeline order, or triage gates in `github_bot/config/bot_config.json`.
 3. Keep `OPENCODE_API_KEY` only in GitHub Actions secrets or local env.
 4. Do not commit generated review transcripts unless deliberately archiving an audit.
 

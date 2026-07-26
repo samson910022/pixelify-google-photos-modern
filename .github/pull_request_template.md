@@ -14,3 +14,5 @@ Describe the user-visible or maintainer-visible change.
 ## Notes
 
 List compatibility risks, follow-up work, or screenshots when useful. Security-sensitive details belong in a private report, not this pull request.
+
+An advisory AI **PR code review** comment may appear when Actions secrets are configured; it does not replace CI or maintainer review. Issue investigation reports use a different format and apply only to issues, not PR merge verdicts.

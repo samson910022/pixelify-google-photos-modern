@@ -43,14 +43,21 @@ Outputs are written below `app/build/outputs/` and are ignored by Git.
 
 Pull requests and issues may receive advisory comments from the repository AI review bot when `OPENCODE_API_KEY` is configured for GitHub Actions.
 
-- PR open/update: multi-agent **code review** (verdicts + findings)
-- Issue open: **issue investigation** (quality score, missing info, root-cause hypotheses)
-- Slash commands: `/review`, `/triage`, `/explain`
-  - On PRs, `/review` re-runs code review and `/explain` summarizes the PR
-  - On issues, those commands run issue investigation (never PR-style merge verdicts)
-- Public bot comments do not disclose model names
+| Surface | Trigger | Result |
+| --- | --- | --- |
+| Pull request | open / reopened / synchronize / ready for review, or `/review` | Multi-agent **code review** (role verdicts + findings + `FINAL_VERDICT`) |
+| Pull request | `/explain` | Plain-language PR summary |
+| Issue | opened, or `/triage` / `/review` / `/explain` | **Issue investigation** (quality score, missing info, root-cause hypotheses) |
 
-The bot is advisory only. CI and maintainer review remain required. Setup details live in [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md).
+Important distinctions:
+
+- Issue investigation is **not** PR review. It does not emit merge-style verdicts.
+- Incomplete or truncated bot drafts are fail-closed into a structured stub instead of a partial comment.
+- Issue triage is thread-aware: it reads up to a bounded set of issue comments (currently oldest-first) and avoids re-asking questions already asked.
+- Public bot comments do **not** disclose model names or provider routing.
+- Screenshots and other media may be OCR'd before analysis.
+
+The bot is advisory only. CI and maintainer review remain required. Maintainer setup, model routing, dry-run, and tests live in [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md). Package-local notes: [github_bot/README.md](github_bot/README.md).
 
 ## Pull request expectations
 

@@ -64,6 +64,18 @@ Never echo signing environment variables. Verify final artifacts with `apksigner
 - Put only non-secret signing policy and public verification information in `docs/RELEASE_SIGNING.md`.
 - English documentation is authoritative; translations must link back to it and identify themselves as translations.
 
+## AI review bot
+
+Maintainer-facing documentation for the advisory GitHub issue/PR bot lives in [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md). Package overview: [github_bot/README.md](github_bot/README.md).
+
+When changing bot behavior:
+
+1. Keep issue investigation and PR code review on separate report formats and sticky markers.
+2. Do not print model names, provider names, or routing details in public comments.
+3. Prefer fail-closed structured stubs over truncated free-model prose for issue investigation.
+4. Run `PYTHONPATH=github_bot/src python3 -m unittest tests.test_ai_review_bot -v` for bot changes.
+5. User-facing contributor notes belong in [CONTRIBUTING.md](CONTRIBUTING.md) and [SUPPORT.md](SUPPORT.md); do not put bot internals on the public README landing page.
+
 ## Pre-commit checks
 
 - `git diff --check`
