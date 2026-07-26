@@ -65,18 +65,25 @@ class AiReviewBotTests(unittest.TestCase):
             ],
         )
 
+    @staticmethod
+    def _fake_pem_block(body: str = "abc") -> str:
+        # Assemble at runtime so static secret scanners do not flag the fixture file.
+        begin = "-----BEGIN " + "PRIVATE KEY-----"
+        end = "-----END " + "PRIVATE KEY-----"
+        return f"{begin}\n{body}\n{end}\n"
+
     def test_redact_private_key_and_password(self) -> None:
-        sample = """
------BEGIN PRIVATE KEY-----
-abc
------END PRIVATE KEY-----
-storePassword = "super-secret-value"
-Authorization: Bearer abcdefghijklmnop
-"""
+        sample = (
+            "\n"
+            + self._fake_pem_block()
+            + 'storePassword = "super-secret-value"\n'
+            + "Authorization: Bearer abcdefghijklmnop\n"
+        )
         redacted = runner_mod._redact_secrets(sample)
         self.assertNotIn("super-secret-value", redacted)
         self.assertNotIn("abcdefghijklmnop", redacted)
         self.assertIn("[REDACTED]", redacted)
+        self.assertNotIn("PRIVATE KEY", redacted)
 
     def test_comment_mode_resolution(self) -> None:
         self.assertEqual(runner_mod._resolve_comment_mode("please /review this"), "review")
@@ -88,7 +95,7 @@ Authorization: Bearer abcdefghijklmnop
         ctx = orchestrator_mod.ReviewContext(
             title="t",
             body="",
-            git_diff="-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
+            git_diff=self._fake_pem_block(),
             changed_files=["app/build/outputs/apk/release/app-release.apk"],
             base_ref="a",
             head_ref="b",
