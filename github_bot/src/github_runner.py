@@ -50,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
             print("No supported slash command found; skipping")
             return 0
 
+    # Issue threads must never receive PR-style code review output.
+    if mode in {"review", "explain"} and not _is_pull_request_context():
+        print(f"Non-PR context detected; routing `{mode}` to issue investigation")
+        mode = "triage"
+
     if mode == "triage":
         title = os.environ.get("ISSUE_TITLE") or _event_field("issue", "title") or "Issue"
         body = os.environ.get("ISSUE_BODY") or _event_field("issue", "body") or ""
@@ -70,6 +75,20 @@ def main(argv: list[str] | None = None) -> int:
     report = orchestrator.run_multi_agent_review(ctx)
     marker = CONFIG["commentMarker"] if mode == "review" else CONFIG["commandMarker"]
     return _publish(report, marker=marker, dry_run=args.dry_run)
+
+
+
+def _is_pull_request_context() -> bool:
+    """True when the GitHub event is a pull request (including PR issue comments)."""
+    if os.environ.get("PR_BASE_SHA") or os.environ.get("PR_HEAD_SHA"):
+        return True
+    if _event_field("pull_request", "number") is not None:
+        return True
+    # issue_comment events on PRs expose issue.pull_request
+    if _event_field("issue", "pull_request") is not None:
+        return True
+    event_name = (os.environ.get("GITHUB_EVENT_NAME") or "").lower()
+    return event_name in {"pull_request", "pull_request_target"}
 
 
 def _resolve_comment_mode(comment_body: str) -> str | None:

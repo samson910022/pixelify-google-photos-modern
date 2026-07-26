@@ -43,9 +43,12 @@ Outputs are written below `app/build/outputs/` and are ignored by Git.
 
 Pull requests and issues may receive advisory comments from the repository AI review bot when `OPENCODE_API_KEY` is configured for GitHub Actions.
 
-- PR open/update: multi-agent review comment
-- Issue open: triage comment
-- Slash commands in comments: `/review`, `/triage`, `/explain`
+- PR open/update: multi-agent **code review** (verdicts + findings)
+- Issue open: **issue investigation** (quality score, missing info, root-cause hypotheses)
+- Slash commands: `/review`, `/triage`, `/explain`
+  - On PRs, `/review` re-runs code review and `/explain` summarizes the PR
+  - On issues, those commands run issue investigation (never PR-style merge verdicts)
+- Public bot comments do not disclose model names
 
 The bot is advisory only. CI and maintainer review remain required. Setup details live in [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md).
 

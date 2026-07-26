@@ -104,29 +104,68 @@ class AgentOrchestrator:
         return self._format_review_report(ctx, results)
 
     def run_triage(self, title: str, body: str, media_context: str = "") -> str:
-        result = self._run_role("triage_agent", self._issue_user_prompt(title, body, media_context))
-        media_note = ""
-        if media_context:
-            media_note = (
-                "\n## Multimodal OCR context used\n\n"
-                "Media was interpreted with `mimo-v2.5-free` and injected into triage context.\n"
-            )
-        return (
-            "# Pixelify Infinity Issue Triage\n\n"
-            f"- Model: `{result.model}`\n"
-            f"- Generated: `{_utc_now()}`\n"
-            f"{media_note}\n"
-            f"{result.findings}\n"
+        """Investigate an issue: quality score, missing info, root-cause hypotheses."""
+        hints = self.issue_quality_hints(title, body)
+        result = self._run_role(
+            "triage_agent",
+            self._issue_user_prompt(title, body, media_context, quality_hints=hints),
         )
+        lines = [
+            "# Pixelify Infinity Issue Investigation",
+            "",
+            f"- Generated: `{_utc_now()}`",
+            "- Mode: **issue investigation** (not a PR code review)",
+            "",
+        ]
+        if hints:
+            lines.extend(
+                [
+                    "## Local completeness hints",
+                    "",
+                    "These are deterministic checks used to ground the quality score:",
+                    "",
+                ]
+            )
+            lines.extend(f"- {item}" for item in hints)
+            lines.append("")
+        if media_context:
+            lines.extend(
+                [
+                    "## Multimodal evidence used",
+                    "",
+                    "Attached media was OCR/summarized and injected into the investigation context.",
+                    "",
+                ]
+            )
+        lines.append(result.findings.strip())
+        lines.append("")
+        return "\n".join(lines)
 
     def run_explainer(self, ctx: ReviewContext) -> str:
         result = self._run_role("explainer_agent", self._review_user_prompt(ctx))
         return (
             "# Pixelify Infinity PR Explanation\n\n"
-            f"- Model: `{result.model}`\n"
-            f"- Generated: `{_utc_now()}`\n\n"
+            f"- Generated: `{_utc_now()}`\n"
+            "- Mode: **pull request explanation**\n\n"
             f"{result.findings}\n"
         )
+
+    def issue_quality_hints(self, title: str, body: str) -> list[str]:
+        """Deterministic issue completeness signals (OpenClaw-style field coverage)."""
+        blob = f"{title}\n{body}".lower()
+        checks = [
+            ("module/app version", any(token in blob for token in ("version", "v1.", "pixelify infinity", "apk"))),
+            ("android version", any(token in blob for token in ("android ", "aosp", "api ", "sdk "))),
+            ("xposed/lsposed environment", any(token in blob for token in ("lsposed", "xposed", "zygisk", "magisk"))),
+            ("google photos version/context", any(token in blob for token in ("photos", "com.google.android.apps.photos"))),
+            ("reproduction steps", any(token in blob for token in ("steps", "reproduce", "repro", "1.", "1)"))),
+            ("expected vs actual", "expected" in blob and "actual" in blob),
+            ("evidence attachment", any(token in blob for token in ("http", "screenshot", "logcat", "!.[", "<img", ".png", ".jpg", ".webp"))),
+        ]
+        hints: list[str] = []
+        for label, present in checks:
+            hints.append(f"{'present' if present else 'missing'}: {label}")
+        return hints
 
     def deterministic_findings(self, ctx: ReviewContext) -> list[str]:
         """Cheap local checks that do not require an LLM."""
@@ -201,68 +240,94 @@ class AgentOrchestrator:
             f"### Git Diff\n```diff\n{ctx.git_diff}\n```\n"
         )
 
-    def _issue_user_prompt(self, title: str, body: str, media_context: str = "") -> str:
-        max_chars = int(self.config.get("maxIssueBodyChars", 40000))
-        trimmed = body if len(body) <= max_chars else body[:max_chars] + "\n\n[truncated]"
-        media = media_context.strip() or "(none)"
+    def _issue_user_prompt(
+        self,
+        title: str,
+        body: str,
+        media_context: str = "",
+        quality_hints: list[str] | None = None,
+    ) -> str:
+        body = body or "(empty)"
+        media_block = f"### Multimodal evidence\n{media_context}\n\n" if media_context else ""
+        hints = quality_hints or []
+        hints_block = ""
+        if hints:
+            hints_block = (
+                "### Local completeness hints\n"
+                + "\n".join(f"- {item}" for item in hints)
+                + "\n\n"
+            )
         return (
+            "Investigate this GitHub issue for Pixelify Infinity. "
+            "This is not a pull-request code review.\n\n"
             f"### Issue Title\n{title}\n\n"
-            f"### Issue Body\n{trimmed}\n\n"
-            f"### Multimodal OCR Context\n{media}\n"
+            f"### Issue Body\n{body}\n\n"
+            f"{hints_block}"
+            f"{media_block}"
+            "Produce the issue investigation sections required by your role prompt. "
+            "Score issue quality, propose root-cause hypotheses, and list missing info."
         )
+
 
     def _format_review_report(self, ctx: ReviewContext, results: list[RoleResult]) -> str:
         final_verdict = _aggregate_verdict([item.verdict for item in results])
         deterministic = self.deterministic_findings(ctx)
-        if deterministic:
-            final_verdict = "NEEDS_CHANGES"
-
         lines = [
-            "# Pixelify Infinity Multi-Agent Review",
+            "# Pixelify Infinity PR Code Review",
             "",
-            f"- PR: **{ctx.title}**",
             f"- Generated: `{_utc_now()}`",
-            f"- Changed files: `{len(ctx.changed_files)}`",
-            f"- Sensitive path hits: `{len(ctx.sensitive_files)}`",
-            f"- Media OCR items: `{len(ctx.media_labels)}`",
-            f"- Final verdict: **`{final_verdict}`**",
+            "- Mode: **pull request code review**",
+            f"- PR: **{ctx.title}**",
+            f"- Range: `{ctx.base_ref[:12]}...{ctx.head_ref[:12]}`",
+            f"- Changed files: **{len(ctx.changed_files)}**",
             "",
             "> Advisory only. Human maintainer review remains required for merge and release decisions.",
             "",
-            "## Verdict matrix",
+            "## Role verdicts",
             "",
-            "| Role | Model | Verdict |",
-            "| --- | --- | --- |",
+            "| Role | Verdict |",
+            "| --- | --- |",
         ]
         for item in results:
-            lines.append(f"| `{item.role}` | `{item.model}` | `{item.verdict}` |")
+            lines.append(f"| `{item.role}` | `{item.verdict}` |")
+        lines.append("")
 
         if ctx.sensitive_files:
-            lines.extend(["", "## Sensitive paths touched", ""])
+            lines.append("## Sensitive path hits")
+            lines.append("")
             lines.extend(f"- `{path}`" for path in ctx.sensitive_files)
+            lines.append("")
 
         if ctx.media_labels:
-            lines.extend(["", "## Media OCR inputs", ""])
+            lines.append("## Multimodal evidence used")
+            lines.append("")
+            lines.append("Attached/changed media was OCR/summarized and injected into reviewer context.")
             lines.extend(f"- `{label}`" for label in ctx.media_labels)
             lines.append("")
-            lines.append("Interpreted with `mimo-v2.5-free` and injected into reviewer context.")
 
         if deterministic:
-            lines.extend(["", "## Deterministic safety precheck", ""])
+            lines.append("## Deterministic prechecks")
+            lines.append("")
             lines.extend(f"- {item}" for item in deterministic)
+            lines.append("")
 
-        lines.extend(["", "## Role findings", ""])
+        lines.append("## Role findings")
+        lines.append("")
         for item in results:
-            lines.extend(
-                [
-                    f"### `{item.role}` (`{item.verdict}`)",
-                    "",
-                    item.findings.strip(),
-                    "",
-                ]
-            )
+            lines.append(f"### `{item.role}`")
+            lines.append("")
+            lines.append(item.findings.strip() or "_No findings returned._")
+            lines.append("")
+
+        lines.append("## Aggregate verdict")
+        lines.append("")
         lines.append(f"**`FINAL_VERDICT={final_verdict}`**")
+        if final_verdict != "APPROVE":
+            lines.append("")
+            lines.append("At least one reviewer requested changes or comments before merge.")
+        lines.append("")
         return "\n".join(lines).strip() + "\n"
+
 
 
 def _utc_now() -> str:

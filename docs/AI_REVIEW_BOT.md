@@ -1,28 +1,64 @@
-# AI Review Bot (maintainer)
+# AI Review Bot
 
-This repository includes an advisory multi-agent review bot for issues and pull requests.
+This repository includes an advisory multi-agent bot for **issue investigation** and **PR code review**.
 
 It is inspired by:
 
 - [Vegan-scan-app multi-agent OpenCode bot](https://github.com/richardchen10345/Vegan-scan-app) — role prompts, sticky comments, OpenCode free models
-- [OpenClaw automation posture](https://github.com/openclaw/openclaw) — least-privilege permissions, concurrency, draft skips, security-sensitive path awareness
+- [OpenClaw automation posture](https://github.com/openclaw/openclaw) — least-privilege permissions, concurrency, draft skips, security-sensitive path awareness, evidence-first issue completeness fields
 
 The bot never replaces CI or human review. Required hard gates remain `./.github/workflows/ci.yml` and the maintainer release process.
+
+Public bot comments intentionally **do not disclose model names**. Model routing is maintainer configuration only.
 
 ## What it does
 
 | Trigger | Mode | Behavior |
 | --- | --- | --- |
-| PR opened / reopened / synchronize / ready_for_review | `review` | Parallel roles: identity/safety, Android/Xposed, docs/public surface |
-| Issue opened | `triage` | Completeness, risk, suggested labels, clarifying questions |
-| Comment containing `/review`, `/triage`, or `/explain` | command | Re-run the matching mode |
+| PR opened / reopened / synchronize / ready_for_review | `review` | Parallel PR roles: identity/safety, Android/Xposed, docs/public surface + aggregate verdict |
+| Issue opened | `triage` | Issue investigation: quality score, missing info, root-cause hypotheses, labels, security routing |
+| Comment containing `/review` on a **PR** | `review` | Re-run multi-agent PR code review |
+| Comment containing `/review` or `/triage` on an **issue** | `triage` | Issue investigation (never PR-style verdicts) |
+| Comment containing `/explain` on a **PR** | `explain` | Plain-language PR explanation |
+| Comment containing `/explain` on an **issue** | `triage` | Routed to issue investigation |
 | Manual `workflow_dispatch` | chosen mode | Maintainer-triggered run |
+
+Issue and PR reports use **different titles, sections, and sticky markers**.
+
+### Issue investigation report
+
+Title: `Pixelify Infinity Issue Investigation`
+
+Includes:
+
+- local completeness hints (deterministic field coverage)
+- `ISSUE_QUALITY_SCORE` 0–100 with band `actionable | needs-info | insufficient`
+- quality breakdown across problem clarity / environment / reproduction / expected vs actual / evidence
+- missing-info checklist
+- ranked root-cause hypotheses with confidence and validation steps
+- suggested labels, risk, security routing, reporter asks, maintainer notes
+
+Issue quality scoring follows an OpenClaw-style completeness mindset: score only fields grounded in observed evidence; prefer `NOT_ENOUGH_INFO` over speculation.
+
+### PR code review report
+
+Title: `Pixelify Infinity PR Code Review`
+
+Includes:
+
+- role verdict matrix (`APPROVE` / `NEEDS_CHANGES` / `COMMENT`)
+- sensitive path hits
+- deterministic safety prechecks
+- per-role findings
+- aggregate `FINAL_VERDICT`
+
+## Sticky comment markers
 
 Reports are posted as issue/PR comments and updated in place using HTML markers:
 
-- `<!-- PIXELIFY_AI_REVIEW_REPORT -->`
-- `<!-- PIXELIFY_AI_TRIAGE_REPORT -->`
-- `<!-- PIXELIFY_AI_COMMAND_REPORT -->`
+- `<!-- PIXELIFY_AI_REVIEW_REPORT -->` — PR code review
+- `<!-- PIXELIFY_AI_TRIAGE_REPORT -->` — issue investigation
+- `<!-- PIXELIFY_AI_COMMAND_REPORT -->` — PR explanation / misc command output
 
 ## Required secret
 
@@ -33,16 +69,16 @@ Create a repository secret:
 
 The workflow fails closed if the secret is missing. The bot never uses release-signing secrets.
 
-## Free model defaults
+## Free model defaults (maintainer config only)
 
-Configured free OpenCode models (price 0):
+Configured free OpenCode models (price 0). These are **not** printed in public comments:
 
 | Model | Default use |
 | --- | --- |
 | `ling-3.0-flash-free` | Primary coding/docs reviewer (identity + docs) |
 | `laguna-s-2.1-free` | Primary Android/Xposed coding reviewer |
-| `mimo-v2.5-free` | Multimodal OCR for screenshots/media before review/triage |
-| `deepseek-v4-flash-free` | Triage/explain + first fallback |
+| `mimo-v2.5-free` | Multimodal OCR for screenshots/media before review/investigation |
+| `deepseek-v4-flash-free` | Issue investigation / explain + first fallback |
 | `north-mini-code-free` | Coding fallback |
 | `big-pickle` | Final free fallback |
 | `nemotron-3-ultra-free` | Available large-context swap |
@@ -58,10 +94,10 @@ Fallback chain for text/code roles:
 When an issue/PR body contains image/media URLs (Markdown images, GitHub user-attachments, bare media links) or the change set includes media files, the bot:
 
 1. Discovers up to `mediaOcr.maxItems` items
-2. Calls `mimo-v2.5-free` with the media OCR prompt
-3. Injects the OCR/UI summary into reviewer/triage context
+2. Calls the configured multimodal OCR model
+3. Injects the OCR/UI summary into issue investigation or PR review context
 
-OCR failures are non-fatal: the review continues with an OCR error note.
+OCR failures are non-fatal: the run continues with an OCR error note.
 
 
 ## Local dry run
@@ -70,6 +106,7 @@ OCR failures are non-fatal: the review continues with an OCR error note.
 export OPENCODE_API_KEY='...'   # do not commit
 export PYTHONPATH=github_bot/src
 python3 github_bot/src/github_runner.py --mode=review --dry-run
+python3 github_bot/src/github_runner.py --mode=triage --dry-run
 ```
 
 Without GitHub event context, the runner prints the report to stdout.

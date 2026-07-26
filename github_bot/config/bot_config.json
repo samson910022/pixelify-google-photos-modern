@@ -1,7 +1,7 @@
 {
   "name": "Pixelify-Infinity-GitHub-AI-Bot",
   "version": "1.1.0",
-  "description": "Issue triage and multi-agent PR review bot for Pixelify Infinity using OpenCode free models.",
+  "description": "Issue investigation (quality score + root-cause hypotheses) and multi-agent PR code review for Pixelify Infinity using OpenCode free models.",
   "llmConfigFile": "./config/LLM_config.example.json",
   "defaultProvider": "opencode",
   "commentMarker": "<!-- PIXELIFY_AI_REVIEW_REPORT -->",
@@ -70,7 +70,7 @@
     },
     "triage_agent": {
       "model": "deepseek-v4-flash-free",
-      "description": "Issue triage for labels, completeness, and security routing",
+      "description": "Issue investigator: quality scoring, missing info, root-cause hypotheses, security routing",
       "promptFile": "./prompts/roles/triage_agent.md",
       "temperature": 0.2,
       "maxTokens": 3072
@@ -106,8 +106,8 @@
     "github_bot/**"
   ],
   "slashCommands": {
-    "/review": "Run full multi-agent PR review",
-    "/triage": "Run issue triage analysis",
-    "/explain": "Explain PR changes in plain language"
+    "/review": "On PRs: multi-agent code review. On issues: issue investigation.",
+    "/triage": "Issue investigation with quality score and missing-info checklist",
+    "/explain": "On PRs: plain-language explanation. On issues: issue investigation."
   }
 }

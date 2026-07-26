@@ -138,6 +138,87 @@ class AiReviewBotTests(unittest.TestCase):
             llm_client_mod._messages_have_media([{"role": "user", "content": "plain text"}])
         )
 
+
+    def test_issue_quality_hints_detect_missing_fields(self) -> None:
+        hints = orchestrator_mod.AgentOrchestrator.issue_quality_hints(
+            object(),
+            "Something broken",
+            "It does not work on my phone.",
+        )
+        self.assertTrue(any(item.startswith("missing:") for item in hints))
+        rich = orchestrator_mod.AgentOrchestrator.issue_quality_hints(
+            object(),
+            "Unlock fails on Android 15",
+            """
+            Pixelify Infinity v1.0.4
+            LSPosed
+            Google Photos
+            Steps to reproduce:
+            1. Enable module
+            Expected: unlock works
+            Actual: still locked
+            screenshot.png
+            """,
+        )
+        self.assertTrue(any(item.startswith("present: reproduction steps") for item in rich))
+        self.assertTrue(any(item.startswith("present: expected vs actual") for item in rich))
+
+    def test_issue_and_pr_reports_differ_and_hide_models(self) -> None:
+        orch = orchestrator_mod.AgentOrchestrator.__new__(orchestrator_mod.AgentOrchestrator)
+        orch.config = {"roles": {"triage_agent": {"model": "hidden-model", "promptFile": "./prompts/roles/triage_agent.md", "temperature": 0.1, "maxTokens": 10}}}
+        orch.soul = "soul"
+        orch.llm = SimpleNamespace()
+
+        def fake_run_role(role_id, user_prompt):
+            self.assertIn("not a pull-request code review", user_prompt.lower())
+            return orchestrator_mod.RoleResult(
+                role=role_id,
+                model="should-not-appear",
+                verdict="COMMENT",
+                findings="SUMMARY\nissue body",
+            )
+
+        orch._run_role = fake_run_role  # type: ignore[method-assign]
+        issue_report = orch.run_triage("title", "body missing details")
+        self.assertIn("Issue Investigation", issue_report)
+        self.assertIn("issue investigation", issue_report.lower())
+        self.assertNotIn("should-not-appear", issue_report)
+        self.assertNotIn("Model:", issue_report)
+        self.assertNotIn("PR Code Review", issue_report)
+        self.assertNotIn("FINAL_VERDICT", issue_report)
+
+        ctx = orchestrator_mod.ReviewContext(
+            title="Add feature",
+            body="desc",
+            git_diff="diff",
+            changed_files=["app/src/main/java/x.kt"],
+            base_ref="aaaaaaaaaaaa",
+            head_ref="bbbbbbbbbbbb",
+            sensitive_files=[],
+        )
+        pr_report = orchestrator_mod.AgentOrchestrator._format_review_report(
+            SimpleNamespace(
+                deterministic_findings=lambda _ctx: [],
+            ),
+            ctx,
+            [
+                orchestrator_mod.RoleResult(
+                    role="android_xposed",
+                    model="hidden-pr-model",
+                    verdict="APPROVE",
+                    findings="looks good",
+                )
+            ],
+        )
+        self.assertIn("PR Code Review", pr_report)
+        self.assertIn("FINAL_VERDICT=APPROVE", pr_report)
+        self.assertNotIn("hidden-pr-model", pr_report)
+        self.assertNotIn("| Model |", pr_report)
+        self.assertNotIn("Issue Investigation", pr_report)
+
+    def test_non_pr_review_routes_to_issue_investigation(self) -> None:
+        self.assertFalse(runner_mod._is_pull_request_context())
+
     def test_config_models_and_fallbacks(self) -> None:
         import json
 

@@ -1,4 +1,4 @@
-"""Discover multimedia attachments and OCR them with mimo-v2.5-free."""
+"""Discover multimedia attachments and OCR/summarize them for review context."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ def build_media_context(
     max_summary_chars = int(ocr_config.get("maxSummaryChars", 12_000))
     timeout_seconds = int(ocr_config.get("timeoutSeconds", 180))
 
-    sections: list[str] = ["### Multimodal OCR context (`mimo-v2.5-free`)", ""]
+    sections: list[str] = ["### Multimodal OCR context", ""]
     for index, item in enumerate(items, start=1):
         try:
             content_parts = _build_user_content(item, max_bytes=max_bytes)
