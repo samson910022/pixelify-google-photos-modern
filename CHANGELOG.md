@@ -1,16 +1,14 @@
 # Changelog
 
-## Unreleased
+## [Unreleased]
 
 ### Changed
 
 - AI review bot `1.3.0`: optionally apply allowlisted `SUGGESTED_LABELS` after issue investigation (additive only).
-- Document maintainer installation checklist for the GitHub AI bot (secret, workflow permissions, labels).
 
-## [Unreleased]
+### Documentation
 
-### Repository
-
+- Document maintainer installation checklist for the GitHub AI bot (secret, workflow permissions, distinct triage labels, label allowlist).
 - Documented the advisory GitHub AI bot for **issue investigation** vs **PR code review**, including fail-closed quality gates, thread-aware triage, slash commands, OCR, and maintainer dry-run/test instructions (`docs/AI_REVIEW_BOT.md`, `github_bot/README.md`, `CONTRIBUTING.md`, `SUPPORT.md`, `AGENTS.md`).
 
 ## [1.0.4] - 2026-07-17

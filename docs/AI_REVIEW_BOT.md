@@ -125,7 +125,8 @@ Operational checklist for enabling the bot on this repository (already applied f
 2. **Secret** — repository secret `OPENCODE_API_KEY` (OpenCode Zen). Never commit the key. The workflow fails closed if missing.
 3. **Permissions** — keep repository default Actions token at **read**; the workflow requests only `contents: read`, `issues: write`, `pull-requests: write`. Do **not** grant `GITHUB_TOKEN` approval rights for PRs.
 4. **Labels** — create the allowlisted triage labels the bot may apply:
-   - `needs-info`, `needs-triage`, `device-specific`, `android-16`, `android-17`, `photos-version`
+   - `needs-info`, `needs-triage`, `device-specific`, `photos-version`
+   - **Distinct** Android labels (create both, not a combined name): `android-16`, `android-17`
    - `security`, `likely-user-setup`, `feature-request`, `support`
    - plus standard `bug` / `documentation` / `enhancement` / …
 5. **Label apply policy** — `github_bot/config/bot_config.json` → `triage.applySuggestedLabels` (default `true`) only adds labels from `triage.labelAllowlist`. It never removes labels and never invents labels outside the allowlist.

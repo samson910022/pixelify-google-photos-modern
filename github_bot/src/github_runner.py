@@ -331,7 +331,11 @@ def _maybe_apply_suggested_labels(report: str, *, dry_run: bool) -> None:
         print(f"Applied labels on #{number}: {', '.join(selected)}")
     except Exception as exc:  # noqa: BLE001
         # Non-fatal: comment already published; missing/unknown labels should not fail the job.
-        print(f"Warning: failed to apply labels {selected}: {exc}", file=sys.stderr)
+        print(
+            f"Warning: failed to apply labels {selected}: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def _publish(body: str, *, marker: str, dry_run: bool) -> int:
