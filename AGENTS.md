@@ -66,6 +66,9 @@ Never echo signing environment variables. Verify final artifacts with `apksigner
 
 ## AI review bot
 
+Issue investigation may add allowlisted labels from `SUGGESTED_LABELS` when `triage.applySuggestedLabels` is enabled. Only names in `triage.labelAllowlist` are applied. Label application is additive and non-fatal.
+
+
 Maintainer-facing documentation for the advisory GitHub issue/PR bot lives in [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md). Package overview: [github_bot/README.md](github_bot/README.md).
 
 When changing bot behavior:

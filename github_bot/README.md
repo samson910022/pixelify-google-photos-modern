@@ -64,3 +64,12 @@ Configured free OpenCode models (price 0):
 - Fallbacks: `deepseek-v4-flash-free` → `north-mini-code-free` → `big-pickle`
 
 These names must never appear in public issue/PR comments.
+
+## Label application
+
+After a successful issue investigation publish, the runner may **add** allowlisted labels parsed from `SUGGESTED_LABELS`:
+
+- Controlled by `config/bot_config.json` → `triage.applySuggestedLabels` + `triage.labelAllowlist` (extend the allowlist there when adding repo labels)
+- Additive only; unknown labels are ignored; failures are non-fatal
+- Disabled automatically on `--dry-run` / missing GitHub context
+

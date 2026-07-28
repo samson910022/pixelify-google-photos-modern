@@ -239,7 +239,103 @@ def _publish_triage(report: str, *, dry_run: bool) -> int:
     if "ISSUE_QUALITY_SCORE" not in report:
         print("Triage report missing score after fail-closed handling", file=sys.stderr)
         return 3
-    return _publish(report, marker=CONFIG["triageMarker"], dry_run=dry_run)
+    code = _publish(report, marker=CONFIG["triageMarker"], dry_run=dry_run)
+    if code == 0:
+        _maybe_apply_suggested_labels(report, dry_run=dry_run)
+    return code
+
+
+def _extract_suggested_labels(report: str) -> list[str]:
+    """Parse SUGGESTED_LABELS from a triage report body."""
+    labels: list[str] = []
+    lines = report.splitlines()
+
+    def _clean_parts(payload: str) -> list[str]:
+        out: list[str] = []
+        for part in re.split(r"[,，]", payload):
+            label = part.strip().strip("`").strip()
+            label = re.sub(r"^[-*•]\s*", "", label).strip()
+            if label and label.lower() not in {"none", "n/a", "na", "-"}:
+                out.append(label)
+        return out
+
+    for idx, raw in enumerate(lines):
+        normalized = re.sub(r"^#+\s*", "", raw.strip())
+        normalized = normalized.replace("**", "").strip()
+        if not normalized.upper().startswith("SUGGESTED_LABELS"):
+            continue
+        _, _, rest = normalized.partition(":")
+        if rest.strip():
+            labels.extend(_clean_parts(rest.strip()))
+        else:
+            for follow in lines[idx + 1 : idx + 8]:
+                f = follow.strip()
+                if not f:
+                    if labels:
+                        break
+                    continue
+                headerish = re.sub(r"^#+\s*", "", f).replace("**", "").strip()
+                if re.match(r"^[A-Z][A-Z0-9_ /-]{2,}:", headerish):
+                    break
+                f = re.sub(r"^[-*•]\s*", "", f).strip().strip("`")
+                labels.extend(_clean_parts(f))
+        break
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for label in labels:
+        key = label.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(label)
+    return out
+
+
+def _maybe_apply_suggested_labels(report: str, *, dry_run: bool) -> None:
+    """Apply allowlisted suggested labels to the current issue (additive only)."""
+    triage_cfg = CONFIG.get("triage") or {}
+    if not triage_cfg.get("applySuggestedLabels", False):
+        return
+    allowlist = {
+        str(item).strip().lower()
+        for item in (triage_cfg.get("labelAllowlist") or [])
+        if str(item).strip()
+    }
+    if not allowlist:
+        return
+    suggested = _extract_suggested_labels(report)
+    if not suggested:
+        return
+    selected = [label for label in suggested if label.lower() in allowlist]
+    if not selected:
+        print(f"No allowlisted labels to apply from suggestions: {suggested}")
+        return
+    if dry_run or not os.environ.get("GITHUB_TOKEN") or not os.environ.get("GITHUB_REPOSITORY"):
+        print(f"[dry-run] would apply labels: {selected}")
+        return
+
+    number = _event_field("issue", "number") or _event_field("pull_request", "number")
+    if not number:
+        print("Skipping label apply: no issue/PR number", file=sys.stderr)
+        return
+    owner, repo = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+    token = os.environ["GITHUB_TOKEN"]
+    try:
+        _github_request(
+            "POST",
+            f"/repos/{owner}/{repo}/issues/{number}/labels",
+            token=token,
+            payload={"labels": selected},
+        )
+        print(f"Applied labels on #{number}: {', '.join(selected)}")
+    except Exception as exc:  # noqa: BLE001
+        # Non-fatal: comment already published; missing/unknown labels should not fail the job.
+        print(
+            f"Warning: failed to apply labels {selected}: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def _publish(body: str, *, marker: str, dry_run: bool) -> int:
