@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- AI review bot `1.3.0`: optionally apply allowlisted `SUGGESTED_LABELS` after issue investigation (additive only).
+- Document maintainer installation checklist for the GitHub AI bot (secret, workflow permissions, labels).
+
 ## [Unreleased]
 
 ### Repository

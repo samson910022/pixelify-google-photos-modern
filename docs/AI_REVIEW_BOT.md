@@ -9,7 +9,7 @@ It is inspired by:
 
 The bot never replaces CI or human review. Required hard gates remain `./.github/workflows/ci.yml` and the maintainer release process.
 
-Public bot comments intentionally **do not disclose model names**. Model routing is maintainer configuration only (`github_bot/config/bot_config.json`, currently bot config version `1.2.0`).
+Public bot comments intentionally **do not disclose model names**. Model routing is maintainer configuration only (`github_bot/config/bot_config.json`, currently bot config version `1.3.0`).
 
 ## What it does
 
@@ -115,6 +115,24 @@ When an issue/PR body contains image/media URLs (Markdown images, GitHub user-at
 3. Injects the OCR/UI summary into issue investigation or PR review context
 
 OCR failures are non-fatal: the run continues with an OCR error note.
+
+
+## Maintainer installation
+
+Operational checklist for enabling the bot on this repository (already applied for the canonical remote):
+
+1. **Workflow present** — `.github/workflows/ai-review.yml` is active on `master`.
+2. **Secret** — repository secret `OPENCODE_API_KEY` (OpenCode Zen). Never commit the key. The workflow fails closed if missing.
+3. **Permissions** — keep repository default Actions token at **read**; the workflow requests only `contents: read`, `issues: write`, `pull-requests: write`. Do **not** grant `GITHUB_TOKEN` approval rights for PRs.
+4. **Labels** — create the allowlisted triage labels the bot may apply:
+   - `needs-info`, `needs-triage`, `device-specific`, `android-16`, `android-17`, `photos-version`
+   - `security`, `likely-user-setup`, `feature-request`, `support`
+   - plus standard `bug` / `documentation` / `enhancement` / …
+5. **Label apply policy** — `github_bot/config/bot_config.json` → `triage.applySuggestedLabels` (default `true`) only adds labels from `triage.labelAllowlist`. It never removes labels and never invents labels outside the allowlist.
+6. **Verify** — open a test issue or comment `/triage` on an issue; confirm a sticky `Pixelify Infinity Issue Investigation` comment appears and allowlisted labels are added.
+7. **Unit tests** — `PYTHONPATH=github_bot/src python3 -m unittest tests.test_ai_review_bot -v`
+
+Fork PRs do not receive `OPENCODE_API_KEY` (GitHub secret isolation). That is intentional.
 
 ## Local dry run
 

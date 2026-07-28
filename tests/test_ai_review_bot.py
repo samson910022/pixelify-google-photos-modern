@@ -648,6 +648,73 @@ public
         self.assertEqual(by2["android version"], "strong")
         self.assertEqual(by2["google photos context"], "strong")
 
+    def test_extract_suggested_labels_inline_and_multiline(self):
+        inline = "SUGGESTED_LABELS\nbug, needs-info, not-a-real-label"
+        # inline form with colon on same line
+        one_line = runner_mod._extract_suggested_labels(
+            "SUMMARY\nok\n\nSUGGESTED_LABELS: bug, needs-info, SECURITY\n\nRISK\nlow\n"
+        )
+        self.assertEqual(one_line, ["bug", "needs-info", "SECURITY"])
+
+        multi = runner_mod._extract_suggested_labels(
+            "SUGGESTED_LABELS\n- bug\n- needs-info\n- device-specific\n\nRISK\nlow\n"
+        )
+        self.assertEqual(multi, ["bug", "needs-info", "device-specific"])
+
+        none_labels = runner_mod._extract_suggested_labels("SUGGESTED_LABELS: none\n")
+        self.assertEqual(none_labels, [])
+
+    def test_maybe_apply_suggested_labels_allowlist_and_dry_run(self):
+        report = (
+            "CLASSIFICATION\nbug\n\n"
+            "SUGGESTED_LABELS: bug, needs-info, totally-unknown, security\n\n"
+            "RISK\nlow\n"
+        )
+        with mock.patch.dict(
+            runner_mod.CONFIG,
+            {
+                **runner_mod.CONFIG,
+                "triage": {
+                    **(runner_mod.CONFIG.get("triage") or {}),
+                    "applySuggestedLabels": True,
+                    "labelAllowlist": ["bug", "needs-info", "security"],
+                },
+            },
+            clear=False,
+        ):
+            # Force CONFIG lookup path: function reads runner_mod.CONFIG global
+            original = runner_mod.CONFIG
+            try:
+                runner_mod.CONFIG = {
+                    **original,
+                    "triage": {
+                        **(original.get("triage") or {}),
+                        "applySuggestedLabels": True,
+                        "labelAllowlist": ["bug", "needs-info", "security"],
+                    },
+                }
+                with mock.patch.dict(os.environ, {}, clear=False):
+                    # no token => dry-run style print path when dry_run True
+                    with mock.patch("builtins.print") as mocked_print:
+                        runner_mod._maybe_apply_suggested_labels(report, dry_run=True)
+                        printed = " ".join(
+                            str(call.args[0]) for call in mocked_print.call_args_list if call.args
+                        )
+                        self.assertIn("bug", printed)
+                        self.assertIn("needs-info", printed)
+                        self.assertIn("security", printed)
+                        self.assertNotIn("totally-unknown", printed)
+            finally:
+                runner_mod.CONFIG = original
+
+    def test_config_apply_labels_defaults(self):
+        cfg_path = ROOT / "github_bot" / "config" / "bot_config.json"
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        triage = cfg["triage"]
+        self.assertTrue(triage.get("applySuggestedLabels"))
+        self.assertIn("needs-info", triage.get("labelAllowlist") or [])
+        self.assertIn("android-17", triage.get("labelAllowlist") or [])
+
 
 
 if __name__ == "__main__":
