@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pixelify Infinity — 獨立維護的 Xposed 模組，可針對 Google 相簿模擬特定 Google Pixel 裝置屬性。">
+  <meta name="theme-color" content="#0b0f14">
+  <title>Pixelify Infinity — Google 相簿用 Xposed 模組</title>
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-64.png">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">跳至主要內容</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="./">
+        <img src="../assets/img/icon-64.png" width="36" height="36" alt="">
+        <span>Pixelify Infinity</span>
+      </a>
+      <nav aria-label="主要導覽">
+        <ul class="nav-links">
+          <li><a href="#features">功能</a></li>
+          <li><a href="#requirements">需求</a></li>
+          <li><a href="#install">安裝</a></li>
+          <li><a href="#download">下載</a></li>
+          <li><a href="#legacy">舊版遷移</a></li>
+        </ul>
+      </nav>
+      <nav class="lang-switch" aria-label="語言">
+        <a href="../" hreflang="en" lang="en">EN</a>
+        <a href="./" aria-current="page" hreflang="zh-Hant" lang="zh-Hant">繁中</a>
+        <a href="../zh-CN/" hreflang="zh-Hans" lang="zh-Hans">简中</a>
+        <a href="../ja/" hreflang="ja" lang="ja">日本語</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-banner">
+        <img
+          src="../assets/img/banner.png"
+          width="1280"
+          height="714"
+          alt="Pixelify Infinity 橫幅"
+        >
+      </div>
+      <div class="hero-copy">
+        <h1 id="hero-title">Pixelify Infinity</h1>
+        <p class="tagline">
+          獨立維護的 Xposed 模組，可針對 <strong>Google 相簿（Google Photos）</strong>
+          模擬特定 Google Pixel 裝置屬性與系統功能旗標。
+          使用現代 libxposed API，並擁有獨立的套件名稱、版本歷史與簽署身分。
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/samson910022/pixelify-google-photos-modern/releases">
+            GitHub Releases
+          </a>
+          <a class="btn btn-secondary" href="https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases">
+            Xposed Modules Repo
+          </a>
+          <a class="btn btn-ghost" href="https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos">
+            LSPosed 列表
+          </a>
+        </div>
+      </div>
+
+      <aside class="callout callout-important" role="note" aria-label="重要聲明">
+        <strong class="label">重要</strong>
+        <p>
+          本專案<strong>與 Google、Google 相簿、Pixel、LSPosed 或原始上游維護者沒有隸屬或背書關係</strong>。
+          功能可能隨 Google 相簿、伺服器端設定、帳戶、地區、裝置或 Android 更新而改變。
+          使用風險由使用者自行承擔。
+        </p>
+      </aside>
+    </section>
+
+    <section id="features" class="wrap" aria-labelledby="features-title">
+      <h2 id="features-title">功能</h2>
+      <ul class="feature-list">
+        <li>模擬特定 Google Pixel 裝置設定檔。</li>
+        <li>模擬與 Pixel 相關的系統功能旗標。</li>
+        <li>提供從 Pixel XL 到較新 Pixel 世代的多種裝置設定檔。</li>
+        <li>可選擇模擬相容的 Android 版本。</li>
+        <li>覆寫 ROM 內建的 Pixel feature level。</li>
+        <li>透過進階設定個別選擇功能旗標。</li>
+        <li>匯入、匯出及分享模組設定。</li>
+      </ul>
+    </section>
+
+    <section id="requirements" class="wrap" aria-labelledby="requirements-title">
+      <h2 id="requirements-title">系統需求</h2>
+      <ul class="req-list">
+        <li>Android 8.0（API 26）以上。</li>
+        <li>Root 權限。</li>
+        <li>支援現代 libxposed API 101 的 Xposed 環境，例如相容的 LSPosed 設定。</li>
+        <li>Google 相簿（<code>com.google.android.apps.photos</code>）。</li>
+      </ul>
+      <p class="note">
+        此現代 API 版本<strong>不支援</strong>舊式 XposedBridge／EdXposed 環境。
+        請僅將模組作用範圍設為 <strong>Google 相簿</strong>。
+      </p>
+    </section>
+
+    <section id="install" class="wrap" aria-labelledby="install-title">
+      <h2 id="install-title">安裝</h2>
+      <ol class="steps">
+        <li>
+          從本 repository 的
+          <a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">Releases</a>
+          頁面（或官方 Xposed Modules Repository 鏡像）下載 APK。
+        </li>
+        <li>安裝 APK。</li>
+        <li>在 Xposed 模組管理器啟用 <strong>Pixelify Infinity</strong>。</li>
+        <li>僅將模組作用範圍設為 <strong>Google 相簿</strong>。</li>
+        <li>強制停止並重新開啟 Google 相簿；若模組管理器要求，請重新啟動裝置。</li>
+      </ol>
+      <p class="note">
+        安裝前請確認簽署者指紋與
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/docs/RELEASE_SIGNING.md">docs/RELEASE_SIGNING.md</a>
+        公布的內容相符。正式版本使用固定簽署憑證；私密簽署金鑰不會放入此 repository。
+      </p>
+    </section>
+
+    <section id="download" class="wrap" aria-labelledby="download-title">
+      <h2 id="download-title">官方下載管道</h2>
+      <p class="lead">請只從下列管道安裝。本站不託管 APK 檔案。</p>
+      <div class="card-grid">
+        <article class="card">
+          <h3>原始倉庫 Releases</h3>
+          <p>
+            <a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">
+              GitHub Releases
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>Xposed Modules Repo</h3>
+          <p>
+            <a href="https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases">
+              官方鏡像 Releases
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>LSPosed 模組列表</h3>
+          <p>
+            <a href="https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos">
+              modules.lsposed.org
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>原始碼</h3>
+          <p>
+            <a href="https://github.com/samson910022/pixelify-google-photos-modern">
+              專案倉庫
+            </a>
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="legacy" class="wrap" aria-labelledby="legacy-title">
+      <h2 id="legacy-title">從舊版專案轉移</h2>
+      <p>
+        本專案使用獨立 application ID：
+        <code>io.github.samson910022.pixelifyphotos</code>。
+      </p>
+      <p>
+        它不是 <code>balti.xposed.pixelifygooglephotos</code> 的原地升級，而是<strong>獨立應用程式</strong>，兩者可以共存。
+        轉移時必須重新啟用新模組並設定作用範圍，設定資料不會自動移轉。
+      </p>
+      <p class="note">
+        完整維護及歸屬說明請見
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/FORK_NOTICE.md">FORK_NOTICE.md</a>。
+      </p>
+    </section>
+
+    <section id="privacy" class="wrap" aria-labelledby="privacy-title">
+      <h2 id="privacy-title">隱私</h2>
+      <p>
+        Pixelify Infinity 不包含分析或廣告 SDK。App 使用網路權限向設定的
+        GitHub／Xposed 發佈來源檢查更新及開啟專案連結。模組設定及匯出的設定檔由使用者自行控制。
+      </p>
+      <p class="note">
+        詳細資訊：
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/PRIVACY.md">PRIVACY.md</a>
+        · 安全政策：
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/SECURITY.md">SECURITY.md</a>
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer" aria-label="網站資訊">
+    <div class="wrap">
+      <ul class="footer-links">
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern">原始碼</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">Releases</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/docs/RELEASE_SIGNING.md">簽章驗證</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/PRIVACY.md">隱私</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/SECURITY.md">安全</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/LICENSE">MIT 授權</a></li>
+      </ul>
+      <p>
+        以 <strong>MIT License</strong> 授權。衍生自
+        <a href="https://github.com/BaltiApps/Pixelify-Google-Photos">BaltiApps/Pixelify-Google-Photos</a>。
+      </p>
+      <p class="tiny">
+        與 Google、Google 相簿、Pixel、LSPosed 或上游維護者無關。
+        Google 相簿、Google Pixel、Android 及相關名稱為其各自權利人的商標。
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
