@@ -2,6 +2,8 @@
 
 [English](../README.md) · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+**项目网站（GitHub Pages，启用后）：** [https://samson910022.github.io/pixelify-google-photos-modern/zh-CN/](https://samson910022.github.io/pixelify-google-photos-modern/zh-CN/)
+
 ![Pixelify Infinity banner](../branding/banner.png)
 
 > 本文档是简体中文翻译；如有差异，以[英文 README](../README.md)为准。
@@ -45,6 +47,9 @@ Pixelify Infinity 是一个独立维护的 Xposed 模块，可为 Google 相册�
 - 源码仓库 Releases：https://github.com/samson910022/pixelify-google-photos-modern/releases
 - Xposed 镜像 Releases：https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases
 - 官方网站列表：https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos
+- 项目落地页（GitHub Pages，启用后）：https://samson910022.github.io/pixelify-google-photos-modern/zh-CN/
+
+落地页为多语言产品介绍（源码在 `site/`），只链接到官方下载渠道，**不**托管 APK。
 
 安装前请阅读[版本验证](#版本验证)。
 

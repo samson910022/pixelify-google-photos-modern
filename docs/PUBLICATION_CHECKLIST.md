@@ -44,7 +44,13 @@ For this project:
 - Review repository description, topics, social preview, funding links, contact links, and license detection.
 - Confirm Actions permissions are read-only by default and that workflows do not receive a permanent release key.
 - Review Dependabot and security-alert settings in the GitHub UI.
-- Confirm no Pages deployment, package publication, webhook, deploy key, environment secret, or installed GitHub App has broader access than required.
+- Confirm package publication, webhook, deploy key, environment secret, or installed GitHub App access is no broader than required.
+- For GitHub Pages (optional public landing):
+  - Source tree is `site/` only; workflow is `.github/workflows/pages.yml`.
+  - Confirm the workflow uses least privilege (`contents: read`, `pages: write`, `id-token: write`), path filters, and **no** release-signing secrets.
+  - Confirm `site/` does not contain APK/AAB files, private keys, or analytics trackers.
+  - Enabling Settings → Pages → GitHub Actions is a deliberate step; until then the `github.io` URL may 404 even if the workflow file is merged.
+  - After enabling, run a deploy and inspect the live landing as a logged-out visitor (language switcher, download CTAs, 404 under the project base path).
 
 ## 5. Prepare GitHub and Xposed distribution
 
@@ -52,7 +58,8 @@ For this project:
 - Build and verify the GitHub release from the exact public commit and tag.
 - Publish checksums and the signer fingerprint with release notes.
 - Follow `docs/XPOSED_REPOSITORY.md` for the separate mirror and re-verify its downloaded APK.
-- Confirm support, privacy, security, and translated README links render correctly on the public default branch.
+- Confirm support, privacy, security, translated README, and project-website links render correctly on the public default branch.
+- Confirm the project landing (when Pages is enabled) still points only at official download channels and does not host APKs.
 
 ## 6. Separate visibility approval
 

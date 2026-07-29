@@ -2,6 +2,8 @@
 
 [English](../README.md) · [繁體中文](README.zh-TW.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md)
 
+**プロジェクトサイト（GitHub Pages、有効化後）:** [https://samson910022.github.io/pixelify-google-photos-modern/ja/](https://samson910022.github.io/pixelify-google-photos-modern/ja/)
+
 ![Pixelify Infinity banner](../branding/banner.png)
 
 > この文書は日本語訳です。内容に差異がある場合は、[英語版 README](../README.md) が優先されます。
@@ -45,6 +47,9 @@ Pixelify Infinity は、Google フォトに対して一部の Google Pixel 端�
 - ソースリポジトリの Releases: https://github.com/samson910022/pixelify-google-photos-modern/releases
 - Xposed ミラーの Releases: https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases
 - 公式サイト掲載ページ: https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos
+- プロジェクト向けランディング（GitHub Pages、有効化後）: https://samson910022.github.io/pixelify-google-photos-modern/ja/
+
+ランディングは多言語の製品紹介ページです（ソースは `site/`）。公式のダウンロード経路へのリンクのみで、APK はホストしません。
 
 インストール前に[リリースの検証](#リリースの検証)を確認してください。
 

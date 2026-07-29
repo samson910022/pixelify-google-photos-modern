@@ -8,6 +8,9 @@
 
 ### Documentation
 
+- Added a multilingual static product landing under `site/` (EN / zh-TW / zh-CN / ja) and a prepared GitHub Pages deploy workflow (`.github/workflows/pages.yml`). Pages is not enabled in repository settings until a separate maintainer step.
+- Linked the future project website from `README.md`, translated READMEs, and `SUPPORT.md`. The landing links to official download channels only and does not host APK files.
+- Documented `site/` layout and Pages workflow notes in `CONTRIBUTING.md` and `AGENTS.md`; updated `docs/PUBLICATION_CHECKLIST.md` for least-privilege Pages deploy.
 - Document maintainer installation checklist for the GitHub AI bot (secret, workflow permissions, distinct triage labels, label allowlist).
 - Documented the advisory GitHub AI bot for **issue investigation** vs **PR code review**, including fail-closed quality gates, thread-aware triage, slash commands, OCR, and maintainer dry-run/test instructions (`docs/AI_REVIEW_BOT.md`, `github_bot/README.md`, `CONTRIBUTING.md`, `SUPPORT.md`, `AGENTS.md`).
 
