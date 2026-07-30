@@ -100,7 +100,9 @@
       </ul>
       <p class="note">
         此现代 API 版本<strong>不支持</strong>旧式 XposedBridge／EdXposed 环境。
-        请仅将模块作用域设置为 <strong>Google 相册</strong>。
+        请将 <strong>Google 相册</strong>纳入模块作用域（<strong>推荐</strong>）。其他 App 属于高级且不支持，并有风险。
+        <strong>请勿</strong>将 Play 服务、Play 商店、系统 UI／设置或银行／支付 App 纳入作用域
+        （即使勾选，模块也会 soft-denylist 其中若干项）。
       </p>
     </section>
 
@@ -114,8 +116,12 @@
         </li>
         <li>安装 APK。</li>
         <li>在 Xposed 模块管理器中启用 <strong>Pixelify Infinity</strong>。</li>
-        <li>仅将模块作用域设置为 <strong>Google 相册</strong>。</li>
-        <li>强制停止并重新打开 Google 相册；如果模块管理器要求，请重启设备。</li>
+        <li>
+          将 <strong>Google 相册</strong>纳入模块作用域（<strong>推荐</strong>）。
+          允许多 App 作用域，但其他 App 属于高级且不支持。
+        </li>
+        <li><strong>请勿</strong>将 Play 服务、Play 商店、系统 UI／设置或银行／支付 App 纳入作用域。</li>
+        <li>强制停止并重新打开 Google 相册（以及任何其他已纳入作用域的 App）；如果模块管理器要求，请重启设备。</li>
       </ol>
       <p class="note">
         安装前请确认签名者指纹与

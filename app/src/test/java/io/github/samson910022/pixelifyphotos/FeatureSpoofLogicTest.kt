@@ -210,10 +210,14 @@ class FeatureSpoofLogicTest {
     fun `buildFeatureLists with null selection uses default features`() {
         val (spoof, notToSpoof, passThrough) = buildFeatureLists(null, true)
         assertFalse(passThrough)
-        // Default is Pixel 2020 = 7 levels
+        // Default device is Pixel XL → feature level Pixel 2016 only
         assertTrue("Should have spoof flags", spoof.isNotEmpty())
-        // Pixel 2016 has 5 flags, 2017-2020 have 2 each = 5 + 6*2 = 17
-        assertEquals(17, spoof.size)
+        // Pixel 2016 has 5 flags
+        assertEquals(5, spoof.size)
+        assertEquals(
+            DeviceProps.defaultFeatures.flatMap { it.featureFlags }.toSet(),
+            spoof,
+        )
         assertTrue(notToSpoof.isNotEmpty())
     }
 
@@ -318,13 +322,19 @@ class FeatureSpoofLogicTest {
     // =========================================================================
 
     @Test
-    fun `full flow - default selection spoofs Pixel 2020 and earlier, hides later`() {
+    fun `full flow - default selection spoofs Pixel 2016 only, hides later`() {
         val (spoof, notToSpoof, passThrough) = buildFeatureLists(null, true)
         assertFalse(passThrough)
 
-        // A Pixel 2020 flag should be spoofed as TRUE
+        // A Pixel 2016 / XL experience flag should be spoofed as TRUE
         assertEquals(
             SpoofDecision.TRUE,
+            decideSpoof("com.google.android.feature.PIXEL_EXPERIENCE", true, spoof, notToSpoof, true, passThrough)
+        )
+
+        // A Pixel 2020 flag is above default and should be spoofed as FALSE (hidden)
+        assertEquals(
+            SpoofDecision.FALSE,
             decideSpoof("com.google.android.feature.PIXEL_2020_EXPERIENCE", true, spoof, notToSpoof, true, passThrough)
         )
 

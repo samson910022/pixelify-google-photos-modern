@@ -34,38 +34,46 @@ class Utils {
     }
 
     /**
-     * Used to force close an app.
-     *
-     * Uses root to stop an application.
+     * Force-stop each package via root. Used for Photos plus other LSPosed-scoped apps.
      */
-    fun forceStopPackage(packageName: String, context: Context) {
-        require(packageName.matches(Regex("^[a-zA-Z0-9._]+$"))) { "Invalid package name: $packageName" }
+    fun forceStopPackages(packageNames: Collection<String>, context: Context) {
+        val packages = packageNames
+            .filter { SpoofedPackageTracker.isValidPackageName(it) }
+            .distinct()
+        if (packages.isEmpty()) return
+
         Toast.makeText(context, R.string.killing_please_wait, Toast.LENGTH_SHORT).show()
 
         Thread({
-            var process: Process? = null
-            val stopped = try {
-                val runningProcess = ProcessBuilder("su", "-c", "am force-stop $packageName")
-                    .redirectErrorStream(true)
-                    .start()
-                process = runningProcess
-                val completed = runningProcess.waitFor(5, TimeUnit.SECONDS)
-                if (!completed) {
-                    runningProcess.destroyForcibly()
+            var firstFailed: String? = null
+            for (packageName in packages) {
+                var process: Process? = null
+                val stopped = try {
+                    val runningProcess = ProcessBuilder("su", "-c", "am force-stop $packageName")
+                        .redirectErrorStream(true)
+                        .start()
+                    process = runningProcess
+                    val completed = runningProcess.waitFor(5, TimeUnit.SECONDS)
+                    if (!completed) {
+                        runningProcess.destroyForcibly()
+                        false
+                    } else {
+                        runningProcess.exitValue() == 0
+                    }
+                } catch (_: Exception) {
+                    process?.destroyForcibly()
                     false
-                } else {
-                    runningProcess.exitValue() == 0
                 }
-            } catch (_: Exception) {
-                process?.destroyForcibly()
-                false
+                if (!stopped && firstFailed == null) {
+                    firstFailed = packageName
+                }
             }
 
-            if (!stopped) {
+            if (firstFailed != null) {
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(context, R.string.failed_to_stop_package, Toast.LENGTH_SHORT).show()
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.fromParts("package", packageName, null)
+                        data = Uri.fromParts("package", firstFailed, null)
                     }
                     context.startActivity(intent)
                 }

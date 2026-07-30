@@ -18,7 +18,7 @@ This checklist is for a future, separately authorized public launch. Completing 
 - Verify the APK and AAB signatures against the fixed certificate in `docs/RELEASE_SIGNING.md`.
 - If the build workspace exposes permissive or emulated file modes, copy the final artifacts to an owner-only directory on a trusted local filesystem and repeat signature and checksum verification there before upload.
 - Record SHA-256 checksums for the exact files that will be uploaded, then verify the downloaded assets again after upload.
-- Confirm the APK contains the expected Xposed entry point and only the documented Google Photos scope.
+- Confirm the APK contains the expected Xposed entry point, `staticScope=false`, and recommended `scope.list` still listing Google Photos only.
 
 ## 3. Complete Android developer verification
 

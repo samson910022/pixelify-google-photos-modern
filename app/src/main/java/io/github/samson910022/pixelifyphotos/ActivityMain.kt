@@ -235,10 +235,16 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         }
 
         /**
-         * See [Utils.forceStopPackage].
+         * Force-stop Photos plus other LSPosed-scoped packages (via service scope list),
+         * filtered by [SpoofedPackageTracker] / [ScopePolicy].
          */
         forceStopGooglePhotos.setOnClickListener {
-            utils.forceStopPackage(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, this)
+            val scopePackages = try {
+                App.mService?.scope?.toSet()
+            } catch (_: Throwable) {
+                null
+            }
+            utils.forceStopPackages(SpoofedPackageTracker.packagesToForceStop(scopePackages), this)
         }
 
         /**

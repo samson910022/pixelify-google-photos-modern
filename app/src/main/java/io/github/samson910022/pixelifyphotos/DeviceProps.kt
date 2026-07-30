@@ -111,6 +111,12 @@ object DeviceProps {
             "com.google.android.feature.PIXEL_2024_EXPERIENCE",
             "com.google.android.apps.photos.PIXEL_2024_PRELOAD",
         ),
+
+        Features("Pixel 2025", // Pixel 10 series
+            "com.google.android.feature.PIXEL_2025_EXPERIENCE",
+            // MED/LOW confidence: historical PRELOAD pairing; not factory-confirmed
+            "com.google.android.apps.photos.PIXEL_2025_PRELOAD",
+        ),
     )
 
     /**
@@ -472,15 +478,90 @@ object DeviceProps {
             "Pixel 9a", hashMapOf(
                 Pair("BRAND", "google"),
                 Pair("MANUFACTURER", "Google"),
-                Pair("DEVICE", "tehua"),
-                Pair("PRODUCT", "tehua"),
+                Pair("DEVICE", "tegu"),
+                Pair("PRODUCT", "tegu"),
                 Pair("MODEL", "Pixel 9a"),
-                Pair("FINGERPRINT", "google/tehua/tehua:16/BP1A.250405.002/13115780:user/release-keys"),
-                Pair("ID", "BP1A.250405.002"),
-                Pair("INCREMENTAL", "13115780"),
-                Pair("SECURITY_PATCH", "2025-04-05"),
+                // Cited A16 tegu sample (OpenPhone/Lineage / research). SECURITY_PATCH omitted (no cited date for this build).
+                Pair("FINGERPRINT", "google/tegu/tegu:16/BP4A.260105.004.E1/14587043:user/release-keys"),
+                Pair("ID", "BP4A.260105.004.E1"),
+                Pair("INCREMENTAL", "14587043"),
             ),
             "Pixel 2024",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        // Pixel 10 series — Android 16 launch train BD3A.250721.001 (Pixel-Props / research)
+        DeviceEntries(
+            "Pixel 10", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "frankel"),
+                Pair("PRODUCT", "frankel"),
+                Pair("MODEL", "Pixel 10"),
+                Pair("FINGERPRINT", "google/frankel/frankel:16/BD3A.250721.001/13808258:user/release-keys"),
+                Pair("ID", "BD3A.250721.001"),
+                Pair("INCREMENTAL", "13808258"),
+                Pair("SECURITY_PATCH", "2025-08-05"),
+            ),
+            "Pixel 2025",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        DeviceEntries(
+            "Pixel 10 Pro", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "blazer"),
+                Pair("PRODUCT", "blazer"),
+                Pair("MODEL", "Pixel 10 Pro"),
+                Pair("FINGERPRINT", "google/blazer/blazer:16/BD3A.250721.001/13808258:user/release-keys"),
+                Pair("ID", "BD3A.250721.001"),
+                Pair("INCREMENTAL", "13808258"),
+                Pair("SECURITY_PATCH", "2025-08-05"),
+            ),
+            "Pixel 2025",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        DeviceEntries(
+            "Pixel 10 Pro XL", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "mustang"),
+                Pair("PRODUCT", "mustang"),
+                Pair("MODEL", "Pixel 10 Pro XL"),
+                Pair("FINGERPRINT", "google/mustang/mustang:16/BD3A.250721.001/13808258:user/release-keys"),
+                Pair("ID", "BD3A.250721.001"),
+                Pair("INCREMENTAL", "13808258"),
+                Pair("SECURITY_PATCH", "2025-08-05"),
+            ),
+            "Pixel 2025",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        // Experimental identity-only: codenames HIGH, fingerprint not cited yet — omit FP keys (no invent).
+        // deviceName is the spinner label (includes experimental); MODEL stays the real marketing string.
+        DeviceEntries(
+            "Pixel 10 Pro Fold (experimental)", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "rango"),
+                Pair("PRODUCT", "rango"),
+                Pair("MODEL", "Pixel 10 Pro Fold"),
+            ),
+            "Pixel 2025",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        DeviceEntries(
+            "Pixel 10a (experimental)", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "stallion"),
+                Pair("PRODUCT", "stallion"),
+                Pair("MODEL", "Pixel 10a"),
+            ),
+            "Pixel 2025",
             getAndroidVersionFromLabel("Android 16"),
         ),
     )
@@ -501,13 +582,14 @@ object DeviceProps {
     }
 
     /**
-     * Default name of device to spoof.
+     * Default name of device to spoof on first open / missing pref / reset.
+     * Already-saved PREF_DEVICE_TO_SPOOF is not migrated.
      */
-    val defaultDeviceName = "Pixel 5"
+    val defaultDeviceName = "Pixel XL"
 
     /**
      * Default feature level to spoof up to. Corresponds to what is expected for the device in [defaultDeviceName].
      */
-    val defaultFeatures = getFeaturesUpTo("Pixel 2020")
+    val defaultFeatures = getFeaturesUpTo("Pixel 2016")
 
 }

@@ -88,23 +88,40 @@ def aab_fingerprint(keytool: Path, jarsigner: Path, aab: Path) -> str:
     return hashlib.sha256(der).hexdigest().upper()
 
 
+def default_release_artifact(directory: Path, pattern: str) -> Path | None:
+    if not directory.is_dir():
+        return None
+    matches = sorted(p for p in directory.glob(pattern) if p.is_file())
+    if not matches:
+        return None
+    # Prefer a single clear match; if several, take the newest mtime.
+    return max(matches, key=lambda path: path.stat().st_mtime)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--apk",
         type=Path,
-        default=ROOT / "app/build/outputs/apk/release/app-release.apk",
+        default=None,
+        help="Release APK path (default: newest *.apk under app/build/outputs/apk/release/)",
     )
     parser.add_argument(
         "--aab",
         type=Path,
-        default=ROOT / "app/build/outputs/bundle/release/app-release.aab",
+        default=None,
+        help="Release AAB path (default: newest *.aab under app/build/outputs/bundle/release/)",
     )
     args = parser.parse_args()
-    apk = args.apk.resolve()
-    aab = args.aab.resolve()
-    if not apk.is_file() or not aab.is_file():
-        raise SystemExit("signed release APK and AAB are both required")
+    apk = (args.apk or default_release_artifact(ROOT / "app/build/outputs/apk/release", "*.apk"))
+    aab = (args.aab or default_release_artifact(ROOT / "app/build/outputs/bundle/release", "*.aab"))
+    if apk is None or aab is None or not apk.is_file() or not aab.is_file():
+        raise SystemExit(
+            "signed release APK and AAB are both required "
+            "(pass --apk/--aab or build :app:verifiedRelease first)"
+        )
+    apk = apk.resolve()
+    aab = aab.resolve()
 
     apksigner = android_tool("apksigner")
     keytool = java_tool("keytool")
