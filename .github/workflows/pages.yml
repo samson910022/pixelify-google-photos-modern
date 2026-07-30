@@ -1,0 +1,62 @@
+# GitHub Pages deploy for the static landing under site/
+#
+# IMPORTANT:
+# - GitHub Pages is NOT enabled in repository Settings yet.
+# - This workflow is prepared only; it will not publish until Pages is
+#   configured (Settings → Pages → Build and deployment → GitHub Actions).
+# - No secrets are required for this workflow.
+# - Do not host APKs under site/; link to Releases / Xposed only.
+#
+# Action pins (resolved 2026-07-30 via git ls-remote on each actions/* repo):
+# - Prefer commit SHAs for supply-chain hardening; version tags kept in comments.
+# - Floating major tags (@vN) can move; re-resolve SHAs when intentionally upgrading.
+
+name: Deploy GitHub Pages
+
+on:
+  # Manual run for dry checks after Pages is enabled later.
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+
+# Least privilege for static Pages deploy.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Cancel in-progress deploys of the same group (one live Pages deploy at a time).
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4 (v4.4.0)
+
+      - name: Setup Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5 (v5.0.0)
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3 (v3.0.1)
+        with:
+          # Static root is site/ (project Pages base path is handled by GitHub).
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4 (v4.0.5)

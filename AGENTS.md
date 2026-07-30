@@ -64,6 +64,16 @@ Never echo signing environment variables. Verify final artifacts with `apksigner
 - Put only non-secret signing policy and public verification information in `docs/RELEASE_SIGNING.md`.
 - English documentation is authoritative; translations must link back to it and identify themselves as translations.
 
+## GitHub Pages landing (`site/`)
+
+- Static product landing only (not a full developer docs portal). Source tree: `site/`.
+- Languages: EN (`site/index.html`), zh-TW, zh-CN, ja under `site/<locale>/index.html`.
+- Deploy workflow: `.github/workflows/pages.yml`. Least privilege; no release signing secrets; no APK artifacts in the Pages upload.
+- Enabling repository Settings → Pages is a **separate maintainer action** after merge; do not assume the public `github.io` URL is live until that step is done.
+- Do not host APKs on Pages; link to GitHub Releases / Xposed Modules Repo / LSPosed listing only.
+- Do not put bot internals, CI harness history, or private operational notes into `site/`.
+- When changing the landing, keep README / translated README / SUPPORT website links consistent if the public URL or language paths change.
+
 ## AI review bot
 
 Issue investigation may add allowlisted labels from `SUGGESTED_LABELS` when `triage.applySuggestedLabels` is enabled. Only names in `triage.labelAllowlist` are applied. Label application is additive and non-fatal.

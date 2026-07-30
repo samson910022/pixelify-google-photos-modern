@@ -2,6 +2,8 @@
 
 [English](README.md) · [繁體中文](docs/README.zh-TW.md) · [简体中文](docs/README.zh-CN.md) · [日本語](docs/README.ja.md)
 
+**Project website (GitHub Pages, once enabled):** [https://samson910022.github.io/pixelify-google-photos-modern/](https://samson910022.github.io/pixelify-google-photos-modern/)
+
 ![Pixelify Infinity banner](branding/banner.png)
 
 Pixelify Infinity is an independently maintained Xposed module that spoofs selected Google Pixel device properties and system feature flags for Google Photos. It uses the modern libxposed API and has its own package name, release history, and signing identity.
@@ -43,6 +45,9 @@ Only install releases obtained from this repository or the official Xposed Modul
 - Source releases: https://github.com/samson910022/pixelify-google-photos-modern/releases
 - Xposed mirror releases: https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases
 - Website listing: https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos
+- Project landing (GitHub Pages, once enabled): https://samson910022.github.io/pixelify-google-photos-modern/
+
+The project landing is a multilingual product page under `site/`. It links to official download channels only and does **not** host APK files.
 
 See [Release verification](#release-verification) before installing a downloaded APK.
 

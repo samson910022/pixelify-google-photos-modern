@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pixelify Infinity — independently maintained Xposed module that spoofs selected Google Pixel properties for Google Photos.">
+  <meta name="theme-color" content="#0b0f14">
+  <title>Pixelify Infinity — Xposed module for Google Photos</title>
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="apple-touch-icon" href="assets/img/icon-64.png">
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="./">
+        <img src="assets/img/icon-64.png" width="36" height="36" alt="">
+        <span>Pixelify Infinity</span>
+      </a>
+      <nav aria-label="Primary">
+        <ul class="nav-links">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#requirements">Requirements</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#download">Download</a></li>
+          <li><a href="#legacy">Legacy</a></li>
+        </ul>
+      </nav>
+      <nav class="lang-switch" aria-label="Language">
+        <a href="./" aria-current="page" hreflang="en" lang="en">EN</a>
+        <a href="zh-TW/" hreflang="zh-Hant" lang="zh-Hant">繁中</a>
+        <a href="zh-CN/" hreflang="zh-Hans" lang="zh-Hans">简中</a>
+        <a href="ja/" hreflang="ja" lang="ja">日本語</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-banner">
+        <img
+          src="assets/img/banner.png"
+          width="1376"
+          height="768"
+          alt="Pixelify Infinity banner"
+        >
+      </div>
+      <div class="hero-copy">
+        <h1 id="hero-title">Pixelify Infinity</h1>
+        <p class="tagline">
+          An independently maintained Xposed module that spoofs selected Google Pixel
+          device properties and system feature flags for <strong>Google Photos</strong>.
+          Built on the modern libxposed API, with its own package name, release history,
+          and signing identity.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/samson910022/pixelify-google-photos-modern/releases">
+            GitHub Releases
+          </a>
+          <a class="btn btn-secondary" href="https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases">
+            Xposed Modules Repo
+          </a>
+          <a class="btn btn-ghost" href="https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos">
+            LSPosed listing
+          </a>
+        </div>
+      </div>
+
+      <aside class="callout callout-important" role="note" aria-label="Important disclaimer">
+        <strong class="label">Important</strong>
+        <p>
+          This project is <strong>not affiliated with or endorsed by</strong> Google,
+          Google Photos, Pixel, LSPosed, or the original upstream maintainers.
+          Feature availability can change with Google Photos, server-side configuration,
+          account, region, device, or Android updates. Use the module at your own risk.
+        </p>
+      </aside>
+    </section>
+
+    <section id="features" class="wrap" aria-labelledby="features-title">
+      <h2 id="features-title">Features</h2>
+      <ul class="feature-list">
+        <li>Spoof selected Google Pixel device profiles.</li>
+        <li>Spoof Pixel-related system feature flags.</li>
+        <li>Choose from device profiles spanning Pixel XL through newer Pixel generations.</li>
+        <li>Optionally spoof a compatible Android version.</li>
+        <li>Override ROM-provided Pixel feature levels.</li>
+        <li>Select individual feature flags through an advanced configuration screen.</li>
+        <li>Import, export, and share module configuration.</li>
+      </ul>
+    </section>
+
+    <section id="requirements" class="wrap" aria-labelledby="requirements-title">
+      <h2 id="requirements-title">Requirements</h2>
+      <ul class="req-list">
+        <li>Android 8.0 (API 26) or later.</li>
+        <li>Root access.</li>
+        <li>
+          An Xposed environment with modern libxposed API 101 support,
+          such as a compatible LSPosed setup.
+        </li>
+        <li>Google Photos (<code>com.google.android.apps.photos</code>).</li>
+      </ul>
+      <p class="note">
+        Legacy XposedBridge / EdXposed environments are <strong>not</strong> supported
+        by this modern-API build. Scope the module to <strong>Google Photos only</strong>.
+      </p>
+    </section>
+
+    <section id="install" class="wrap" aria-labelledby="install-title">
+      <h2 id="install-title">Installation</h2>
+      <ol class="steps">
+        <li>
+          Download the APK from this repository’s
+          <a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">Releases</a>
+          page (or the official Xposed Modules Repository mirror).
+        </li>
+        <li>Install the APK.</li>
+        <li>Enable <strong>Pixelify Infinity</strong> in your Xposed module manager.</li>
+        <li>Set the module scope to <strong>Google Photos only</strong>.</li>
+        <li>
+          Force-stop and reopen Google Photos. Reboot the device if the module manager
+          requires it.
+        </li>
+      </ol>
+      <p class="note">
+        Before installing, verify the release signer fingerprint in
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/docs/RELEASE_SIGNING.md">docs/RELEASE_SIGNING.md</a>.
+        Official releases use a stable signing certificate; private keys are never
+        distributed in the repository.
+      </p>
+    </section>
+
+    <section id="download" class="wrap" aria-labelledby="download-title">
+      <h2 id="download-title">Official download channels</h2>
+      <p class="lead">
+        Only install releases from the channels below. This site does not host APK files.
+      </p>
+      <div class="card-grid">
+        <article class="card">
+          <h3>Source releases</h3>
+          <p>
+            <a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">
+              GitHub Releases
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>Xposed Modules Repo</h3>
+          <p>
+            <a href="https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases">
+              Official mirror Releases
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>LSPosed modules listing</h3>
+          <p>
+            <a href="https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos">
+              modules.lsposed.org
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>Source code</h3>
+          <p>
+            <a href="https://github.com/samson910022/pixelify-google-photos-modern">
+              Project repository
+            </a>
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="legacy" class="wrap" aria-labelledby="legacy-title">
+      <h2 id="legacy-title">Upgrading from the legacy project</h2>
+      <p>
+        This project uses the independent application ID
+        <code>io.github.samson910022.pixelifyphotos</code>.
+      </p>
+      <p>
+        It is a <strong>separate application</strong>, not an in-place upgrade of
+        <code>balti.xposed.pixelifygooglephotos</code>. The two apps may coexist.
+        When migrating, enable and scope the new module separately; settings are not
+        migrated automatically.
+      </p>
+      <p class="note">
+        See
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/FORK_NOTICE.md">FORK_NOTICE.md</a>
+        for the complete maintenance and attribution notice.
+      </p>
+    </section>
+
+    <section id="privacy" class="wrap" aria-labelledby="privacy-title">
+      <h2 id="privacy-title">Privacy</h2>
+      <p>
+        Pixelify Infinity does not include analytics or advertising SDKs. The app may
+        use network access to check configured GitHub / Xposed release metadata for
+        updates and to open project links. Module settings and exported configuration
+        remain under your control.
+      </p>
+      <p class="note">
+        Details:
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/PRIVACY.md">PRIVACY.md</a>
+        · Security policy:
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/SECURITY.md">SECURITY.md</a>
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer" aria-label="Site">
+    <div class="wrap">
+      <ul class="footer-links">
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern">Source</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">Releases</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/docs/RELEASE_SIGNING.md">Signing verification</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/PRIVACY.md">Privacy</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/SECURITY.md">Security</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/LICENSE">MIT License</a></li>
+      </ul>
+      <p>
+        Licensed under the <strong>MIT License</strong>. Derived from
+        <a href="https://github.com/BaltiApps/Pixelify-Google-Photos">BaltiApps/Pixelify-Google-Photos</a>.
+      </p>
+      <p class="tiny">
+        Not affiliated with Google, Google Photos, Pixel, LSPosed, or upstream maintainers.
+        Google Photos, Google Pixel, Android, and related names are trademarks of their
+        respective owners.
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

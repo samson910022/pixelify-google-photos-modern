@@ -1,5 +1,16 @@
 # Support
 
+## Project website
+
+A multilingual product landing lives under `site/` and is intended for GitHub Pages once enabled:
+
+- English: https://samson910022.github.io/pixelify-google-photos-modern/
+- 繁體中文: https://samson910022.github.io/pixelify-google-photos-modern/zh-TW/
+- 简体中文: https://samson910022.github.io/pixelify-google-photos-modern/zh-CN/
+- 日本語: https://samson910022.github.io/pixelify-google-photos-modern/ja/
+
+The landing summarizes install requirements and links to official GitHub / Xposed download channels only. It does **not** host APK files. Prefer the repository [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) page for downloads and verification details in [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md).
+
 ## Before requesting help
 
 1. Install the latest official release and verify its signer as described in [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md).

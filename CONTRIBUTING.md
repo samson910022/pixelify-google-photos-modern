@@ -37,7 +37,19 @@ Outputs are written below `app/build/outputs/` and are ignored by Git.
 - `app/src/main/res/` — Android resources and UI translations
 - `app/src/test/` — host-side unit tests
 - `docs/` — user translations and maintainer documentation
+- `site/` — static multilingual product landing for GitHub Pages (no APK hosting)
 - `certificates/` — public release certificate only
+
+## Project website (`site/`)
+
+The product landing under `site/` is plain static HTML/CSS (EN, zh-TW, zh-CN, ja). Keep it installer-facing: strong non-affiliation disclaimer, Google Photos-only scope, and official download links only.
+
+- Do **not** host APK/AAB files under `site/`.
+- Do **not** add analytics or third-party trackers.
+- Prefer relative asset paths so project Pages base path `/pixelify-google-photos-modern/` works.
+- English meaning is authoritative; locale pages should stay aligned with `docs/README.*.md` translations.
+- Deploy workflow: `.github/workflows/pages.yml` (prepared for GitHub Actions Pages). Enabling Pages in repository Settings is a separate maintainer step and is not implied by merging the workflow file.
+- Local preview tip: serve the repo so the site is mounted at `/pixelify-google-photos-modern/` if you need to validate `404.html` absolute paths.
 
 ## Automated review comments
 

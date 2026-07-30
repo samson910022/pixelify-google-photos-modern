@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pixelify Infinity — Google フォトに対して一部の Google Pixel 端末プロパティを偽装する、独立メンテナンスの Xposed モジュール。">
+  <meta name="theme-color" content="#0b0f14">
+  <title>Pixelify Infinity — Google フォト向け Xposed モジュール</title>
+  <link rel="icon" type="image/png" href="../assets/img/favicon.png">
+  <link rel="apple-touch-icon" href="../assets/img/icon-64.png">
+  <link rel="stylesheet" href="../assets/css/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">本文へスキップ</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="./">
+        <img src="../assets/img/icon-64.png" width="36" height="36" alt="">
+        <span>Pixelify Infinity</span>
+      </a>
+      <nav aria-label="メインナビゲーション">
+        <ul class="nav-links">
+          <li><a href="#features">機能</a></li>
+          <li><a href="#requirements">要件</a></li>
+          <li><a href="#install">インストール</a></li>
+          <li><a href="#download">ダウンロード</a></li>
+          <li><a href="#legacy">旧版からの移行</a></li>
+        </ul>
+      </nav>
+      <nav class="lang-switch" aria-label="言語">
+        <a href="../" hreflang="en" lang="en">EN</a>
+        <a href="../zh-TW/" hreflang="zh-Hant" lang="zh-Hant">繁中</a>
+        <a href="../zh-CN/" hreflang="zh-Hans" lang="zh-Hans">简中</a>
+        <a href="./" aria-current="page" hreflang="ja" lang="ja">日本語</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-banner">
+        <img
+          src="../assets/img/banner.png"
+          width="1376"
+          height="768"
+          alt="Pixelify Infinity バナー"
+        >
+      </div>
+      <div class="hero-copy">
+        <h1 id="hero-title">Pixelify Infinity</h1>
+        <p class="tagline">
+          <strong>Google フォト（Google Photos）</strong>に対して一部の Google Pixel 端末プロパティと
+          システム機能フラグを偽装する、独立メンテナンスの Xposed モジュールです。
+          Modern libxposed API を使用し、独自のパッケージ名・リリース履歴・署名 ID を持ちます。
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="https://github.com/samson910022/pixelify-google-photos-modern/releases">
+            GitHub Releases
+          </a>
+          <a class="btn btn-secondary" href="https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases">
+            Xposed Modules Repo
+          </a>
+          <a class="btn btn-ghost" href="https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos">
+            LSPosed 一覧
+          </a>
+        </div>
+      </div>
+
+      <aside class="callout callout-important" role="note" aria-label="重要な免責事項">
+        <strong class="label">重要</strong>
+        <p>
+          本プロジェクトは Google、Google フォト、Pixel、LSPosed、または元の上流メンテナーとは
+          <strong>提携しておらず、承認も受けていません</strong>。
+          機能の利用可否は、Google フォト、サーバー側の設定、アカウント、地域、端末、Android の更新によって変わる可能性があります。
+          自己責任で使用してください。
+        </p>
+      </aside>
+    </section>
+
+    <section id="features" class="wrap" aria-labelledby="features-title">
+      <h2 id="features-title">機能</h2>
+      <ul class="feature-list">
+        <li>一部の Google Pixel 端末プロファイルを偽装。</li>
+        <li>Pixel 関連のシステム機能フラグを偽装。</li>
+        <li>Pixel XL から新しい Pixel 世代までの複数の端末プロファイルを選択可能。</li>
+        <li>互換性のある Android バージョンを任意で偽装。</li>
+        <li>ROM が提供する Pixel feature level を上書き。</li>
+        <li>詳細設定で個別の機能フラグを選択。</li>
+        <li>モジュール設定のインポート、エクスポート、共有。</li>
+      </ul>
+    </section>
+
+    <section id="requirements" class="wrap" aria-labelledby="requirements-title">
+      <h2 id="requirements-title">要件</h2>
+      <ul class="req-list">
+        <li>Android 8.0（API 26）以降。</li>
+        <li>Root 権限。</li>
+        <li>Modern libxposed API 101 をサポートする Xposed 環境（互換性のある LSPosed 構成など）。</li>
+        <li>Google フォト（<code>com.google.android.apps.photos</code>）。</li>
+      </ul>
+      <p class="note">
+        この Modern API ビルドは、旧式の XposedBridge／EdXposed 環境には<strong>対応していません</strong>。
+        モジュールのスコープを <strong>Google フォトのみ</strong>に設定してください。
+      </p>
+    </section>
+
+    <section id="install" class="wrap" aria-labelledby="install-title">
+      <h2 id="install-title">インストール</h2>
+      <ol class="steps">
+        <li>
+          このリポジトリの
+          <a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">Releases</a>
+          ページ（または公式 Xposed Modules Repository ミラー）から APK をダウンロードします。
+        </li>
+        <li>APK をインストールします。</li>
+        <li>Xposed モジュールマネージャーで <strong>Pixelify Infinity</strong> を有効にします。</li>
+        <li>モジュールのスコープを <strong>Google フォトのみ</strong>に設定します。</li>
+        <li>Google フォトを強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。</li>
+      </ol>
+      <p class="note">
+        インストール前に、署名者のフィンガープリントが
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/docs/RELEASE_SIGNING.md">docs/RELEASE_SIGNING.md</a>
+        で公開されている内容と一致することを確認してください。公式リリースは固定の署名証明書を使用します。秘密署名鍵はこのリポジトリでは配布されません。
+      </p>
+    </section>
+
+    <section id="download" class="wrap" aria-labelledby="download-title">
+      <h2 id="download-title">公式ダウンロード経路</h2>
+      <p class="lead">以下の経路からのみインストールしてください。本サイトは APK をホストしません。</p>
+      <div class="card-grid">
+        <article class="card">
+          <h3>ソース Releases</h3>
+          <p>
+            <a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">
+              GitHub Releases
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>Xposed Modules Repo</h3>
+          <p>
+            <a href="https://github.com/Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos/releases">
+              公式ミラー Releases
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>LSPosed モジュール一覧</h3>
+          <p>
+            <a href="https://modules.lsposed.org/module/io.github.samson910022.pixelifyphotos">
+              modules.lsposed.org
+            </a>
+          </p>
+        </article>
+        <article class="card">
+          <h3>ソースコード</h3>
+          <p>
+            <a href="https://github.com/samson910022/pixelify-google-photos-modern">
+              プロジェクトリポジトリ
+            </a>
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="legacy" class="wrap" aria-labelledby="legacy-title">
+      <h2 id="legacy-title">旧プロジェクトからの移行</h2>
+      <p>
+        本プロジェクトは次の独立した application ID を使用します：
+        <code>io.github.samson910022.pixelifyphotos</code>。
+      </p>
+      <p>
+        <code>balti.xposed.pixelifygooglephotos</code> の上書き更新ではなく、
+        <strong>別アプリ</strong>として共存できます。
+        移行時は新しいモジュールを改めて有効化してスコープを設定してください。設定は自動移行されません。
+      </p>
+      <p class="note">
+        詳細なメンテナンスおよび帰属情報は
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/FORK_NOTICE.md">FORK_NOTICE.md</a>
+        を参照してください。
+      </p>
+    </section>
+
+    <section id="privacy" class="wrap" aria-labelledby="privacy-title">
+      <h2 id="privacy-title">プライバシー</h2>
+      <p>
+        Pixelify Infinity には分析 SDK や広告 SDK は含まれていません。アプリは、設定済みの
+        GitHub／Xposed リリース情報から更新を確認し、プロジェクトリンクを開くためにネットワーク権限を使用します。
+        モジュール設定とエクスポートした設定ファイルはユーザーが管理します。
+      </p>
+      <p class="note">
+        詳細：
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/PRIVACY.md">PRIVACY.md</a>
+        · セキュリティ方針：
+        <a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/SECURITY.md">SECURITY.md</a>
+      </p>
+    </section>
+  </main>
+
+  <footer class="site-footer" aria-label="サイト情報">
+    <div class="wrap">
+      <ul class="footer-links">
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern">ソース</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/releases">Releases</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/docs/RELEASE_SIGNING.md">署名検証</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/PRIVACY.md">プライバシー</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/SECURITY.md">セキュリティ</a></li>
+        <li><a href="https://github.com/samson910022/pixelify-google-photos-modern/blob/master/LICENSE">MIT ライセンス</a></li>
+      </ul>
+      <p>
+        <strong>MIT License</strong> のもとで提供されています。派生元：
+        <a href="https://github.com/BaltiApps/Pixelify-Google-Photos">BaltiApps/Pixelify-Google-Photos</a>。
+      </p>
+      <p class="tiny">
+        Google、Google フォト、Pixel、LSPosed、上流メンテナとは無関係です。
+        Google フォト、Google Pixel、Android、および関連する名称は、それぞれの権利者の商標です。
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
