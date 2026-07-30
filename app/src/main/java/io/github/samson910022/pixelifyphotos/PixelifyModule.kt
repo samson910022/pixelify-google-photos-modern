@@ -17,53 +17,71 @@ class PixelifyModule : XposedModule() {
     /**
      * Early entry (closest to legacy handleLoadPackage). Apply Build spoof +
      * SystemProperties hooks as soon as the package class loader exists.
+     *
+     * Multi-app Option B: trust LSPosed scope for any first package, then apply
+     * soft [ScopePolicy] denylist (skip spoof, still allow module load).
      */
     override fun onPackageLoaded(params: XposedModuleInterface.PackageLoadedParam) {
-        if (params.packageName != Constants.PACKAGE_NAME_GOOGLE_PHOTOS) return
         // PackageLoadedParam.isFirstPackage() is part of libxposed API 101.
         if (!params.isFirstPackage) {
             Log.v(TAG, "Skipping non-first package load for ${params.packageName}")
             return
         }
 
-        Log.d(TAG, "Google Photos package loaded. Early device spoof...")
+        if (!ScopePolicy.shouldSpoof(params.packageName)) {
+            Log.w(
+                TAG,
+                "Skipping device spoof for denylisted/invalid package: ${params.packageName}"
+            )
+            return
+        }
+
+        Log.d(TAG, "Package loaded (${params.packageName}). Early device spoof...")
         try {
             val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
             // Pass module so DeviceSpoofer can resolve module nativeLibraryDir for JNI.
             // No failure UI yet — Application/host extract may only work on package ready.
             DeviceSpoofer.hook(this, prefs, allowFailureUi = false)
-            Log.d(TAG, "DeviceSpoofer early apply done")
+            Log.d(TAG, "DeviceSpoofer early apply done for ${params.packageName}")
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed early DeviceSpoofer apply", t)
+            Log.e(TAG, "Failed early DeviceSpoofer apply for ${params.packageName}", t)
         }
     }
 
+    /**
+     * Package ready: register FeatureSpoofer + re-apply DeviceSpoofer for any
+     * non-denylisted scoped package (same global prefs as Photos).
+     */
     override fun onPackageReady(params: XposedModuleInterface.PackageReadyParam) {
-        when (params.packageName) {
-            Constants.PACKAGE_NAME_GOOGLE_PHOTOS -> {
-                Log.d(TAG, "Google Photos ready (${params.packageName}). Applying hooks...")
+        if (!ScopePolicy.shouldSpoof(params.packageName)) {
+            Log.w(
+                TAG,
+                "Skipping feature/device spoof on ready for denylisted/invalid package: ${params.packageName}"
+            )
+            return
+        }
 
-                // Each hook is individually guarded so one failure doesn't block the other.
-                try {
-                    try {
-                        FeatureSpoofer.hook(this, params.classLoader)
-                        Log.d(TAG, "FeatureSpoofer hook registered")
-                    } catch (t: Throwable) {
-                        Log.e(TAG, "Failed to register FeatureSpoofer hooks", t)
-                    }
+        Log.d(TAG, "Package ready (${params.packageName}). Applying hooks...")
 
-                    try {
-                        val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-                        // Re-apply Build writes + ensure SystemProperties hooks exist.
-                        DeviceSpoofer.hook(this, prefs)
-                        Log.d(TAG, "DeviceSpoofer hook registered")
-                    } catch (t: Throwable) {
-                        Log.e(TAG, "Failed to register DeviceSpoofer hooks", t)
-                    }
-                } catch (t: Throwable) {
-                    Log.e(TAG, "Failed to register hooks", t)
-                }
+        // Each hook is individually guarded so one failure doesn't block the other.
+        try {
+            try {
+                FeatureSpoofer.hook(this, params.classLoader)
+                Log.d(TAG, "FeatureSpoofer hook registered for ${params.packageName}")
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to register FeatureSpoofer hooks for ${params.packageName}", t)
             }
+
+            try {
+                val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
+                // Re-apply Build writes + ensure SystemProperties hooks exist.
+                DeviceSpoofer.hook(this, prefs)
+                Log.d(TAG, "DeviceSpoofer hook registered for ${params.packageName}")
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to register DeviceSpoofer hooks for ${params.packageName}", t)
+            }
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to register hooks for ${params.packageName}", t)
         }
     }
 }

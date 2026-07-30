@@ -9,7 +9,8 @@ The following values form one atomic identity and must remain consistent:
 - Display name: `Pixelify Infinity`
 - Application ID / namespace / Kotlin package: `io.github.samson910022.pixelifyphotos`
 - Xposed entry point: `io.github.samson910022.pixelifyphotos.PixelifyModule`
-- Xposed scope: `com.google.android.apps.photos`
+- Xposed recommended scope (`scope.list`): `com.google.android.apps.photos`
+- Xposed `staticScope`: `false` (multi-app allowed in manager; module soft-denylists dangerous packages)
 
 Do not restore the legacy active package `balti.xposed.pixelifygooglephotos`. Historical attribution may mention it in migration documentation.
 

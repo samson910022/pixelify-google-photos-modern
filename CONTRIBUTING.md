@@ -5,7 +5,7 @@ Thank you for helping improve Pixelify Infinity. This repository is an independe
 ## Before opening an issue
 
 - Use the latest available release.
-- Confirm the module is enabled and scoped only to Google Photos.
+- Confirm the module is enabled with Google Photos in scope (recommended; extra apps are advanced/unsupported).
 - Search existing issues and release notes.
 - Remove account identifiers, device serials, tokens, and other personal data from logs or exported configuration.
 - Follow [SECURITY.md](SECURITY.md) for vulnerabilities instead of opening a public issue.
@@ -42,7 +42,7 @@ Outputs are written below `app/build/outputs/` and are ignored by Git.
 
 ## Project website (`site/`)
 
-The product landing under `site/` is plain static HTML/CSS (EN, zh-TW, zh-CN, ja). Keep it installer-facing: strong non-affiliation disclaimer, Google Photos-only scope, and official download links only.
+The product landing under `site/` is plain static HTML/CSS (EN, zh-TW, zh-CN, ja). Keep it installer-facing: strong non-affiliation disclaimer, **Google Photos as recommended scope** (not an exclusive hard rule), multi-app risk honesty, and official download links only.
 
 - Do **not** host APK/AAB files under `site/`.
 - Do **not** add analytics or third-party trackers.

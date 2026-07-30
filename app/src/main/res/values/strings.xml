@@ -4,13 +4,13 @@
     <!-- Main screen -->
     <string name="reset">Reset</string>
     <string name="device_to_spoof">Device to spoof</string>
-    <string name="spoofs_build_and_features">Spoofs selected device properties and feature flags.</string>
+    <string name="spoofs_build_and_features">Spoofs selected device properties and feature flags. Google Photos is the recommended LSPosed scope; extra apps are advanced and unsupported. Never scope Play Services, Play Store, system UI, or banking/payment apps.</string>
     <string name="customize_feature_flags">Customize feature flags</string>
     <string name="feature_flags_changed">Feature flags changed</string>
     <string name="override_rom_feature_levels">Override ROM feature levels</string>
     <string name="override_rom_feature_levels_desc">When a lower Pixel profile is selected, ignore higher feature levels already supplied by the ROM. <b>(Recommended)</b></string>
     <string name="force_stop_google_photos">Force stop\nGoogle Photos</string>
-    <string name="module_not_enabled">The module is not active. Enable Pixelify Infinity in a compatible Xposed manager, scope it only to Google Photos, then reopen this app. Reboot if required by your Xposed manager.</string>
+    <string name="module_not_enabled">The module is not active. Enable Pixelify Infinity in a compatible Xposed manager, keep Google Photos in scope (recommended), then reopen this app. Reboot if required by your Xposed manager.</string>
     <string name="close">Close</string>
     <string name="open_google_photos">Open Google Photos</string>
     <string name="support_link">Support / report an issue</string>
@@ -22,7 +22,7 @@
     <string name="changelog">Change log</string>
 
     <!-- Configuration import/export -->
-    <string name="please_force_stop_google_photos">Force-stop and reopen Google Photos for this change to take effect.</string>
+    <string name="please_force_stop_google_photos">Force-stop and reopen Google Photos (and any other scoped apps) for this change to take effect.</string>
     <string name="export_config">Export configuration</string>
     <string name="export_config_desc">Save or share this module\'s settings as a JSON file.</string>
     <string name="export_complete">Export complete</string>

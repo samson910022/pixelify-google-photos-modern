@@ -8,7 +8,7 @@
 
 > この文書は日本語訳です。内容に差異がある場合は、[英語版 README](../README.md) が優先されます。
 
-Pixelify Infinity は、Google フォトに対して一部の Google Pixel 端末プロパティとシステム機能フラグを偽装する、独立メンテナンスの Xposed モジュールです。Modern libxposed API を使用し、独自のパッケージ名、リリース履歴、署名 ID を持ちます。
+Pixelify Infinity は、一部の Google Pixel 端末プロパティとシステム機能フラグを偽装する、独立メンテナンスの Xposed モジュールです。**Google フォトが推奨の LSPosed スコープです。** 追加でスコープしたアプリは高度／非サポートです。Modern libxposed API を使用し、独自のパッケージ名、リリース履歴、署名 ID を持ちます。
 
 > [!IMPORTANT]
 > 本プロジェクトは Google、Google フォト、Pixel、LSPosed、または元の上流メンテナーとは提携しておらず、承認も受けていません。機能の利用可否は、Google フォト、サーバー側の設定、アカウント、地域、端末、Android の更新によって変わる可能性があります。自己責任で使用してください。
@@ -17,7 +17,9 @@ Pixelify Infinity は、Google フォトに対して一部の Google Pixel 端�
 
 - 一部の Google Pixel 端末プロファイルを偽装。
 - Pixel 関連のシステム機能フラグを偽装。
-- Pixel XL から新しい Pixel 世代までの複数の端末プロファイルを選択可能。
+- Pixel XL から Pixel 10 シリーズまでの複数の端末プロファイルを選択可能（実験的な Pixel 10 Pro Fold／Pixel 10a の identity-only エントリを含む）。
+- 初回起動時の既定は **Pixel XL**（保存済み設定は自動移行しません）。
+- Pixel 2025 の機能偽装には高信頼の experience フラグが含まれます。`PIXEL_2025_PRELOAD` は **MED/LOW** 信頼（歴史的 PRELOAD 組み合わせ・工場確認なし）で、効果がない場合があります。
 - 互換性のある Android バージョンを任意で偽装。
 - ROM が提供する Pixel feature level を上書き。
 - 詳細設定で個別の機能フラグを選択。
@@ -39,8 +41,9 @@ Pixelify Infinity は、Google フォトに対して一部の Google Pixel 端�
 1. このリポジトリの [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) ページから APK をダウンロードします。
 2. APK をインストールします。
 3. Xposed モジュールマネージャーで **Pixelify Infinity** を有効にします。
-4. モジュールのスコープを **Google フォトのみ**に設定します。
-5. Google フォトを強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。
+4. モジュールのスコープに **Google フォト**を含めます（**推奨**）。マルチアプリ スコープは可能ですが、追加アプリは高度／非サポートでリスクがあります。
+5. Play サービス、Play ストア、システム UI／設定、銀行／決済アプリは **スコープしないでください**（選択してもモジュールが soft-denylist する項目があります）。
+6. Google フォト（およびスコープした他アプリ）を強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。
 
 上記リポジトリ、または公式 Xposed Modules Repository ミラー以外から取得した APK はインストールしないでください。
 
@@ -81,8 +84,8 @@ Pixelify Infinity には分析 SDK や広告 SDK は含まれていません。�
 
 問題を報告する前に：
 
-1. モジュールが有効で、スコープが Google フォトのみに設定されていることを確認します。
-2. Google フォトを強制停止して再度開きます。
+1. モジュールが有効で、Google フォトがスコープに含まれていることを確認します（推奨）。
+2. Google フォト（およびスコープした他アプリ）を強制停止して再度開きます。
 3. 診断が必要な場合のみ詳細ログを有効にして問題を再現します。
 4. ログを共有する前に、アカウント識別情報などの個人情報を削除します。
 5. 既存の [issues](https://github.com/samson910022/pixelify-google-photos-modern/issues) を検索します。

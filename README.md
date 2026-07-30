@@ -6,7 +6,7 @@
 
 ![Pixelify Infinity banner](branding/banner.png)
 
-Pixelify Infinity is an independently maintained Xposed module that spoofs selected Google Pixel device properties and system feature flags for Google Photos. It uses the modern libxposed API and has its own package name, release history, and signing identity.
+Pixelify Infinity is an independently maintained Xposed module that spoofs selected Google Pixel device properties and system feature flags. **Google Photos is the recommended LSPosed scope.** Extra scoped apps are advanced and unsupported. It uses the modern libxposed API and has its own package name, release history, and signing identity.
 
 > [!IMPORTANT]
 > This project is not affiliated with or endorsed by Google, Google Photos, Pixel, LSPosed, or the original upstream maintainers. Feature availability can change with Google Photos, server-side configuration, account, region, device, or Android updates. Use the module at your own risk.
@@ -15,7 +15,9 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 
 - Spoof selected Google Pixel device profiles.
 - Spoof Pixel-related system feature flags.
-- Choose from device profiles spanning Pixel XL through newer Pixel generations.
+- Choose from device profiles spanning Pixel XL through the Pixel 10 series (including experimental Pixel 10 Pro Fold / Pixel 10a identity-only entries).
+- First open defaults to **Pixel XL** (existing saved preferences are not migrated).
+- Pixel 2025 feature spoof includes high-confidence experience flags; `PIXEL_2025_PRELOAD` is **MED/LOW** confidence (historical pairing, not factory-confirmed) and may be a no-op.
 - Optionally spoof a compatible Android version.
 - Override ROM-provided Pixel feature levels.
 - Select individual feature flags through an advanced configuration screen.
@@ -37,8 +39,9 @@ Legacy XposedBridge/EdXposed environments are not supported by this modern-API b
 1. Download the APK from this repository's [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) page.
 2. Install the APK.
 3. Enable **Pixelify Infinity** in your Xposed module manager.
-4. Set the module scope to **Google Photos** only.
-5. Force-stop and reopen Google Photos. Reboot the device if the module manager requires it.
+4. Keep **Google Photos** in the module scope (**recommended**). The module metadata allows multi-app scope, but extra apps are advanced/unsupported and carry risk.
+5. Do **not** scope Play Services, Play Store, system UI/settings, or banking/payment apps (the module soft-denylists several of these even if selected).
+6. Force-stop and reopen Google Photos (and any other scoped apps). Reboot the device if the module manager requires it.
 
 Only install releases obtained from this repository or the official Xposed Modules Repository mirror:
 
@@ -79,8 +82,8 @@ See [PRIVACY.md](PRIVACY.md) for details.
 
 Before reporting a problem:
 
-1. Confirm that the module is enabled and scoped only to Google Photos.
-2. Force-stop and reopen Google Photos.
+1. Confirm that the module is enabled and that Google Photos is in scope (recommended).
+2. Force-stop and reopen Google Photos (and any other scoped apps).
 3. Reproduce the issue with verbose logging enabled only when diagnostics are needed.
 4. Remove account identifiers and other personal information from logs.
 5. Search existing [issues](https://github.com/samson910022/pixelify-google-photos-modern/issues).

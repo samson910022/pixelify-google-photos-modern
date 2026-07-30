@@ -8,7 +8,7 @@
 
 > 本文件是繁體中文翻譯；若內容有差異，以[英文 README](../README.md)為準。
 
-Pixelify Infinity 是獨立維護的 Xposed 模組，可針對 Google 相簿模擬特定 Google Pixel 裝置屬性及系統功能旗標。本專案使用現代 libxposed API，並有獨立的套件名稱、版本歷史與簽署身分。
+Pixelify Infinity 是獨立維護的 Xposed 模組，可模擬特定 Google Pixel 裝置屬性及系統功能旗標。**Google 相簿是建議的 LSPosed 作用範圍。** 其他已納入作用範圍的 App 屬進階且不支援。本專案使用現代 libxposed API，並有獨立的套件名稱、版本歷史與簽署身分。
 
 > [!IMPORTANT]
 > 本專案與 Google、Google 相簿、Pixel、LSPosed 或原始上游維護者沒有隸屬或背書關係。功能可能隨 Google 相簿、伺服器端設定、帳戶、地區、裝置或 Android 更新而改變。使用風險由使用者自行承擔。
@@ -17,7 +17,9 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可針對 Google 相簿模�
 
 - 模擬特定 Google Pixel 裝置設定檔。
 - 模擬與 Pixel 相關的系統功能旗標。
-- 提供從 Pixel XL 到較新 Pixel 世代的多種裝置設定檔。
+- 提供從 Pixel XL 到 Pixel 10 系列的多種裝置設定檔（含實驗性 Pixel 10 Pro Fold／Pixel 10a 身分-only 項目）。
+- 首次開啟預設為 **Pixel XL**（已儲存的偏好設定不會自動遷移）。
+- Pixel 2025 功能模擬含高信心 experience 旗標；`PIXEL_2025_PRELOAD` 為 **MED/LOW** 信心（歷史 PRELOAD 配對、非工廠確認），可能無效。
 - 可選擇模擬相容的 Android 版本。
 - 覆寫 ROM 內建的 Pixel feature level。
 - 透過進階設定個別選擇功能旗標。
@@ -39,8 +41,9 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可針對 Google 相簿模�
 1. 從本 repository 的 [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) 頁面下載 APK。
 2. 安裝 APK。
 3. 在 Xposed 模組管理器啟用 **Pixelify Infinity**（無限解鎖）。
-4. 僅將模組作用範圍設為 **Google 相簿**。
-5. 強制停止並重新開啟 Google 相簿；若模組管理器要求，請重新啟動裝置。
+4. 將 **Google 相簿**納入模組作用範圍（**建議**）。模組允許多 App 作用範圍，但其他 App 屬進階且不支援，並有風險。
+5. **請勿**將 Play 服務、Play 商店、系統 UI／設定或銀行／支付 App 納入作用範圍（即使勾選，模組也會 soft-denylist 其中數項）。
+6. 強制停止並重新開啟 Google 相簿（以及任何其他已納入作用範圍的 App）；若模組管理器要求，請重新啟動裝置。
 
 請只安裝來自本 repository 或官方 Xposed Modules Repository 鏡像的版本：
 
@@ -81,8 +84,8 @@ Pixelify Infinity 不包含分析或廣告 SDK。App 使用網路權限向設定
 
 回報問題前：
 
-1. 確認模組已啟用，且作用範圍僅包含 Google 相簿。
-2. 強制停止並重新開啟 Google 相簿。
+1. 確認模組已啟用，且 Google 相簿在作用範圍內（建議）。
+2. 強制停止並重新開啟 Google 相簿（以及任何其他已納入作用範圍的 App）。
 3. 只有在需要診斷時才啟用詳細記錄並重現問題。
 4. 分享記錄前移除帳戶識別資訊及其他個人資料。
 5. 搜尋既有 [issues](https://github.com/samson910022/pixelify-google-photos-modern/issues)。
