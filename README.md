@@ -15,7 +15,7 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 
 - Spoof selected Google Pixel device profiles.
 - Spoof Pixel-related system feature flags.
-- Choose from device profiles spanning Pixel XL through the Pixel 10 series (including experimental Pixel 10 Pro Fold / Pixel 10a identity-only entries).
+- Choose from device profiles spanning Pixel XL through the Pixel 10 series (including spinner labels **Pixel 10 Pro Fold (experimental)** / **Pixel 10a (experimental)** identity-only entries).
 - First open defaults to **Pixel XL** (existing saved preferences are not migrated).
 - Pixel 2025 feature spoof includes high-confidence experience flags; `PIXEL_2025_PRELOAD` is **MED/LOW** confidence (historical pairing, not factory-confirmed) and may be a no-op.
 - Optionally spoof a compatible Android version.
@@ -41,7 +41,7 @@ Legacy XposedBridge/EdXposed environments are not supported by this modern-API b
 3. Enable **Pixelify Infinity** in your Xposed module manager.
 4. Keep **Google Photos** in the module scope (**recommended**). The module metadata allows multi-app scope, but extra apps are advanced/unsupported and carry risk.
 5. Do **not** scope Play Services, Play Store, system UI/settings, or banking/payment apps (the module soft-denylists several of these even if selected).
-6. Force-stop and reopen Google Photos (and any other scoped apps). Reboot the device if the module manager requires it.
+6. Force-stop and reopen Google Photos (and any other scoped apps). The in-app **Force-stop scoped apps** button uses the LSPosed module scope list. Reboot the device if the module manager requires it.
 
 Only install releases obtained from this repository or the official Xposed Modules Repository mirror:
 

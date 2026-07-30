@@ -69,6 +69,10 @@ val releaseStorePassword = releaseSigningValues.getValue("RELEASE_STORE_PASSWORD
 val releaseKeyAlias = releaseSigningValues.getValue("RELEASE_KEY_ALIAS")
 val releaseKeyPassword = releaseSigningValues.getValue("RELEASE_KEY_PASSWORD")
 
+// Single source for artifact base name: PixelifyInfinity-<versionName>-<buildType>.apk/.aab
+val appVersionCode = 6
+val appVersionName = "1.1.0"
+
 android {
     namespace = "io.github.samson910022.pixelifyphotos"
     compileSdk = 36
@@ -77,8 +81,8 @@ android {
         applicationId = "io.github.samson910022.pixelifyphotos"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.0.4"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         ndk {
             // Primary device ABIs + emulator.
@@ -154,6 +158,10 @@ android {
         abortOnError = true
         checkReleaseBuilds = true
     }
+}
+
+base {
+    archivesName.set("PixelifyInfinity-$appVersionName")
 }
 
 val expectedReleaseCertificateSha256 =

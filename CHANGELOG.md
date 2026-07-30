@@ -2,23 +2,30 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-30
+
 ### Added
 
 - Pixel **2025** feature level and **Pixel 10 series** device profiles (10 / 10 Pro / 10 Pro XL) with cited Android 16 launch fingerprints (`BD3A.250721.001`).
 - `PIXEL_2025_PRELOAD` is included at **MED/LOW** confidence (historical PRELOAD pairing; not factory-confirmed) and may be a no-op; experience flags remain the high-confidence path.
-- Experimental **Pixel 10 Pro Fold** (`rango`) and **Pixel 10a** (`stallion`) identity-only entries (codenames high-confidence; fingerprints omitted until cited — no invented props).
+- Experimental **Pixel 10 Pro Fold (experimental)** (`rango`) and **Pixel 10a (experimental)** (`stallion`) identity-only spinner entries (codenames high-confidence; fingerprints omitted until cited — no invented props). Build `MODEL` stays the bare marketing name.
 - Multi-app LSPosed support: `staticScope=false` with Photos still the recommended `scope.list` entry; soft denylist skips spoof for Play Services / Play Store / selected system packages even if scoped.
+- **Force-stop scoped apps** button stops Google Photos plus other packages from the LSPosed module scope (`XposedService.getScope`), after denylist/name filters.
+- Build helper `scripts/with-android-env.sh` (+ optional gitignored `scripts/env.local.sh`) so JDK 17 / Android SDK paths load reliably for local and agent shells.
+- APK/AAB base name `PixelifyInfinity-<versionName>-<buildType>` (for example `PixelifyInfinity-1.1.0-release.apk`).
 
 ### Changed
 
+- Bumped version to `1.1.0` (`versionCode 6`).
 - First-open default device spoof is **Pixel XL** (was Pixel 5). Already-saved preferences are not migrated.
-- Fixed Pixel 9a codename **`tehua` → `tegu`** with a cited Android 16 fingerprint; security patch omitted for that build (no cited date).
+- Fixed Pixel 9a codename **`tehua` → `tegu`** with a cited Android 16 fingerprint; security patch omitted for that build (no cited date). Most full device profiles still spoof `SECURITY_PATCH` when a cited value is present.
 - Module hooks any non-denylisted first package LSPosed injects (not hard-gated to Photos only).
 - AI review bot `1.3.0`: optionally apply allowlisted `SUGGESTED_LABELS` after issue investigation (additive only).
 
 ### Documentation
 
 - Documented recommended (not exclusive) Photos scope, multi-app risk, Pixel 10 series, default Pixel XL, and experimental Fold/10a honesty across README/translations/SUPPORT/CONTRIBUTING/AGENTS.
+- Documented `JAVA_HOME` vs `local.properties` `sdk.dir` and the env helper in `CONTRIBUTING.md` / `AGENTS.md`.
 - Added a multilingual static product landing under `site/` (EN / zh-TW / zh-CN / ja) and a prepared GitHub Pages deploy workflow (`.github/workflows/pages.yml`). Pages is not enabled in repository settings until a separate maintainer step.
 - Linked the future project website from `README.md`, translated READMEs, and `SUPPORT.md`. The landing links to official download channels only and does not host APK files.
 - Documented `site/` layout and Pages workflow notes in `CONTRIBUTING.md` and `AGENTS.md`; updated `docs/PUBLICATION_CHECKLIST.md` for least-privilege Pages deploy.

@@ -17,7 +17,7 @@ Pixelify Infinity は、一部の Google Pixel 端末プロパティとシステ
 
 - 一部の Google Pixel 端末プロファイルを偽装。
 - Pixel 関連のシステム機能フラグを偽装。
-- Pixel XL から Pixel 10 シリーズまでの複数の端末プロファイルを選択可能（実験的な Pixel 10 Pro Fold／Pixel 10a の identity-only エントリを含む）。
+- Pixel XL から Pixel 10 シリーズまでの複数の端末プロファイルを選択可能（スピナー表示 **Pixel 10 Pro Fold (experimental)**／**Pixel 10a (experimental)** の identity-only エントリを含む）。
 - 初回起動時の既定は **Pixel XL**（保存済み設定は自動移行しません）。
 - Pixel 2025 の機能偽装には高信頼の experience フラグが含まれます。`PIXEL_2025_PRELOAD` は **MED/LOW** 信頼（歴史的 PRELOAD 組み合わせ・工場確認なし）で、効果がない場合があります。
 - 互換性のある Android バージョンを任意で偽装。
@@ -43,7 +43,7 @@ Pixelify Infinity は、一部の Google Pixel 端末プロパティとシステ
 3. Xposed モジュールマネージャーで **Pixelify Infinity** を有効にします。
 4. モジュールのスコープに **Google フォト**を含めます（**推奨**）。マルチアプリ スコープは可能ですが、追加アプリは高度／非サポートでリスクがあります。
 5. Play サービス、Play ストア、システム UI／設定、銀行／決済アプリは **スコープしないでください**（選択してもモジュールが soft-denylist する項目があります）。
-6. Google フォト（およびスコープした他アプリ）を強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。
+6. Google フォト（およびスコープした他アプリ）を強制停止して再度開きます。アプリ内の「スコープアプリを強制停止」は LSPosed モジュールのスコープ一覧を使用します。モジュールマネージャーから要求された場合は端末を再起動します。
 
 上記リポジトリ、または公式 Xposed Modules Repository ミラー以外から取得した APK はインストールしないでください。
 

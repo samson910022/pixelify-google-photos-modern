@@ -540,8 +540,9 @@ object DeviceProps {
         ),
 
         // Experimental identity-only: codenames HIGH, fingerprint not cited yet — omit FP keys (no invent).
+        // deviceName is the spinner label (includes experimental); MODEL stays the real marketing string.
         DeviceEntries(
-            "Pixel 10 Pro Fold", hashMapOf(
+            "Pixel 10 Pro Fold (experimental)", hashMapOf(
                 Pair("BRAND", "google"),
                 Pair("MANUFACTURER", "Google"),
                 Pair("DEVICE", "rango"),
@@ -553,7 +554,7 @@ object DeviceProps {
         ),
 
         DeviceEntries(
-            "Pixel 10a", hashMapOf(
+            "Pixel 10a (experimental)", hashMapOf(
                 Pair("BRAND", "google"),
                 Pair("MANUFACTURER", "Google"),
                 Pair("DEVICE", "stallion"),

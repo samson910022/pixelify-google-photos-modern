@@ -101,7 +101,10 @@
       </ul>
       <p class="note">
         この Modern API ビルドは、旧式の XposedBridge／EdXposed 環境には<strong>対応していません</strong>。
-        モジュールのスコープを <strong>Google フォト（推奨；追加アプリは高度／非サポート）</strong>に設定してください。
+        モジュールのスコープに <strong>Google フォト</strong>を含めてください（<strong>推奨</strong>）。
+        追加アプリは高度／非サポートでリスクがあります。Play サービス、Play ストア、システム UI／設定、
+        銀行／決済アプリは<strong>スコープしないでください</strong>
+        （選択してもモジュールが soft-denylist する項目があります）。
       </p>
     </section>
 
@@ -115,8 +118,12 @@
         </li>
         <li>APK をインストールします。</li>
         <li>Xposed モジュールマネージャーで <strong>Pixelify Infinity</strong> を有効にします。</li>
-        <li>モジュールのスコープに <strong>Google フォト</strong>を含めます（<strong>推奨</strong>）。追加アプリは高度／非サポート。</li>
-        <li>Google フォトを強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。</li>
+        <li>
+          モジュールのスコープに <strong>Google フォト</strong>を含めます（<strong>推奨</strong>）。
+          マルチアプリ スコープは可能ですが、追加アプリは高度／非サポートです。
+        </li>
+        <li>Play サービス、Play ストア、システム UI／設定、銀行／決済アプリは<strong>スコープしないでください</strong>。</li>
+        <li>Google フォト（およびスコープした他アプリ）を強制停止して再度開きます。モジュールマネージャーから要求された場合は端末を再起動します。</li>
       </ol>
       <p class="note">
         インストール前に、署名者のフィンガープリントが

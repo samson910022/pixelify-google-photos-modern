@@ -17,7 +17,7 @@ Pixelify Infinity 是一个独立维护的 Xposed 模块，可模拟部分 Googl
 
 - 模拟部分 Google Pixel 设备配置。
 - 模拟与 Pixel 相关的系统功能标志。
-- 提供从 Pixel XL 到 Pixel 10 系列的多种设备配置（含实验性 Pixel 10 Pro Fold／Pixel 10a 仅身份条目）。
+- 提供从 Pixel XL 到 Pixel 10 系列的多种设备配置（含 Spinner 标签 **Pixel 10 Pro Fold (experimental)**／**Pixel 10a (experimental)** 仅身份条目）。
 - 首次打开默认 **Pixel XL**（已保存的偏好设置不会自动迁移）。
 - Pixel 2025 功能模拟含高置信 experience 标志；`PIXEL_2025_PRELOAD` 为 **MED/LOW** 置信（历史 PRELOAD 配对、非工厂确认），可能无效。
 - 可选模拟兼容的 Android 版本。
@@ -43,7 +43,7 @@ Pixelify Infinity 是一个独立维护的 Xposed 模块，可模拟部分 Googl
 3. 在 Xposed 模块管理器中启用 **Pixelify Infinity**（无限解锁）。
 4. 将 **Google 相册**纳入模块作用域（**推荐**）。模块允许多 App 作用域，但其他 App 属于高级且不支持，并有风险。
 5. **请勿**将 Play 服务、Play 商店、系统 UI／设置或银行／支付 App 纳入作用域（即使勾选，模块也会 soft-denylist 其中若干项）。
-6. 强制停止并重新打开 Google 相册（以及任何其他已纳入作用域的 App）；如果模块管理器要求，请重启设备。
+6. 强制停止并重新打开 Google 相册（以及任何其他已纳入作用域的 App）。应用内「强制停止作用范围 App」会依据 LSPosed 模块作用域列表处理；如果模块管理器要求，请重启设备。
 
 请只安装来自本仓库或官方 Xposed Modules Repository 镜像的版本：
 

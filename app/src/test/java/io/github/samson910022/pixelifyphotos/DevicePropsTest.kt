@@ -13,7 +13,10 @@ import org.junit.Test
 class DevicePropsTest {
 
     /** Devices shipped without cited FINGERPRINT/ID/INCREMENTAL/SECURITY_PATCH. */
-    private val experimentalIdentityOnly = setOf("Pixel 10 Pro Fold", "Pixel 10a")
+    private val experimentalIdentityOnly = setOf(
+        "Pixel 10 Pro Fold (experimental)",
+        "Pixel 10a (experimental)",
+    )
 
     // =========================================================================
     // allFeatures
@@ -326,9 +329,10 @@ class DevicePropsTest {
 
     @Test
     fun `Pixel 10 Pro Fold is experimental identity-only rango`() {
-        val device = DeviceProps.getDeviceProps("Pixel 10 Pro Fold")
+        val device = DeviceProps.getDeviceProps("Pixel 10 Pro Fold (experimental)")
         assertNotNull(device)
-        assertEquals("rango", device!!.props["DEVICE"])
+        assertEquals("Pixel 10 Pro Fold (experimental)", device!!.deviceName)
+        assertEquals("rango", device.props["DEVICE"])
         assertEquals("rango", device.props["PRODUCT"])
         assertEquals("Pixel 10 Pro Fold", device.props["MODEL"])
         assertEquals("google", device.props["BRAND"])
@@ -343,9 +347,10 @@ class DevicePropsTest {
 
     @Test
     fun `Pixel 10a is experimental identity-only stallion`() {
-        val device = DeviceProps.getDeviceProps("Pixel 10a")
+        val device = DeviceProps.getDeviceProps("Pixel 10a (experimental)")
         assertNotNull(device)
-        assertEquals("stallion", device!!.props["DEVICE"])
+        assertEquals("Pixel 10a (experimental)", device!!.deviceName)
+        assertEquals("stallion", device.props["DEVICE"])
         assertEquals("stallion", device.props["PRODUCT"])
         assertEquals("Pixel 10a", device.props["MODEL"])
         assertEquals("google", device.props["BRAND"])
@@ -389,13 +394,13 @@ class DevicePropsTest {
 
     @Test
     fun `getFeaturesUpToFromDeviceName for Pixel 10 Pro Fold returns all 13 display names`() {
-        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10 Pro Fold")
+        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10 Pro Fold (experimental)")
         assertEquals(13, result.size)
     }
 
     @Test
     fun `getFeaturesUpToFromDeviceName for Pixel 10a returns all 13 display names`() {
-        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10a")
+        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10a (experimental)")
         assertEquals(13, result.size)
     }
 
@@ -587,13 +592,34 @@ class DevicePropsTest {
     }
 
     @Test
-    fun `device MODEL matches deviceName for all devices`() {
-        DeviceProps.allDevices.filter { it.deviceName != "None" }.forEach { device ->
-            assertEquals(
-                "Device '${device.deviceName}' MODEL should match deviceName",
-                device.deviceName,
-                device.props["MODEL"]
-            )
-        }
+    fun `device MODEL matches deviceName for non-experimental devices`() {
+        DeviceProps.allDevices
+            .filter { it.deviceName != "None" && it.deviceName !in experimentalIdentityOnly }
+            .forEach { device ->
+                assertEquals(
+                    "Device '${device.deviceName}' MODEL should match deviceName",
+                    device.deviceName,
+                    device.props["MODEL"]
+                )
+            }
+    }
+
+    @Test
+    fun `experimental deviceName has suffix while MODEL stays bare marketing name`() {
+        val fold = DeviceProps.getDeviceProps("Pixel 10 Pro Fold (experimental)")
+        assertNotNull(fold)
+        assertTrue(fold!!.deviceName.endsWith("(experimental)"))
+        assertEquals("Pixel 10 Pro Fold", fold.props["MODEL"])
+
+        val tenA = DeviceProps.getDeviceProps("Pixel 10a (experimental)")
+        assertNotNull(tenA)
+        assertTrue(tenA!!.deviceName.endsWith("(experimental)"))
+        assertEquals("Pixel 10a", tenA.props["MODEL"])
+    }
+
+    @Test
+    fun `bare experimental marketing names are not deviceName keys`() {
+        assertNull(DeviceProps.getDeviceProps("Pixel 10 Pro Fold"))
+        assertNull(DeviceProps.getDeviceProps("Pixel 10a"))
     }
 }

@@ -100,7 +100,9 @@
       </ul>
       <p class="note">
         此現代 API 版本<strong>不支援</strong>舊式 XposedBridge／EdXposed 環境。
-        請將 <strong>Google 相簿</strong>納入模組作用範圍（<strong>建議</strong>）。其他 App 屬進階且不支援。
+        請將 <strong>Google 相簿</strong>納入模組作用範圍（<strong>建議</strong>）。其他 App 屬進階且不支援，並有風險。
+        <strong>請勿</strong>將 Play 服務、Play 商店、系統 UI／設定或銀行／支付 App 納入作用範圍
+        （即使勾選，模組也會 soft-denylist 其中數項）。
       </p>
     </section>
 
@@ -114,8 +116,12 @@
         </li>
         <li>安裝 APK。</li>
         <li>在 Xposed 模組管理器啟用 <strong>Pixelify Infinity</strong>。</li>
-        <li>將 <strong>Google 相簿</strong>納入模組作用範圍（<strong>建議</strong>）。其他 App 屬進階且不支援。</li>
-        <li>強制停止並重新開啟 Google 相簿；若模組管理器要求，請重新啟動裝置。</li>
+        <li>
+          將 <strong>Google 相簿</strong>納入模組作用範圍（<strong>建議</strong>）。
+          允許多 App 作用範圍，但其他 App 屬進階且不支援。
+        </li>
+        <li><strong>請勿</strong>將 Play 服務、Play 商店、系統 UI／設定或銀行／支付 App 納入作用範圍。</li>
+        <li>強制停止並重新開啟 Google 相簿（以及任何其他已納入作用範圍的 App）；若模組管理器要求，請重新啟動裝置。</li>
       </ol>
       <p class="note">
         安裝前請確認簽署者指紋與

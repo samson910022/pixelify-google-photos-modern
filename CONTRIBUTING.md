@@ -12,17 +12,45 @@ Thank you for helping improve Pixelify Infinity. This repository is an independe
 
 ## Development environment
 
-- JDK 17
+- JDK 17 (`JAVA_HOME` must point at a real JDK 17, not only an Android SDK)
 - Android SDK Platform 36
 - Android Build Tools 36.0.0 or a compatible version
 - The repository Gradle wrapper
 
-Set `ANDROID_HOME` or create an ignored `local.properties` with a valid local `sdk.dir`.
+### Why builds fail with “JAVA_HOME is not set”
+
+Gradle needs a JDK on `PATH` / `JAVA_HOME`. The Android SDK alone is not enough:
+
+- Ignored `local.properties` may set `sdk.dir=...` for the **Android SDK**.
+- That does **not** set `JAVA_HOME`. Fresh shells, automation agents, and non-interactive terminals often have neither variable.
+
+Typical fix on a maintainer machine that keeps tools under `$HOME/Android/`:
+
+```bash
+export JAVA_HOME="$HOME/Android/jdk-17"
+export ANDROID_HOME="$HOME/Android/Sdk"
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+Or use the repo helper (preferred for agents and one-shot commands):
+
+```bash
+# optional once: copy and edit machine paths (gitignored)
+cp scripts/env.local.sh.example scripts/env.local.sh
+
+# run any command with env loaded
+./scripts/with-android-env.sh ./gradlew --no-daemon --no-configuration-cache test
+
+# or export into the current shell
+source scripts/with-android-env.sh
+```
+
+Also set `ANDROID_HOME` **or** create an ignored `local.properties` with a valid local `sdk.dir`. Do not commit absolute machine paths, `env.local.sh`, or signing material.
 
 ## Build and test
 
 ```bash
-./gradlew --no-daemon --no-configuration-cache \
+./scripts/with-android-env.sh ./gradlew --no-daemon --no-configuration-cache \
   test lintDebug lintRelease assembleDebug assembleRelease bundleRelease
 ```
 

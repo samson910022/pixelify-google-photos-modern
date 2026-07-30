@@ -9,7 +9,7 @@
     <string name="feature_flags_changed">Feature flags changed</string>
     <string name="override_rom_feature_levels">Override ROM feature levels</string>
     <string name="override_rom_feature_levels_desc">When a lower Pixel profile is selected, ignore higher feature levels already supplied by the ROM. <b>(Recommended)</b></string>
-    <string name="force_stop_google_photos">Force stop\nGoogle Photos</string>
+    <string name="force_stop_google_photos">Force-stop\nscoped apps</string>
     <string name="module_not_enabled">The module is not active. Enable Pixelify Infinity in a compatible Xposed manager, keep Google Photos in scope (recommended), then reopen this app. Reboot if required by your Xposed manager.</string>
     <string name="close">Close</string>
     <string name="open_google_photos">Open Google Photos</string>
@@ -17,12 +17,12 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.0.4</string>
-    <string name="version_desc">Android 17+ multi-strategy Build writes (Field.set + Unsafe + JNI), SystemProperties intercept, early package-load apply, and VERIFY Toast/notification. Success is not guaranteed on every A17 ROM.</string>
+    <string name="version_head">Version 1.1.0</string>
+    <string name="version_desc">Pixel 10 series + Pixel 2025 flags, multi-app LSPosed scope (Photos recommended; soft denylist), default Pixel XL, experimental Fold/10a labels, Force-stop scoped apps via LSPosed scope list, and build env helper.</string>
     <string name="changelog">Change log</string>
 
     <!-- Configuration import/export -->
-    <string name="please_force_stop_google_photos">Force-stop and reopen Google Photos (and any other scoped apps) for this change to take effect.</string>
+    <string name="please_force_stop_google_photos">Force-stop scoped apps (Google Photos and any other apps in the LSPosed module scope) and reopen them for this change to take effect.</string>
     <string name="export_config">Export configuration</string>
     <string name="export_config_desc">Save or share this module\'s settings as a JSON file.</string>
     <string name="export_complete">Export complete</string>
@@ -53,8 +53,8 @@
     <string name="device_version_separator"> – </string>
 
     <!-- Utility messages -->
-    <string name="killing_please_wait">Stopping Google Photos…</string>
-    <string name="failed_to_stop_package">Unable to force-stop Google Photos automatically. Stop it from Android settings.</string>
+    <string name="killing_please_wait">Stopping scoped apps…</string>
+    <string name="failed_to_stop_package">Unable to force-stop one or more scoped apps automatically. Stop them from Android settings.</string>
     <string name="failed_to_launch_package">Unable to open Google Photos automatically.</string>
     <string name="unable_to_open_link">No application is available to open this link.</string>
 </resources>
