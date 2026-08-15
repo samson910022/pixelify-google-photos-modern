@@ -12,13 +12,19 @@ import org.junit.Test
  */
 class DevicePropsTest {
 
+    /** Devices shipped without cited FINGERPRINT/ID/INCREMENTAL/SECURITY_PATCH. */
+    private val experimentalIdentityOnly = setOf(
+        "Pixel 10 Pro Fold (experimental)",
+        "Pixel 10a (experimental)",
+    )
+
     // =========================================================================
     // allFeatures
     // =========================================================================
 
     @Test
-    fun `allFeatures contains 12 feature levels`() {
-        assertEquals(12, DeviceProps.allFeatures.size)
+    fun `allFeatures contains 13 feature levels`() {
+        assertEquals(13, DeviceProps.allFeatures.size)
     }
 
     @Test
@@ -38,6 +44,7 @@ class DevicePropsTest {
                 "Pixel 2022",
                 "Pixel 2023",
                 "Pixel 2024",
+                "Pixel 2025",
             ),
             names
         )
@@ -92,35 +99,31 @@ class DevicePropsTest {
         }
     }
 
+    @Test
+    fun `Pixel 2025 feature flags are present`() {
+        val pixel2025 = DeviceProps.allFeatures.first { it.displayName == "Pixel 2025" }
+        assertTrue(pixel2025.featureFlags.contains("com.google.android.feature.PIXEL_2025_EXPERIENCE"))
+        assertTrue(pixel2025.featureFlags.contains("com.google.android.apps.photos.PIXEL_2025_PRELOAD"))
+    }
+
     // =========================================================================
     // defaultFeatures
     // =========================================================================
 
     @Test
-    fun `defaultFeatures contains feature levels up to Pixel 2020 inclusive`() {
+    fun `defaultFeatures contains feature levels up to Pixel 2016 inclusive`() {
         val defaultDisplayNames = DeviceProps.defaultFeatures.map { it.displayName }
-        assertEquals(
-            listOf(
-                "Pixel 2016",
-                "Pixel 2017",
-                "Pixel 2018",
-                "Pixel 2019 mid-year",
-                "Pixel 2019",
-                "Pixel 2020 mid-year",
-                "Pixel 2020",
-            ),
-            defaultDisplayNames
-        )
+        assertEquals(listOf("Pixel 2016"), defaultDisplayNames)
     }
 
     @Test
-    fun `defaultFeatures has 7 feature levels`() {
-        assertEquals(7, DeviceProps.defaultFeatures.size)
+    fun `defaultFeatures has 1 feature level`() {
+        assertEquals(1, DeviceProps.defaultFeatures.size)
     }
 
     @Test
-    fun `defaultDeviceName is Pixel 5`() {
-        assertEquals("Pixel 5", DeviceProps.defaultDeviceName)
+    fun `defaultDeviceName is Pixel XL`() {
+        assertEquals("Pixel XL", DeviceProps.defaultDeviceName)
     }
 
     // =========================================================================
@@ -180,9 +183,9 @@ class DevicePropsTest {
     }
 
     @Test
-    fun `all devices have allDevices count of 21`() {
-        // 1 "None" + 20 actual devices
-        assertEquals(21, DeviceProps.allDevices.size)
+    fun `all devices have allDevices count of 26`() {
+        // 1 "None" + 25 actual devices (was 20 + Pixel 10 series 5)
+        assertEquals(26, DeviceProps.allDevices.size)
     }
 
     @Test
@@ -248,6 +251,119 @@ class DevicePropsTest {
     }
 
     // =========================================================================
+    // Pixel 9a fix + Pixel 10 series
+    // =========================================================================
+
+    @Test
+    fun `Pixel 9a uses tegu codename and cited A16 fingerprint`() {
+        val device = DeviceProps.getDeviceProps("Pixel 9a")
+        assertNotNull(device)
+        assertEquals("tegu", device!!.props["DEVICE"])
+        assertEquals("tegu", device.props["PRODUCT"])
+        assertEquals(
+            "google/tegu/tegu:16/BP4A.260105.004.E1/14587043:user/release-keys",
+            device.props["FINGERPRINT"]
+        )
+        assertEquals("BP4A.260105.004.E1", device.props["ID"])
+        assertEquals("14587043", device.props["INCREMENTAL"])
+        assertFalse(device.props.containsKey("SECURITY_PATCH"))
+        assertFalse(device.props.values.any { it.contains("tehua") })
+        assertFalse(device.props.values.any { it.contains("BP1A.250405.002") })
+        assertFalse(device.props.values.any { it.contains("13115780") })
+    }
+
+    @Test
+    fun `DeviceProps source has no tehua residue`() {
+        // Runtime props must not expose tehua; this catches remaining map values.
+        DeviceProps.allDevices.forEach { device ->
+            device.props.forEach { (k, v) ->
+                assertFalse(
+                    "Device '${device.deviceName}' prop $k must not contain tehua",
+                    v.contains("tehua", ignoreCase = true)
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `Pixel 10 has pinned Android 16 frankel fingerprint`() {
+        val device = DeviceProps.getDeviceProps("Pixel 10")
+        assertNotNull(device)
+        assertEquals("frankel", device!!.props["DEVICE"])
+        assertEquals("frankel", device.props["PRODUCT"])
+        assertEquals("Pixel 10", device.props["MODEL"])
+        assertEquals("Pixel 2025", device.featureLevelName)
+        assertEquals("Android 16", device.androidVersion?.label)
+        assertEquals(
+            "google/frankel/frankel:16/BD3A.250721.001/13808258:user/release-keys",
+            device.props["FINGERPRINT"]
+        )
+        assertEquals("BD3A.250721.001", device.props["ID"])
+        assertEquals("13808258", device.props["INCREMENTAL"])
+        assertEquals("2025-08-05", device.props["SECURITY_PATCH"])
+    }
+
+    @Test
+    fun `Pixel 10 Pro has pinned Android 16 blazer fingerprint`() {
+        val device = DeviceProps.getDeviceProps("Pixel 10 Pro")
+        assertNotNull(device)
+        assertEquals("blazer", device!!.props["DEVICE"])
+        assertEquals(
+            "google/blazer/blazer:16/BD3A.250721.001/13808258:user/release-keys",
+            device.props["FINGERPRINT"]
+        )
+        assertEquals("Pixel 2025", device.featureLevelName)
+    }
+
+    @Test
+    fun `Pixel 10 Pro XL has pinned Android 16 mustang fingerprint`() {
+        val device = DeviceProps.getDeviceProps("Pixel 10 Pro XL")
+        assertNotNull(device)
+        assertEquals("mustang", device!!.props["DEVICE"])
+        assertEquals(
+            "google/mustang/mustang:16/BD3A.250721.001/13808258:user/release-keys",
+            device.props["FINGERPRINT"]
+        )
+        assertEquals("Pixel 2025", device.featureLevelName)
+    }
+
+    @Test
+    fun `Pixel 10 Pro Fold is experimental identity-only rango`() {
+        val device = DeviceProps.getDeviceProps("Pixel 10 Pro Fold (experimental)")
+        assertNotNull(device)
+        assertEquals("Pixel 10 Pro Fold (experimental)", device!!.deviceName)
+        assertEquals("rango", device.props["DEVICE"])
+        assertEquals("rango", device.props["PRODUCT"])
+        assertEquals("Pixel 10 Pro Fold", device.props["MODEL"])
+        assertEquals("google", device.props["BRAND"])
+        assertEquals("Google", device.props["MANUFACTURER"])
+        assertEquals("Pixel 2025", device.featureLevelName)
+        assertEquals("Android 16", device.androidVersion?.label)
+        assertFalse(device.props.containsKey("FINGERPRINT"))
+        assertFalse(device.props.containsKey("ID"))
+        assertFalse(device.props.containsKey("INCREMENTAL"))
+        assertFalse(device.props.containsKey("SECURITY_PATCH"))
+    }
+
+    @Test
+    fun `Pixel 10a is experimental identity-only stallion`() {
+        val device = DeviceProps.getDeviceProps("Pixel 10a (experimental)")
+        assertNotNull(device)
+        assertEquals("Pixel 10a (experimental)", device!!.deviceName)
+        assertEquals("stallion", device.props["DEVICE"])
+        assertEquals("stallion", device.props["PRODUCT"])
+        assertEquals("Pixel 10a", device.props["MODEL"])
+        assertEquals("google", device.props["BRAND"])
+        assertEquals("Google", device.props["MANUFACTURER"])
+        assertEquals("Pixel 2025", device.featureLevelName)
+        assertEquals("Android 16", device.androidVersion?.label)
+        assertFalse(device.props.containsKey("FINGERPRINT"))
+        assertFalse(device.props.containsKey("ID"))
+        assertFalse(device.props.containsKey("INCREMENTAL"))
+        assertFalse(device.props.containsKey("SECURITY_PATCH"))
+    }
+
+    // =========================================================================
     // getFeaturesUpTo (private, tested indirectly)
     // =========================================================================
 
@@ -267,6 +383,25 @@ class DevicePropsTest {
     fun `getFeaturesUpToFromDeviceName for Pixel 9 Pro XL returns all 12 display names`() {
         val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 9 Pro XL")
         assertEquals(12, result.size)
+    }
+
+    @Test
+    fun `getFeaturesUpToFromDeviceName for Pixel 10 returns all 13 display names`() {
+        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10")
+        assertEquals(13, result.size)
+        assertTrue(result.contains("Pixel 2025"))
+    }
+
+    @Test
+    fun `getFeaturesUpToFromDeviceName for Pixel 10 Pro Fold returns all 13 display names`() {
+        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10 Pro Fold (experimental)")
+        assertEquals(13, result.size)
+    }
+
+    @Test
+    fun `getFeaturesUpToFromDeviceName for Pixel 10a returns all 13 display names`() {
+        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10a (experimental)")
+        assertEquals(13, result.size)
     }
 
     @Test
@@ -426,30 +561,65 @@ class DevicePropsTest {
 
     @Test
     fun `all device fingerprints contain brand slash device slash device pattern`() {
-        DeviceProps.allDevices.filter { it.deviceName != "None" }.forEach { device ->
-            val fingerprint = device.props["FINGERPRINT"]
-            assertNotNull(
-                "Device '${device.deviceName}' should have a FINGERPRINT",
-                fingerprint
-            )
-            val parts = fingerprint!!.split("/")
-            assertTrue(
-                "Device '${device.deviceName}' FINGERPRINT should have at least 3 parts separated by '/'",
-                parts.size >= 3
-            )
-            // First part should be "google"
-            assertEquals("google", parts[0])
+        DeviceProps.allDevices
+            .filter { it.deviceName != "None" && it.deviceName !in experimentalIdentityOnly }
+            .forEach { device ->
+                val fingerprint = device.props["FINGERPRINT"]
+                assertNotNull(
+                    "Device '${device.deviceName}' should have a FINGERPRINT",
+                    fingerprint
+                )
+                val parts = fingerprint!!.split("/")
+                assertTrue(
+                    "Device '${device.deviceName}' FINGERPRINT should have at least 3 parts separated by '/'",
+                    parts.size >= 3
+                )
+                // First part should be "google"
+                assertEquals("google", parts[0])
+            }
+    }
+
+    @Test
+    fun `experimental identity-only devices omit fingerprint keys`() {
+        experimentalIdentityOnly.forEach { name ->
+            val device = DeviceProps.getDeviceProps(name)
+            assertNotNull(device)
+            assertFalse(device!!.props.containsKey("FINGERPRINT"))
+            assertFalse(device.props.containsKey("ID"))
+            assertFalse(device.props.containsKey("INCREMENTAL"))
+            assertFalse(device.props.containsKey("SECURITY_PATCH"))
         }
     }
 
     @Test
-    fun `device MODEL matches deviceName for all devices`() {
-        DeviceProps.allDevices.filter { it.deviceName != "None" }.forEach { device ->
-            assertEquals(
-                "Device '${device.deviceName}' MODEL should match deviceName",
-                device.deviceName,
-                device.props["MODEL"]
-            )
-        }
+    fun `device MODEL matches deviceName for non-experimental devices`() {
+        DeviceProps.allDevices
+            .filter { it.deviceName != "None" && it.deviceName !in experimentalIdentityOnly }
+            .forEach { device ->
+                assertEquals(
+                    "Device '${device.deviceName}' MODEL should match deviceName",
+                    device.deviceName,
+                    device.props["MODEL"]
+                )
+            }
+    }
+
+    @Test
+    fun `experimental deviceName has suffix while MODEL stays bare marketing name`() {
+        val fold = DeviceProps.getDeviceProps("Pixel 10 Pro Fold (experimental)")
+        assertNotNull(fold)
+        assertTrue(fold!!.deviceName.endsWith("(experimental)"))
+        assertEquals("Pixel 10 Pro Fold", fold.props["MODEL"])
+
+        val tenA = DeviceProps.getDeviceProps("Pixel 10a (experimental)")
+        assertNotNull(tenA)
+        assertTrue(tenA!!.deviceName.endsWith("(experimental)"))
+        assertEquals("Pixel 10a", tenA.props["MODEL"])
+    }
+
+    @Test
+    fun `bare experimental marketing names are not deviceName keys`() {
+        assertNull(DeviceProps.getDeviceProps("Pixel 10 Pro Fold"))
+        assertNull(DeviceProps.getDeviceProps("Pixel 10a"))
     }
 }

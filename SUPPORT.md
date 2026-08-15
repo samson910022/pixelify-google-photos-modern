@@ -15,8 +15,8 @@ The landing summarizes install requirements and links to official GitHub / Xpose
 
 1. Install the latest official release and verify its signer as described in [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md).
 2. Confirm the module is enabled in a compatible modern-libxposed environment.
-3. Scope the module only to Google Photos (`com.google.android.apps.photos`).
-4. Force-stop and reopen Google Photos; reboot if required by the Xposed manager.
+3. Keep Google Photos (`com.google.android.apps.photos`) in scope (**recommended**). Extra apps are advanced/unsupported; never scope Play Services, Play Store, system UI, or banking/payment apps.
+4. Force-stop and reopen Google Photos (and any other scoped apps); reboot if required by the Xposed manager.
 5. Search existing issues and release notes.
 
 Pixelify Infinity is a separate application from the legacy `balti.xposed.pixelifygooglephotos` package. Enabling or configuring the legacy package does not configure this one.
@@ -35,7 +35,7 @@ A reproducible report should include:
 
 ### Load / VERIFY signals
 
-After enable + correct scope + force-stop/reopen Photos:
+After enable + recommended Photos scope + force-stop/reopen Photos:
 
 - **No toast and no notification** often means the module did not load or did not reach VERIFY.
 - **Toast or notification about VERIFY / device spoof failed** means the module loaded, but Build spoof VERIFY failed (common on some Android 17+ ROMs; multi-strategy writes are attempted, success is not guaranteed on every ROM).

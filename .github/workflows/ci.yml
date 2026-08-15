@@ -102,8 +102,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apk="app/build/outputs/apk/release/app-release-unsigned.apk"
-          test -f "$apk"
+          apk="$(find app/build/outputs/apk/release -maxdepth 1 -name 'PixelifyInfinity-*-release-unsigned.apk' -print -quit)"
+          test -n "$apk"
           if "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$apk"; then
             echo "Contributor release APK unexpectedly has a signature" >&2
             exit 1

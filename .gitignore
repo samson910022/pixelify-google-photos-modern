@@ -82,3 +82,9 @@ publication.properties
 # Python helper caches
 __pycache__/
 *.py[cod]
+
+# Agent / review harness working artifacts (ephemeral; do not commit)
+.agents/
+
+# Machine-local JDK/SDK paths for scripts/with-android-env.sh
+scripts/env.local.sh

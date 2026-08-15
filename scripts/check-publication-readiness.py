@@ -19,8 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.samson910022.pixelifyphotos"
 ENTRY_POINT = f"{APP_ID}.PixelifyModule"
 SCOPE = "com.google.android.apps.photos"
-VERSION_CODE = 5
-VERSION_NAME = "1.0.4"
+VERSION_CODE = 6
+VERSION_NAME = "1.1.0"
 CERT_SHA256 = "37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
 PUBLIC_CERT = Path("certificates/pixelifyphotos-release-cert.pem")
 
@@ -58,8 +58,19 @@ def check_identity_and_versions() -> None:
     gradle = text("app/build.gradle.kts")
     namespace = exact_match(r'^\s*namespace\s*=\s*"([^"]+)"', gradle, "namespace")
     application_id = exact_match(r'^\s*applicationId\s*=\s*"([^"]+)"', gradle, "applicationId")
-    version_code = exact_match(r"^\s*versionCode\s*=\s*(\d+)", gradle, "versionCode")
-    version_name = exact_match(r'^\s*versionName\s*=\s*"([^"]+)"', gradle, "versionName")
+    def one_group(pattern: str) -> str | None:
+        matches = re.findall(pattern, gradle, flags=re.MULTILINE)
+        return matches[0] if len(matches) == 1 else None
+
+    # Prefer single-source vals used for archivesName; fall back to defaultConfig literals.
+    version_code = one_group(r"^\s*val\s+appVersionCode\s*=\s*(\d+)") or one_group(
+        r"^\s*versionCode\s*=\s*(\d+)"
+    )
+    version_name = one_group(r'^\s*val\s+appVersionName\s*=\s*"([^"]+)"') or one_group(
+        r'^\s*versionName\s*=\s*"([^"]+)"'
+    )
+    check(version_code is not None, "expected exactly one versionCode/appVersionCode")
+    check(version_name is not None, "expected exactly one versionName/appVersionName")
     expected_fingerprint = exact_match(
         r'val expectedReleaseCertificateSha256\s*=\s*\n?\s*"([0-9A-Fa-f:]+)"',
         gradle,
@@ -92,7 +103,11 @@ def check_identity_and_versions() -> None:
             if line and not line.startswith("#") and "=" in line
         )
     }
-    check(module_properties == {"minApiVersion": "101", "targetApiVersion": "101", "staticScope": "true"}, "unexpected Xposed module.prop")
+    check(
+        module_properties
+        == {"minApiVersion": "101", "targetApiVersion": "101", "staticScope": "false"},
+        "unexpected Xposed module.prop",
+    )
 
     for feed in (Path("update_info.json"), Path("distribution/xposed-repository/update_info.json")):
         try:
@@ -265,7 +280,7 @@ def verify_xposed_zip(path: Path, prefix: str) -> None:
     expected = {
         f"{prefix}META-INF/xposed/java_init.list": ENTRY_POINT,
         f"{prefix}META-INF/xposed/scope.list": SCOPE,
-        f"{prefix}META-INF/xposed/module.prop": "minApiVersion=101\ntargetApiVersion=101\nstaticScope=true",
+        f"{prefix}META-INF/xposed/module.prop": "minApiVersion=101\ntargetApiVersion=101\nstaticScope=false",
     }
     try:
         with zipfile.ZipFile(path) as archive:

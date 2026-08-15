@@ -105,7 +105,10 @@
       </ul>
       <p class="note">
         Legacy XposedBridge / EdXposed environments are <strong>not</strong> supported
-        by this modern-API build. Scope the module to <strong>Google Photos only</strong>.
+        by this modern-API build. Keep <strong>Google Photos</strong> in scope (<strong>recommended</strong>).
+        Extra apps are advanced/unsupported and carry risk. Do <strong>not</strong> scope
+        Play Services, Play Store, system UI/settings, or banking/payment apps
+        (the module soft-denylists several of these even if selected).
       </p>
     </section>
 
@@ -119,10 +122,17 @@
         </li>
         <li>Install the APK.</li>
         <li>Enable <strong>Pixelify Infinity</strong> in your Xposed module manager.</li>
-        <li>Set the module scope to <strong>Google Photos only</strong>.</li>
         <li>
-          Force-stop and reopen Google Photos. Reboot the device if the module manager
-          requires it.
+          Keep <strong>Google Photos</strong> in the module scope (<strong>recommended</strong>).
+          Multi-app scope is allowed but extra apps are advanced/unsupported.
+        </li>
+        <li>
+          Do <strong>not</strong> scope Play Services, Play Store, system UI/settings, or
+          banking/payment apps.
+        </li>
+        <li>
+          Force-stop and reopen Google Photos (and any other scoped apps). Reboot the device
+          if the module manager requires it.
         </li>
       </ol>
       <p class="note">
