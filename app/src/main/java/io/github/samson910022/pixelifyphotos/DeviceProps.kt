@@ -588,7 +588,14 @@ object DeviceProps {
     val defaultDeviceName = "Pixel XL"
 
     /**
-     * Default feature level to spoof up to. Corresponds to what is expected for the device in [defaultDeviceName].
+     * Default feature level to spoof up to. Corresponds to what is expected for the
+     * device in [defaultDeviceName].
+     *
+     * Deliberate trade-off: the default device is Pixel XL (Pixel 2016), so the
+     * default feature set is the Pixel 2016 level rather than the previous Pixel
+     * 2020 default. This keeps device and feature level consistent for new users
+     * ("honest default" per changelog); advanced users can pick a newer device or
+     * enable features explicitly. Already-saved preferences are not migrated.
      */
     val defaultFeatures = getFeaturesUpTo("Pixel 2016")
 

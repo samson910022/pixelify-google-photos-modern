@@ -20,6 +20,11 @@ class PixelifyModule : XposedModule() {
      *
      * Multi-app Option B: trust LSPosed scope for any first package, then apply
      * soft [ScopePolicy] denylist (skip spoof, still allow module load).
+     *
+     * Owner decision (locked): the module is intentionally NOT restricted to
+     * Google Photos or to the developer. Scoping extra apps is documented as
+     * advanced/unsupported; non-Photos spoof is therefore logged explicitly so
+     * the behavior stays auditable.
      */
     override fun onPackageLoaded(params: XposedModuleInterface.PackageLoadedParam) {
         // PackageLoadedParam.isFirstPackage() is part of libxposed API 101.
@@ -36,6 +41,7 @@ class PixelifyModule : XposedModule() {
             return
         }
 
+        logIfNonPhotosPackage(params.packageName, "early device spoof")
         Log.d(TAG, "Package loaded (${params.packageName}). Early device spoof...")
         try {
             val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
@@ -64,6 +70,7 @@ class PixelifyModule : XposedModule() {
         Log.d(TAG, "Package ready (${params.packageName}). Applying hooks...")
 
         // Each hook is individually guarded so one failure doesn't block the other.
+        logIfNonPhotosPackage(params.packageName, "feature/device spoof on ready")
         try {
             try {
                 FeatureSpoofer.hook(this, params.classLoader)
@@ -82,6 +89,21 @@ class PixelifyModule : XposedModule() {
             }
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to register hooks for ${params.packageName}", t)
+        }
+    }
+
+    /**
+     * Audit log for the deliberate multi-app behavior: Photos is the recommended
+     * scope, but scoping extra apps is allowed (advanced/unsupported). Spoofing
+     * any non-Photos package is intentional and must stay visible in logs.
+     */
+    private fun logIfNonPhotosPackage(packageName: String, phase: String) {
+        if (packageName != Constants.PACKAGE_NAME_GOOGLE_PHOTOS) {
+            Log.w(
+                TAG,
+                "Applying $phase to non-Photos package $packageName " +
+                    "(advanced multi-app scope; not restricted to developer/Photos by design)"
+            )
         }
     }
 }

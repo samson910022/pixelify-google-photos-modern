@@ -1,7 +1,5 @@
 # Changelog
 
-## [Unreleased]
-
 ## [1.1.0] - 2026-07-30
 
 ### Added
@@ -19,8 +17,11 @@
 - Bumped version to `1.1.0` (`versionCode 6`).
 - First-open default device spoof is **Pixel XL** (was Pixel 5). Already-saved preferences are not migrated.
 - Fixed Pixel 9a codename **`tehua` → `tegu`** with a cited Android 16 fingerprint; security patch omitted for that build (no cited date). Most full device profiles still spoof `SECURITY_PATCH` when a cited value is present.
-- Module hooks any non-denylisted first package LSPosed injects (not hard-gated to Photos only).
+- Module hooks any non-denylisted first package LSPosed injects (not hard-gated to Photos only). Spoofing a non-Photos package is logged explicitly (audit trail); the module is intentionally not restricted to Photos or to the developer.
+- Expanded the soft denylist with common Google/system apps (Gmail, Maps, YouTube, Drive, Wallet, Messages, Meet, Contacts, Dialer, launchers) that are never spoofed and never force-stopped, even if scoped. Matching stays exact (v1), documented in code.
+- Force-stop of scoped apps can never target the module's own package, and force-stopping a non-Photos package is logged explicitly.
 - AI review bot `1.3.0`: optionally apply allowlisted `SUGGESTED_LABELS` after issue investigation (additive only).
+- `scripts/with-android-env.sh`: sourced mode no longer changes the caller shell's options (`set -euo pipefail` applies to executed mode only).
 
 ### Documentation
 

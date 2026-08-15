@@ -46,6 +46,22 @@ class SpoofedPackageTrackerTest {
     }
 
     @Test
+    fun `packagesToForceStop never includes the module itself`() {
+        val result = SpoofedPackageTracker.packagesToForceStop(
+            setOf(
+                Constants.PACKAGE_NAME_MODULE,
+                Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+                "com.example.gallery",
+            ),
+        )
+        assertFalse(result.contains(Constants.PACKAGE_NAME_MODULE))
+        assertEquals(
+            setOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, "com.example.gallery"),
+            result,
+        )
+    }
+
+    @Test
     fun `isValidPackageName rejects blank and injection-like names`() {
         assertTrue(SpoofedPackageTracker.isValidPackageName("com.google.android.apps.photos"))
         assertFalse(SpoofedPackageTracker.isValidPackageName(null))

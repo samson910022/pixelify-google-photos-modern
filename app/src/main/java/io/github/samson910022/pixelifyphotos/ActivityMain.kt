@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -240,7 +241,15 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
          */
         forceStopGooglePhotos.setOnClickListener {
             val scopePackages = try {
-                App.mService?.scope?.toSet()
+                val service = App.mService
+                if (service == null) {
+                    // Module is enabled (activity would have closed earlier), but
+                    // guard anyway: a null service yields Photos-only force-stop.
+                    Log.w("Pixelify", "XposedService null while force-stopping; using Photos only")
+                    null
+                } else {
+                    service.scope?.toSet()
+                }
             } catch (_: Throwable) {
                 null
             }

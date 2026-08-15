@@ -10,7 +10,12 @@
 #   1. Already set in the environment
 #   2. scripts/env.local.sh (gitignored; copy from env.local.sh.example)
 #   3. $HOME/Android/jdk-17 and $HOME/Android/Sdk
-set -euo pipefail
+#
+# Sourced mode never changes the caller's shell options: unlike the executed
+# mode, it does not enable `set -euo pipefail`, so a missing JDK/SDK prints an
+# error and returns 1 without terminating the caller's shell. Note that if the
+# caller itself runs with `set -e`, a plain `source scripts/with-android-env.sh`
+# failure still aborts it — guard with `source ... || echo "env load failed"`.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_ENV="$ROOT/scripts/env.local.sh"
@@ -42,23 +47,22 @@ _pixelify_load_env() {
   fi
 }
 
-_pixelify_load_env
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  # Executed: fail fast on any error.
+  set -euo pipefail
+  _pixelify_load_env
 
-_is_sourced=0
-if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-  _is_sourced=1
-fi
+  if [[ $# -eq 0 ]]; then
+    printf 'export JAVA_HOME=%q\n' "$JAVA_HOME"
+    printf 'export ANDROID_HOME=%q\n' "$ANDROID_HOME"
+    printf 'export ANDROID_SDK_ROOT=%q\n' "$ANDROID_SDK_ROOT"
+    printf 'export PATH=%q\n' "$JAVA_HOME/bin:$PATH"
+    exit 0
+  fi
 
-if [[ $_is_sourced -eq 1 ]]; then
+  exec "$@"
+else
+  # Sourced: export into the caller without altering its shell options.
+  _pixelify_load_env || return $?
   return 0
 fi
-
-if [[ $# -eq 0 ]]; then
-  printf 'export JAVA_HOME=%q\n' "$JAVA_HOME"
-  printf 'export ANDROID_HOME=%q\n' "$ANDROID_HOME"
-  printf 'export ANDROID_SDK_ROOT=%q\n' "$ANDROID_SDK_ROOT"
-  printf 'export PATH=%q\n' "$JAVA_HOME/bin:$PATH"
-  exit 0
-fi
-
-exec "$@"

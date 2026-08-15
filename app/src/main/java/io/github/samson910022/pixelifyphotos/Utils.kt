@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import io.github.samson910022.pixelifyphotos.Constants.PREF_DEVICE_TO_SPOOF
 import io.github.samson910022.pixelifyphotos.Constants.PREF_ENABLE_VERBOSE_LOGS
@@ -47,6 +48,13 @@ class Utils {
         Thread({
             var firstFailed: String? = null
             for (packageName in packages) {
+                if (packageName != Constants.PACKAGE_NAME_GOOGLE_PHOTOS) {
+                    Log.w(
+                        "Pixelify",
+                        "Force-stopping non-Photos scoped package $packageName " +
+                            "(advanced multi-app scope; root access is used)"
+                    )
+                }
                 var process: Process? = null
                 val stopped = try {
                     val runningProcess = ProcessBuilder("su", "-c", "am force-stop $packageName")

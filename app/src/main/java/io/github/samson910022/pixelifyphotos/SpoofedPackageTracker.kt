@@ -20,7 +20,8 @@ object SpoofedPackageTracker {
 
     /**
      * Packages the UI should force-stop: always Photos, plus [scopePackages] from
-     * LSPosed that pass name validation and [ScopePolicy.shouldSpoof].
+     * LSPosed that pass name validation and [ScopePolicy.shouldSpoof]. The module's
+     * own package is never included, even if a scope query somehow reports it.
      *
      * @param scopePackages typically [io.github.libxposed.service.XposedService.getScope];
      * null/empty still yields Photos-only.
@@ -28,7 +29,10 @@ object SpoofedPackageTracker {
     fun packagesToForceStop(scopePackages: Set<String>?): Set<String> {
         val out = linkedSetOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
         scopePackages?.forEach { pkg ->
-            if (isValidPackageName(pkg) && ScopePolicy.shouldSpoof(pkg)) {
+            if (isValidPackageName(pkg) &&
+                pkg != Constants.PACKAGE_NAME_MODULE &&
+                ScopePolicy.shouldSpoof(pkg)
+            ) {
                 out.add(pkg)
             }
         }

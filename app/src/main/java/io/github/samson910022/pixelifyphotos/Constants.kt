@@ -4,6 +4,8 @@ object Constants {
 
     val PACKAGE_NAME_GOOGLE_PHOTOS = "com.google.android.apps.photos"
 
+    val PACKAGE_NAME_MODULE = "io.github.samson910022.pixelifyphotos"
+
     val SUPPORT_URL = "https://github.com/samson910022/pixelify-google-photos-modern/issues"
 
     val UPDATE_INFO_URL = "https://raw.githubusercontent.com/samson910022/pixelify-google-photos-modern/master/update_info.json"

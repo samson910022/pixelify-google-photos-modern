@@ -13,7 +13,13 @@ object ScopePolicy {
 
     /**
      * Packages that must never receive Build/feature spoof even if the user
-     * scopes them in LSPosed. Exact match only (v1).
+     * scopes them in LSPosed, and that the module UI must never force-stop.
+     *
+     * Exact match only (v1): near-miss packages (e.g. `com.google.android.gms.unstable`)
+     * are intentionally not matched, so they still pass `shouldSpoof`. This is a
+     * deliberate trade-off: prefix matching would silently block legitimate
+     * third-party apps, while the documented stance is that extra scoped apps are
+     * advanced/unsupported. Users should keep the scope list to Photos.
      */
     val DENYLIST: Set<String> = setOf(
         "com.google.android.gms",
@@ -25,6 +31,17 @@ object ScopePolicy {
         "com.android.settings",
         "com.android.systemui",
         "com.android.phone",
+        "com.google.android.gm",
+        "com.google.android.apps.maps",
+        "com.google.android.youtube",
+        "com.google.android.apps.docs",
+        "com.google.android.apps.walletnfcrel",
+        "com.google.android.apps.messaging",
+        "com.google.android.apps.meetings",
+        "com.google.android.apps.contacts",
+        "com.google.android.dialer",
+        "com.android.launcher3",
+        "com.google.android.apps.nexuslauncher",
     )
 
     /**

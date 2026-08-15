@@ -32,6 +32,17 @@ class ScopePolicyTest {
             "com.android.settings",
             "com.android.systemui",
             "com.android.phone",
+            "com.google.android.gm",
+            "com.google.android.apps.maps",
+            "com.google.android.youtube",
+            "com.google.android.apps.docs",
+            "com.google.android.apps.walletnfcrel",
+            "com.google.android.apps.messaging",
+            "com.google.android.apps.meetings",
+            "com.google.android.apps.contacts",
+            "com.google.android.dialer",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher",
         )
         assertEquals(expected, ScopePolicy.DENYLIST)
         expected.forEach { pkg ->
@@ -59,5 +70,14 @@ class ScopePolicyTest {
         assertTrue(ScopePolicy.shouldSpoof("com.google.android.gms.unstable"))
         assertTrue(ScopePolicy.shouldSpoof("com.android.vending.foo"))
         assertTrue(ScopePolicy.shouldSpoof("com.android.settings.intelligence"))
+    }
+
+    @Test
+    fun `module package is not denylisted — self-exclusion lives in SpoofedPackageTracker`() {
+        // The module's own package is intentionally allowed by ScopePolicy (it is not
+        // a dangerous package). Force-stop self-exclusion is handled separately in
+        // SpoofedPackageTracker.packagesToForceStop, not in the denylist.
+        assertTrue(ScopePolicy.shouldSpoof(Constants.PACKAGE_NAME_MODULE))
+        assertFalse(ScopePolicy.isDenied(Constants.PACKAGE_NAME_MODULE))
     }
 }
