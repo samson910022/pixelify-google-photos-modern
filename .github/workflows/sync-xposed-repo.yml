@@ -73,16 +73,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED_FINGERPRINT="37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
+          EXPECTED_FINGERPRINT="37186e5c2694e553e5fab1f7787c04dbcd4384ab84963e60be9c3ccb6ba907b1"
           
-          # Extract SHA-256 fingerprint using keytool
-          ACTUAL_FINGERPRINT="$(keytool -printcert -jarfile "$APK_PATH" | grep -i "SHA256:" | head -n 1 | awk -F 'SHA256:' '{print $2}' | tr -d ' :' | tr '[:lower:]' '[:upper:]')"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
           
-          if [ "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]; then
-            echo "::error ::APK certificate fingerprint mismatch! Expected $EXPECTED_FINGERPRINT, got $ACTUAL_FINGERPRINT"
+          if ! "$APKSIGNER" verify --print-certs "$APK_PATH" | grep -iq "$EXPECTED_FINGERPRINT"; then
+            echo "::error ::APK certificate fingerprint mismatch!"
             exit 1
           fi
-          echo "APK certificate fingerprint verified: $ACTUAL_FINGERPRINT"
+          echo "APK certificate fingerprint successfully verified with apksigner!"
 
       - name: Extract version metadata and prepare release notes
         if: env.XPOSED_TOKEN_PRESENT == 'true'
