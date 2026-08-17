@@ -34,8 +34,8 @@ Before submitting or updating that mirror:
    - **Website / homepage** = support URL (`https://github.com/samson910022/pixelify-google-photos-modern/issues`)
 5. Build with `verifiedRelease` and verify the stable signer fingerprint.
 6. Publish a GitHub Release with:
-    - **Tag**: `{versionCode}-{versionName}` (example: `6-1.1.0`)
-    - **Title**: version name (example: `1.1.0`)
+    - **Tag**: `{versionCode}-{versionName}` (example: `7-1.2.0`)
+    - **Title**: version name (example: `1.2.0`)
 
    - **Body**: changelog
    - **Asset**: signed APK (`content-type` must be an Android package archive)

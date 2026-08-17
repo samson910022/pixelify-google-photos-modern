@@ -87,16 +87,8 @@ object DeviceSpoofer {
             return
         }
 
-        Log.d(
-            TAG,
-            "Applying Build spoof on Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}) " +
-                "with multi-strategy write pipeline (Field.set + Unsafe + JNI; not skipped)",
-        )
-        if (Build.VERSION.SDK_INT >= ANDROID_17_SDK_INT) {
-            Log.d(
-                TAG,
-                "Android 17+ runtime detected: Unsafe/JNI multi-strategy writes active for ART static final field protection",
-            )
+        if (verboseLog) {
+            Log.d(TAG, "Applying Build spoof for $deviceName")
         }
 
         ensureNativeLoaded(module)

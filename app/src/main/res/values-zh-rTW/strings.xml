@@ -17,8 +17,8 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.1.0</string>
-    <string name="version_desc">Pixel 10 系列與 Pixel 2025 旗標、多 App LSPosed 作用範圍（建議 Google 相簿；soft denylist）、預設 Pixel XL、實驗性 Fold／10a 標籤、依 LSPosed 作用範圍強制停止 App，以及建置環境 helper。</string>
+    <string name="version_head">版本 1.2.0</string>
+    <string name="version_desc">全新 Material 3 卡片化現代介面（支援動態取色與雙介面切換）、新增 Pixel 6／Fold／Tablet／9 Pro Fold 官方裝置設定檔、通用能力探測多層級退避管線、首次啟動引導教學，以及修復長列表排版裁切問題。</string>
     <string name="changelog">變更記錄</string>
 
     <!-- 設定匯入／匯出 -->

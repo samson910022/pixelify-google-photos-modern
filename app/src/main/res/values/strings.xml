@@ -17,8 +17,8 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.1.0</string>
-    <string name="version_desc">Pixel 10 series + Pixel 2025 flags, multi-app LSPosed scope (Photos recommended; soft denylist), default Pixel XL, experimental Fold/10a labels, Force-stop scoped apps via LSPosed scope list, and build env helper.</string>
+    <string name="version_head">Version 1.2.0</string>
+    <string name="version_desc">Modern Material 3 card interface with dynamic theming and dual UI toggle, official device profiles for Pixel 6 / Fold / Tablet / 9 Pro Fold, generalized capability-based write fallback engine across Android versions, first-run onboarding guide, and layout anti-clipping fixes.</string>
     <string name="changelog">Change log</string>
 
     <!-- Configuration import/export -->
