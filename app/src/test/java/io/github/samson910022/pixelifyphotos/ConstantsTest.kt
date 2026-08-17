@@ -29,6 +29,8 @@ class ConstantsTest {
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
             Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL,
             Constants.PREF_LAST_VERSION,
+            Constants.PREF_USE_CLASSIC_UI,
+            Constants.PREF_FIRST_RUN_COMPLETED,
         )
         assertEquals(
             "Preference keys should all be unique",
@@ -47,6 +49,8 @@ class ConstantsTest {
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
             Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL,
             Constants.PREF_LAST_VERSION,
+            Constants.PREF_USE_CLASSIC_UI,
+            Constants.PREF_FIRST_RUN_COMPLETED,
         )
         prefKeys.forEach { key ->
             assertTrue("Pref key '$key' should be non-empty", key.isNotEmpty())

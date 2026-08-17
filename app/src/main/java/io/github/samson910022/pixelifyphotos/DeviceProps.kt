@@ -302,6 +302,22 @@ object DeviceProps {
         ),
 
         DeviceEntries(
+            "Pixel 6", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "oriole"),
+                Pair("PRODUCT", "oriole"),
+                Pair("MODEL", "Pixel 6"),
+                Pair("FINGERPRINT", "google/oriole/oriole:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2021",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
             "Pixel 6 Pro", hashMapOf(
                 Pair("BRAND", "google"),
                 Pair("MANUFACTURER", "Google"),
@@ -370,6 +386,38 @@ object DeviceProps {
                 Pair("PRODUCT", "lynx"),
                 Pair("MODEL", "Pixel 7a"),
                 Pair("FINGERPRINT", "google/lynx/lynx:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2023",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel Fold", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "felix"),
+                Pair("PRODUCT", "felix"),
+                Pair("MODEL", "Pixel Fold"),
+                Pair("FINGERPRINT", "google/felix/felix:15/AP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "AP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2023",
+            getAndroidVersionFromLabel("Android 15"),
+        ),
+
+        DeviceEntries(
+            "Pixel Tablet", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "tangorpro"),
+                Pair("PRODUCT", "tangorpro"),
+                Pair("MODEL", "Pixel Tablet"),
+                Pair("FINGERPRINT", "google/tangorpro/tangorpro:15/AP1A.250405.002/13115780:user/release-keys"),
                 Pair("ID", "AP1A.250405.002"),
                 Pair("INCREMENTAL", "13115780"),
                 Pair("SECURITY_PATCH", "2025-04-05"),
@@ -466,6 +514,22 @@ object DeviceProps {
                 Pair("PRODUCT", "komodo"),
                 Pair("MODEL", "Pixel 9 Pro XL"),
                 Pair("FINGERPRINT", "google/komodo/komodo:16/BP1A.250405.002/13115780:user/release-keys"),
+                Pair("ID", "BP1A.250405.002"),
+                Pair("INCREMENTAL", "13115780"),
+                Pair("SECURITY_PATCH", "2025-04-05"),
+            ),
+            "Pixel 2024",
+            getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        DeviceEntries(
+            "Pixel 9 Pro Fold", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "comet"),
+                Pair("PRODUCT", "comet"),
+                Pair("MODEL", "Pixel 9 Pro Fold"),
+                Pair("FINGERPRINT", "google/comet/comet:16/BP1A.250405.002/13115780:user/release-keys"),
                 Pair("ID", "BP1A.250405.002"),
                 Pair("INCREMENTAL", "13115780"),
                 Pair("SECURITY_PATCH", "2025-04-05"),

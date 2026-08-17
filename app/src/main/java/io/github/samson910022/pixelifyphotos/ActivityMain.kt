@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
+import android.text.Html
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -16,22 +17,26 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.FileProvider
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.snackbar.Snackbar
 import io.github.samson910022.pixelifyphotos.Constants.CONF_EXPORT_NAME
 import io.github.samson910022.pixelifyphotos.Constants.FIELD_LATEST_VERSION_CODE
 import io.github.samson910022.pixelifyphotos.Constants.PREF_DEVICE_TO_SPOOF
 import io.github.samson910022.pixelifyphotos.Constants.PREF_ENABLE_VERBOSE_LOGS
+import io.github.samson910022.pixelifyphotos.Constants.PREF_FIRST_RUN_COMPLETED
 import io.github.samson910022.pixelifyphotos.Constants.PREF_LAST_VERSION
 import io.github.samson910022.pixelifyphotos.Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_FEATURES_LIST
+import io.github.samson910022.pixelifyphotos.Constants.PREF_USE_CLASSIC_UI
 import io.github.samson910022.pixelifyphotos.Constants.RELEASES_URL
 import io.github.samson910022.pixelifyphotos.Constants.RELEASES_URL2
-import io.github.samson910022.pixelifyphotos.Constants.SHARED_PREF_FILE_NAME
 import io.github.samson910022.pixelifyphotos.Constants.SUPPORT_URL
 import io.github.samson910022.pixelifyphotos.Constants.UPDATE_INFO_URL
 import io.github.samson910022.pixelifyphotos.Constants.UPDATE_INFO_URL2
-import com.google.android.material.snackbar.Snackbar
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -39,51 +44,39 @@ import java.net.URL
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
-
-class ActivityMain: AppCompatActivity(R.layout.activity_main) {
+class ActivityMain : AppCompatActivity() {
 
     companion object {
         private const val MAX_UPDATE_INFO_BYTES = 64 * 1024
     }
 
     private val updateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val utils by lazy { Utils() }
+
+    private var isClassicUi: Boolean = false
 
     /**
      * Get preferences via XposedService remote preferences when available,
      * falling back to MODE_PRIVATE when the service is not connected.
-     *
-     * This replaces the old MODE_WORLD_READABLE approach that required
-     * the "xposedsharedprefs" manifest flag and could throw SecurityException
-     * when the module was not enabled in LSPosed.
-     *
-     * Remote Preferences (via libxposed Modern API) are preferred because
-     * they allow the Xposed hook process (inside Google Photos) to read
-     * preferences written by the module UI process.
      */
     private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
     /**
      * Check if the Xposed module is actually active/enabled in LSPosed.
-     *
-     * Uses the XposedService connection status rather than the old
-     * MODE_WORLD_READABLE crash check (which no longer applies since
-     * we always fall back to MODE_PRIVATE).
      */
     private fun isModuleEnabled(): Boolean {
         return App.mService != null
     }
 
     private fun showRebootSnack() {
-        if (!isModuleEnabled()) return // don't display snackbar if module not active.
-        val rootView = findViewById<ScrollView>(R.id.root_view_for_snackbar)
-        Snackbar.make(rootView, R.string.please_force_stop_google_photos, Snackbar.LENGTH_SHORT).show()
+        if (!isModuleEnabled()) return
+        val view = findViewById<View>(if (isClassicUi) R.id.root_view_for_snackbar else R.id.modern_root_coordinator)
+            ?: findViewById(android.R.id.content)
+        Snackbar.make(view, R.string.please_force_stop_google_photos, Snackbar.LENGTH_SHORT).show()
     }
 
-    /**
-     * Animate the "Feature flags changed" textview and hide it after showing for sometime.
-     */
-    private fun peekFeatureFlagsChanged(textView: TextView) {
-        textView.run {
+    private fun peekFeatureFlagsChanged(textView: TextView?) {
+        textView?.run {
             alpha = 1.0f
             animate().alpha(0.0f).apply {
                 duration = 1000
@@ -92,13 +85,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         }
     }
 
-    private val utils by lazy { Utils() }
-
-    /**
-     * Activity launcher for [FeatureCustomize] activity.
-     * If user presses "Save" on [FeatureCustomize] activity, then result code is RESULT_OK.
-     * Then show prompt to force stop Google Photos.
-     */
     private val childActivityLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == Activity.RESULT_OK) {
@@ -106,10 +92,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             }
         }
 
-    /**
-     * Close and reopen the activity.
-     * For some reason, invalidate or recreate() does not refresh the switches.
-     */
     private fun restartActivity() {
         if (isFinishing || isDestroyed) return
         finish()
@@ -120,32 +102,72 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        val pref = getPrefs()
+        isClassicUi = pref?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
 
-        /**
-         * Check if the module is enabled (XposedService connected).
-         * If it is not, show a warning dialog and close the activity.
-         */
+        if (isClassicUi) {
+            setTheme(R.style.Theme_PixelifyGooglePhotos_Classic)
+            super.onCreate(savedInstanceState)
+            setContentView(R.layout.activity_main)
+        } else {
+            setTheme(R.style.Theme_PixelifyGooglePhotos)
+            super.onCreate(savedInstanceState)
+            setContentView(R.layout.activity_main_modern)
+            val toolbar = findViewById<MaterialToolbar>(R.id.top_toolbar)
+            if (toolbar != null) {
+                setSupportActionBar(toolbar)
+            }
+        }
+
         if (!isModuleEnabled()) {
-            AlertDialog.Builder(this)
+            MaterialAlertDialogBuilder(this)
                 .setMessage(R.string.module_not_enabled)
-                .setPositiveButton(R.string.close) { _, _ ->
-                    finish()
-                }
+                .setPositiveButton(R.string.close) { _, _ -> finish() }
                 .setCancelable(false)
                 .show()
             return
         }
 
-        /**
-         * Get preferences instance for this activity.
-         * Remote prefs via XposedService are preferred; MODE_PRIVATE is used as fallback.
-         */
-        val pref = getPrefs()
+        if (isClassicUi) {
+            setupClassicUi(pref)
+        } else {
+            setupModernUi(pref)
+        }
 
-        /**
-         * Link to xml views.
-         */
+        checkFirstRunOnboarding(pref)
+
+        // Check if changelogs need to be shown when upgrading from older version.
+        pref?.apply {
+            val thisVersion = BuildConfig.VERSION_CODE
+            if (getInt(PREF_LAST_VERSION, 0) < thisVersion) {
+                showChangeLog()
+                edit().apply {
+                    putInt(PREF_LAST_VERSION, thisVersion)
+                    apply()
+                }
+            }
+        }
+
+        // Check for updates in background thread.
+        updateExecutor.execute {
+            isUpdateAvailable()?.let { url ->
+                if (!isFinishing && !isDestroyed) {
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) {
+                            val updateLink = findViewById<TextView>(R.id.update_available_link)
+                            updateLink?.apply {
+                                paintFlags = Paint.UNDERLINE_TEXT_FLAG
+                                visibility = View.VISIBLE
+                                setOnClickListener { openWebLink(url) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun setupClassicUi(pref: SharedPreferences?) {
         val resetSettings = findViewById<Button>(R.id.reset_settings)
         val customizeFeatureFlags = findViewById<LinearLayout>(R.id.customize_feature_flags)
         val featureFlagsChanged = findViewById<TextView>(R.id.feature_flags_changed)
@@ -155,36 +177,12 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         val openGooglePhotos = findViewById<ImageButton>(R.id.open_google_photos)
         val advancedOptions = findViewById<TextView>(R.id.advanced_options)
         val supportLink = findViewById<TextView>(R.id.support_link)
-        val updateAvailableLink = findViewById<TextView>(R.id.update_available_link)
         val confExport = findViewById<ImageButton>(R.id.conf_export)
         val confImport = findViewById<ImageButton>(R.id.conf_import)
 
-        /**
-         * Set default spoof device to [DeviceProps.defaultDeviceName].
-         * Set check for google photos as `false`.
-         * Set default feature levels to spoof.
-         * Restart the activity.
-         */
-        resetSettings.setOnClickListener {
-            pref?.edit()?.run {
-                putString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
-                putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true)
-                putStringSet(
-                    PREF_SPOOF_FEATURES_LIST,
-                    DeviceProps.defaultFeatures.map { it.displayName }.toSet()
-                )
-                putBoolean(PREF_ENABLE_VERBOSE_LOGS, false)
-                putBoolean(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, false)
-                putString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
-                apply()
-            }
-            restartActivity()
-        }
+        resetSettings?.setOnClickListener { performResetSettings(pref) }
 
-        /**
-         * See [FeatureSpoofer.featuresNotToSpoof].
-         */
-        overrideROMFeatureLevels.apply {
+        overrideROMFeatureLevels?.apply {
             isChecked = pref?.getBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true) ?: false
             setOnCheckedChangeListener { _, isChecked ->
                 pref?.edit()?.run {
@@ -195,17 +193,12 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             }
         }
 
-        /**
-         * See [DeviceSpoofer].
-         */
-        deviceSpooferSpinner.apply {
+        deviceSpooferSpinner?.apply {
             val deviceNames = DeviceProps.allDevices.map { it.deviceName }
             val aa = ArrayAdapter(this@ActivityMain, android.R.layout.simple_spinner_item, deviceNames)
-
             aa.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             adapter = aa
             val defaultSelection = pref?.getString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
-            /** Second argument is `false` to prevent calling [peekFeatureFlagsChanged] on initialization */
             setSelection(aa.getPosition(defaultSelection), false)
 
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -219,7 +212,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
                         )
                         apply()
                     }
-
                     peekFeatureFlagsChanged(featureFlagsChanged)
                     showRebootSnack()
                 }
@@ -228,172 +220,215 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             }
         }
 
-        advancedOptions.apply {
+        advancedOptions?.apply {
             paintFlags = Paint.UNDERLINE_TEXT_FLAG
             setOnClickListener {
                 childActivityLauncher.launch(Intent(this@ActivityMain, AdvancedOptionsActivity::class.java))
             }
         }
 
-        /**
-         * Force-stop Photos plus other LSPosed-scoped packages (via service scope list),
-         * filtered by [SpoofedPackageTracker] / [ScopePolicy].
-         */
-        forceStopGooglePhotos.setOnClickListener {
-            val scopePackages = try {
-                val service = App.mService
-                if (service == null) {
-                    // Module is enabled (activity would have closed earlier), but
-                    // guard anyway: a null service yields Photos-only force-stop.
-                    Log.w("Pixelify", "XposedService null while force-stopping; using Photos only")
-                    null
-                } else {
-                    service.scope?.toSet()
-                }
-            } catch (_: Throwable) {
-                null
-            }
-            utils.forceStopPackages(SpoofedPackageTracker.packagesToForceStop(scopePackages), this)
-        }
-
-        /**
-         * See [Utils.openApplication].
-         */
-        openGooglePhotos.setOnClickListener {
-            utils.openApplication(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, this)
-        }
-
-        /**
-         * Launch [FeatureCustomize] to fine select the features.
-         */
-        customizeFeatureFlags.setOnClickListener {
+        forceStopGooglePhotos?.setOnClickListener { forceStopScopedApps() }
+        openGooglePhotos?.setOnClickListener { openGooglePhotos() }
+        customizeFeatureFlags?.setOnClickListener {
             childActivityLauncher.launch(Intent(this, FeatureCustomize::class.java))
         }
 
-        /**
-         * Open telegram group.
-         */
-        supportLink.apply {
+        supportLink?.apply {
             paintFlags = Paint.UNDERLINE_TEXT_FLAG
-            setOnClickListener {
-                openWebLink(SUPPORT_URL)
-            }
+            setOnClickListener { openWebLink(SUPPORT_URL) }
         }
 
-        /**
-         * Open config share options.
-         * Also see [Utils.writeConfigFile].
-         */
-        confExport.setOnClickListener {
-            AlertDialog.Builder(this).apply {
-                setTitle(R.string.export_config)
-                setMessage(R.string.export_config_desc)
-                setPositiveButton(R.string.share) { _, _ ->
-                    shareConfFile()
-                }
-                setNegativeButton(R.string.save) { _, _ ->
-                    saveConfFile()
-                }
-                setNeutralButton(android.R.string.cancel, null)
-            }
-                .show()
-        }
+        confExport?.setOnClickListener { showExportDialog() }
+        confImport?.setOnClickListener { showImportDialog() }
+    }
 
-        confImport.setOnClickListener {
-            AlertDialog.Builder(this).apply {
-                setTitle(R.string.import_config)
-                setMessage(R.string.import_config_desc)
-                setPositiveButton(android.R.string.ok) { _, _ ->
-                    importConfFile()
-                }
-                setNegativeButton(android.R.string.cancel, null)
-            }
-                .show()
-        }
+    private fun setupModernUi(pref: SharedPreferences?) {
+        val currentDevice = pref?.getString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
+            ?: DeviceProps.defaultDeviceName
 
-        /**
-         * Check if changelogs need to be shown when upgrading from older version.
-         */
-        pref?.apply {
-            val thisVersion = BuildConfig.VERSION_CODE
-            if (getInt(PREF_LAST_VERSION, 0) < thisVersion) {
-                showChangeLog()
-                edit().apply {
-                    putInt(PREF_LAST_VERSION, thisVersion)
+        val statusProfile = findViewById<TextView>(R.id.modern_status_profile)
+        statusProfile?.text = getString(R.string.device_spoofed_active, currentDevice)
+
+        val deviceNames = DeviceProps.allDevices.map { it.deviceName }
+        val autoCompleteDevice = findViewById<AutoCompleteTextView>(R.id.auto_complete_device)
+        autoCompleteDevice?.apply {
+            val adapter = ArrayAdapter(this@ActivityMain, android.R.layout.simple_dropdown_item_1line, deviceNames)
+            setAdapter(adapter)
+            setText(currentDevice, false)
+
+            setOnItemClickListener { _, _, position, _ ->
+                val selectedDevice = adapter.getItem(position) ?: DeviceProps.defaultDeviceName
+                pref?.edit()?.apply {
+                    putString(PREF_DEVICE_TO_SPOOF, selectedDevice)
+                    putStringSet(
+                        PREF_SPOOF_FEATURES_LIST,
+                        DeviceProps.getFeaturesUpToFromDeviceName(selectedDevice)
+                    )
                     apply()
                 }
+                statusProfile?.text = getString(R.string.device_spoofed_active, selectedDevice)
+                showRebootSnack()
             }
         }
 
-        /**
-         * Check for updates in background thread.
-         */
-        updateExecutor.execute {
-            isUpdateAvailable()?.let { url ->
-                if (!isFinishing && !isDestroyed) {
-                    runOnUiThread {
-                        if (!isFinishing && !isDestroyed) {
-                            updateAvailableLink.apply {
-                                paintFlags = Paint.UNDERLINE_TEXT_FLAG
-                                visibility = View.VISIBLE
-                                setOnClickListener {
-                                    openWebLink(url)
-                                }
-                            }
-                        }
-                    }
+        val btnCustomizeFeatures = findViewById<View>(R.id.modern_btn_customize_features)
+        btnCustomizeFeatures?.setOnClickListener {
+            childActivityLauncher.launch(Intent(this, FeatureCustomize::class.java))
+        }
+
+        val switchOverrideRom = findViewById<MaterialSwitch>(R.id.modern_switch_override_rom)
+        switchOverrideRom?.apply {
+            isChecked = pref?.getBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true) ?: false
+            setOnCheckedChangeListener { _, isChecked ->
+                pref?.edit()?.run {
+                    putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, isChecked)
+                    apply()
+                    showRebootSnack()
                 }
             }
+        }
+
+        findViewById<View>(R.id.modern_btn_force_stop)?.setOnClickListener { forceStopScopedApps() }
+        findViewById<View>(R.id.modern_btn_open_photos)?.setOnClickListener { openGooglePhotos() }
+
+        findViewById<View>(R.id.modern_item_advanced_options)?.setOnClickListener {
+            childActivityLauncher.launch(Intent(this, AdvancedOptionsActivity::class.java))
+        }
+
+        findViewById<View>(R.id.modern_item_switch_ui)?.setOnClickListener { toggleUiMode() }
+        findViewById<View>(R.id.modern_item_support)?.setOnClickListener { openWebLink(SUPPORT_URL) }
+    }
+
+    private fun checkFirstRunOnboarding(pref: SharedPreferences?) {
+        val firstRunDone = pref?.getBoolean(PREF_FIRST_RUN_COMPLETED, false) ?: false
+        if (!firstRunDone && isModuleEnabled()) {
+            val message = StringBuilder()
+                .append(getString(R.string.onboarding_default_profile_title))
+                .append("\n\n")
+                .append(Html.fromHtml(getString(R.string.onboarding_default_profile_desc), Html.FROM_HTML_MODE_COMPACT))
+                .append("\n\n")
+                .append(getString(R.string.onboarding_force_stop_warning_desc))
+
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.onboarding_title)
+                .setMessage(message)
+                .setPositiveButton(R.string.onboarding_action_force_stop_and_launch) { _, _ ->
+                    pref?.edit()?.putBoolean(PREF_FIRST_RUN_COMPLETED, true)?.apply()
+                    forceStopScopedApps()
+                    findViewById<View>(android.R.id.content)?.postDelayed({
+                        openGooglePhotos()
+                    }, 500)
+                }
+                .setNegativeButton(R.string.onboarding_action_got_it) { _, _ ->
+                    pref?.edit()?.putBoolean(PREF_FIRST_RUN_COMPLETED, true)?.apply()
+                }
+                .setCancelable(false)
+                .show()
         }
     }
 
-    /**
-     * Method to show latest changes.
-     */
+    private fun performResetSettings(pref: SharedPreferences?) {
+        pref?.edit()?.run {
+            putString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
+            putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true)
+            putStringSet(
+                PREF_SPOOF_FEATURES_LIST,
+                DeviceProps.defaultFeatures.map { it.displayName }.toSet()
+            )
+            putBoolean(PREF_ENABLE_VERBOSE_LOGS, false)
+            putBoolean(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, false)
+            putString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
+            apply()
+        }
+        restartActivity()
+    }
+
+    private fun toggleUiMode() {
+        val pref = getPrefs()
+        val current = pref?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
+        pref?.edit()?.putBoolean(PREF_USE_CLASSIC_UI, !current)?.apply()
+        Toast.makeText(this, R.string.ui_mode_changed, Toast.LENGTH_SHORT).show()
+        restartActivity()
+    }
+
+    private fun forceStopScopedApps() {
+        val scopePackages = try {
+            val service = App.mService
+            if (service == null) {
+                Log.w("Pixelify", "XposedService null while force-stopping; using Photos only")
+                null
+            } else {
+                service.scope?.toSet()
+            }
+        } catch (_: Throwable) {
+            null
+        }
+        utils.forceStopPackages(SpoofedPackageTracker.packagesToForceStop(scopePackages), this)
+    }
+
+    private fun openGooglePhotos() {
+        utils.openApplication(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, this)
+    }
+
+    private fun showExportDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.export_config)
+            .setMessage(R.string.export_config_desc)
+            .setPositiveButton(R.string.share) { _, _ -> shareConfFile() }
+            .setNegativeButton(R.string.save) { _, _ -> saveConfFile() }
+            .setNeutralButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showImportDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.import_config)
+            .setMessage(R.string.import_config_desc)
+            .setPositiveButton(android.R.string.ok) { _, _ -> importConfFile() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun showChangeLog() {
-        AlertDialog.Builder(this)
+        MaterialAlertDialogBuilder(this)
             .setTitle(R.string.version_head)
             .setMessage(R.string.version_desc)
             .setPositiveButton(android.R.string.ok, null)
             .show()
     }
 
-    /**
-     * Populate menu.
-     * Menu contains option to show changelog.
-     */
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_activity_main, menu)
         return super.onCreateOptionsMenu(menu)
     }
 
-    /**
-     * Click listener on menu.
-     */
+    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
+        val switchUiItem = menu?.findItem(R.id.menu_switch_ui)
+        if (isClassicUi) {
+            switchUiItem?.setTitle(R.string.switch_to_modern_ui)
+        } else {
+            switchUiItem?.setTitle(R.string.switch_to_classic_ui)
+        }
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_export -> showExportDialog()
+            R.id.menu_import -> showImportDialog()
+            R.id.menu_reset -> {
+                val pref = getPrefs()
+                performResetSettings(pref)
+            }
+            R.id.menu_switch_ui -> toggleUiMode()
             R.id.menu_changelog -> showChangeLog()
         }
         return super.onOptionsItemSelected(item)
     }
 
-    /**
-     * Check if update is available. Return url string of Github Releases page if update is present.
-     * Else returns null.
-     *
-     * This checks the independently maintained GitHub repository first and the
-     * Xposed Modules Repository mirror second. If either reports a newer build,
-     * return the corresponding releases page.
-     */
     private fun isUpdateAvailable(): String? {
-
         fun getUpdateStatus(url: String): Boolean {
-            var jsonString = ""
             val baos = ByteArrayOutputStream()
-
-            /**
-             * Get contents of the file into a string.
-             */
             try {
                 val connection = URL(url).openConnection().apply {
                     connectTimeout = 5_000
@@ -410,29 +445,18 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
                         if (total > MAX_UPDATE_INFO_BYTES) return false
                         baos.write(buffer, 0, count)
                     }
-                    jsonString = baos.toString(Charsets.UTF_8.name())
                 }
-            } catch (_: Exception) {
-                return false
-            }
-
-            /**
-             * Parse the string as a JSON object.
-             */
-            return if (jsonString.isNotBlank()) {
-                try {
+                val jsonString = baos.toString(Charsets.UTF_8.name())
+                return if (jsonString.isNotBlank()) {
                     val json = JSONObject(jsonString)
                     val remoteVersion = json.getInt(FIELD_LATEST_VERSION_CODE)
                     BuildConfig.VERSION_CODE < remoteVersion
-                } catch (_: Exception) {
-                    false
-                }
-            } else false
+                } else false
+            } catch (_: Exception) {
+                return false
+            }
         }
 
-        /**
-         * Check both maintained release sources.
-         */
         return when {
             getUpdateStatus(UPDATE_INFO_URL) -> RELEASES_URL
             getUpdateStatus(UPDATE_INFO_URL2) -> RELEASES_URL2
@@ -440,9 +464,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         }
     }
 
-    /**
-     * Open any url link
-     */
     fun openWebLink(url: String) {
         try {
             startActivity(Intent(Intent.ACTION_VIEW).apply {
@@ -453,13 +474,8 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         }
     }
 
-    /**
-     * Creates configuration export file to internal cache.
-     * Shares it to other apps.
-     */
     private fun shareConfFile() {
         val pref = getPrefs()
-
         try {
             val configDir = File(cacheDir, "config_exports")
             configDir.mkdirs()
@@ -476,12 +492,10 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
             )
 
             Intent().run {
-
                 action = Intent.ACTION_SEND
                 type = "application/json"
                 flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-
-                this.putExtra(Intent.EXTRA_STREAM, confFileShareUri)
+                putExtra(Intent.EXTRA_STREAM, confFileShareUri)
                 startActivity(Intent.createChooser(this, getString(R.string.share_config_file)))
             }
         } catch (_: Exception) {
@@ -489,19 +503,9 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         }
     }
 
-    /**
-     * Open a storage location on the device to export the configuration as a document.
-     * Uses intent with action [Intent.ACTION_CREATE_DOCUMENT]
-     * Also see [configCreateLauncher].
-     *
-     * Derived from https://gist.github.com/neonankiti/05922cf0a44108a2e2732671ed9ef386
-     */
     private fun saveConfFile() {
         val openIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            // filter to only show openable items.
             addCategory(Intent.CATEGORY_OPENABLE)
-
-            // Create a file with the requested Mime type
             type = "application/json"
             putExtra(Intent.EXTRA_TITLE, CONF_EXPORT_NAME)
         }
@@ -509,14 +513,8 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         configCreateLauncher.launch(openIntent)
     }
 
-    /**
-     * Intent launcher to start system file picker UI to select location of export.
-     * The Uri of the location is present in result.
-     * Then call [Utils.writeConfigFile] using that Uri.
-     */
     private val configCreateLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
         val pref = getPrefs()
-
         try {
             if (it.resultCode == Activity.RESULT_OK) {
                 val uri = it.data?.data ?: run {
@@ -531,12 +529,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         }
     }
 
-    /**
-     * Read a JSON file to get the configurations.
-     * Opens system file picker to select the file.
-     *
-     * https://developer.android.com/training/data-storage/shared/documents-files#open-file
-     */
     private fun importConfFile() {
         val openIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -547,7 +539,6 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
 
     private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
         val pref = getPrefs()
-
         try {
             if (it.resultCode == Activity.RESULT_OK) {
                 val uri = it.data?.data ?: run {
@@ -563,10 +554,8 @@ class ActivityMain: AppCompatActivity(R.layout.activity_main) {
         }
     }
 
-
     override fun onDestroy() {
         updateExecutor.shutdownNow()
         super.onDestroy()
     }
-
 }

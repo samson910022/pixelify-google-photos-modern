@@ -57,4 +57,29 @@
     <string name="failed_to_stop_package">無法自動強制停止一或多個作用範圍 App，請從 Android 設定中手動停止。</string>
     <string name="failed_to_launch_package">無法自動開啟 Google 相簿。</string>
     <string name="unable_to_open_link">沒有可開啟此連結的應用程式。</string>
+
+    <!-- 首次啟動引導 -->
+    <string name="onboarding_title">歡迎使用 Pixelify 無限解鎖</string>
+    <string name="onboarding_default_profile_title">已預設選擇 Pixel XL</string>
+    <string name="onboarding_default_profile_desc">Pixel XL 可為 Google 相簿解鎖&lt;b&gt;無限原始畫質備份&lt;/b&gt;且不佔用雲端空間。若您偏好較新的編輯功能（如魔術橡皮擦、Ultra HDR），可隨時在設定中切換為較新的 Pixel 機型。</string>
+    <string name="onboarding_force_stop_warning_title">重要提醒：必須強制停止 Google 相簿</string>
+    <string name="onboarding_force_stop_warning_desc">即使已預設選取 Pixel XL，Google 相簿仍必須「強制停止並重新開啟」才能清除舊快取使偽裝生效。請點擊下方按鈕立即套用。</string>
+    <string name="onboarding_action_force_stop_and_launch">強制停止並開啟相簿</string>
+    <string name="onboarding_action_got_it">我知道了</string>
+
+    <!-- 雙介面模式 -->
+    <string name="switch_to_classic_ui">切換至經典介面</string>
+    <string name="switch_to_modern_ui">切換至現代介面</string>
+    <string name="ui_mode_changed">介面模式已切換</string>
+
+    <!-- 現代介面文字 -->
+    <string name="module_status_active">LSPosed 模組已啟用</string>
+    <string name="module_status_inactive">模組尚未啟用</string>
+    <string name="module_scope_info">作用範圍：Google 相簿</string>
+    <string name="section_device_profile">裝置設定檔</string>
+    <string name="section_features">功能旗標</string>
+    <string name="section_actions">快捷操作</string>
+    <string name="customize_flags_summary">已自訂之功能旗標</string>
+    <string name="device_spoofed_active">目前模擬機型：%1$s</string>
+    <string name="reopen_photos_hint">變更設定後請強制停止作用範圍 App 讓變更生效</string>
 </resources>
