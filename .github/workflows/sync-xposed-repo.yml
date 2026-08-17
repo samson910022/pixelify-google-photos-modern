@@ -4,12 +4,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: 'Release tag on canonical repo to sync (leave blank for latest)'
-        required: false
-        default: ''
-        type: string
 
 permissions:
   contents: read
@@ -48,11 +42,13 @@ jobs:
       - name: Determine release tag
         if: env.XPOSED_TOKEN_PRESENT == 'true'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.release_tag || github.event.release.tag_name }}"
+          TAG="${{ github.event.release.tag_name }}"
           if [ -z "$TAG" ]; then
-            TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+            TAG="$(gh release view --json tagName --jq .tagName 2>/dev/null || git describe --tags --abbrev=0 2>/dev/null || echo "")"
           fi
           test -n "$TAG"
           echo "Syncing release tag: $TAG"
