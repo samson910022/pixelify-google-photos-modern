@@ -9,6 +9,7 @@ on:
         description: 'Release tag on canonical repo to sync (leave blank for latest)'
         required: false
         default: ''
+        type: string
 
 permissions:
   contents: read
