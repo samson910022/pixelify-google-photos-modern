@@ -98,19 +98,7 @@ jobs:
           
           APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
           
-          cat << 'INNER_EOF' > /tmp/mirror_notes.md
-### Verification
-
-Release signing certificate SHA-256 fingerprint:
-```
-37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1
-```
-
-APK SHA-256:
-```
-INNER_EOF
-          echo "${APK_SHA256}" >> /tmp/mirror_notes.md
-          echo '```' >> /tmp/mirror_notes.md
+          printf '### Verification\n\nRelease signing certificate SHA-256 fingerprint:\n```\n37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1\n```\n\nAPK SHA-256:\n```\n%s\n```\n' "$APK_SHA256" > /tmp/mirror_notes.md
 
       - name: Sync metadata files to Xposed-Modules-Repo
         if: env.XPOSED_TOKEN_PRESENT == 'true'
