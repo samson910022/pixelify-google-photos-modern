@@ -13,7 +13,6 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.FileProvider
@@ -44,9 +43,17 @@ import java.net.URL
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
+/**
+ * Main entry-point activity for Pixelify Infinity configuration.
+ *
+ * Supports both Modern (Material 3) and Classic UI layouts, onboarding flow,
+ * device selection, feature customization, configuration import/export, and
+ * scoped application force-stopping.
+ */
 class ActivityMain : AppCompatActivity() {
 
     companion object {
+        private const val TAG = "Pixelify"
         private const val MAX_UPDATE_INFO_BYTES = 64 * 1024
     }
 
@@ -68,13 +75,23 @@ class ActivityMain : AppCompatActivity() {
         return App.mService != null
     }
 
+    /**
+     * Display a snackbar prompting the user to force-stop Google Photos so
+     * that updated spoofing preferences take effect.
+     */
     private fun showRebootSnack() {
-        if (!isModuleEnabled()) return
+        if (!isModuleEnabled() || isFinishing || isDestroyed) return
         val view = findViewById<View>(if (isClassicUi) R.id.root_view_for_snackbar else R.id.modern_root_coordinator)
             ?: findViewById(android.R.id.content)
+            ?: return
         Snackbar.make(view, R.string.please_force_stop_google_photos, Snackbar.LENGTH_SHORT).show()
     }
 
+    /**
+     * Animate a transient indicator showing that feature flags have changed.
+     *
+     * @param textView Optional TextView target to animate.
+     */
     private fun peekFeatureFlagsChanged(textView: TextView?) {
         textView?.run {
             alpha = 1.0f
@@ -85,6 +102,10 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * ActivityResultLauncher for sub-activities (e.g. FeatureCustomize, AdvancedOptionsActivity).
+     * Triggers [showRebootSnack] when returning with [Activity.RESULT_OK].
+     */
     private val childActivityLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == Activity.RESULT_OK) {
@@ -92,15 +113,28 @@ class ActivityMain : AppCompatActivity() {
             }
         }
 
+    /**
+     * Restart the activity without transition animations to apply theme or UI mode changes.
+     */
     private fun restartActivity() {
         if (isFinishing || isDestroyed) return
         finish()
         startActivity(Intent(this, ActivityMain::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         })
-        overridePendingTransition(0, 0)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, 0, 0)
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, 0, 0)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
     }
 
+    /**
+     * Activity creation callback. Applies theme, verifies module state, sets up
+     * the chosen UI mode, checks onboarding and updates.
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         val pref = getPrefs()
         isClassicUi = pref?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
@@ -167,6 +201,11 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * Bind and initialize view elements for the Classic UI layout.
+     *
+     * @param pref SharedPreferences instance containing user settings.
+     */
     private fun setupClassicUi(pref: SharedPreferences?) {
         val resetSettings = findViewById<Button>(R.id.reset_settings)
         val customizeFeatureFlags = findViewById<LinearLayout>(R.id.customize_feature_flags)
@@ -242,6 +281,11 @@ class ActivityMain : AppCompatActivity() {
         confImport?.setOnClickListener { showImportDialog() }
     }
 
+    /**
+     * Bind and initialize view elements for the Modern (Material 3) UI layout.
+     *
+     * @param pref SharedPreferences instance containing user settings.
+     */
     private fun setupModernUi(pref: SharedPreferences?) {
         val currentDevice = pref?.getString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
             ?: DeviceProps.defaultDeviceName
@@ -299,6 +343,11 @@ class ActivityMain : AppCompatActivity() {
         findViewById<View>(R.id.modern_item_support)?.setOnClickListener { openWebLink(SUPPORT_URL) }
     }
 
+    /**
+     * Check if first-run onboarding needs to be presented to the user, providing initial setup guidance.
+     *
+     * @param pref SharedPreferences instance containing user settings.
+     */
     private fun checkFirstRunOnboarding(pref: SharedPreferences?) {
         val firstRunDone = pref?.getBoolean(PREF_FIRST_RUN_COMPLETED, false) ?: false
         if (!firstRunDone && isModuleEnabled()) {
@@ -316,7 +365,9 @@ class ActivityMain : AppCompatActivity() {
                     pref?.edit()?.putBoolean(PREF_FIRST_RUN_COMPLETED, true)?.apply()
                     forceStopScopedApps()
                     findViewById<View>(android.R.id.content)?.postDelayed({
-                        openGooglePhotos()
+                        if (!isFinishing && !isDestroyed) {
+                            openGooglePhotos()
+                        }
                     }, 500)
                 }
                 .setNegativeButton(R.string.onboarding_action_got_it) { _, _ ->
@@ -327,6 +378,11 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * Reset all user configurations back to factory defaults and restart the activity.
+     *
+     * @param pref SharedPreferences instance to reset.
+     */
     private fun performResetSettings(pref: SharedPreferences?) {
         pref?.edit()?.run {
             putString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
@@ -343,6 +399,9 @@ class ActivityMain : AppCompatActivity() {
         restartActivity()
     }
 
+    /**
+     * Toggle between Modern and Classic UI layouts and restart the activity.
+     */
     private fun toggleUiMode() {
         val pref = getPrefs()
         val current = pref?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
@@ -351,11 +410,14 @@ class ActivityMain : AppCompatActivity() {
         restartActivity()
     }
 
+    /**
+     * Force-stop all packages within the active LSPosed scope using root privileges.
+     */
     private fun forceStopScopedApps() {
         val scopePackages = try {
             val service = App.mService
             if (service == null) {
-                Log.w("Pixelify", "XposedService null while force-stopping; using Photos only")
+                Log.w(TAG, "XposedService null while force-stopping; using Photos only")
                 null
             } else {
                 service.scope?.toSet()
@@ -366,10 +428,16 @@ class ActivityMain : AppCompatActivity() {
         utils.forceStopPackages(SpoofedPackageTracker.packagesToForceStop(scopePackages), this)
     }
 
+    /**
+     * Launch Google Photos application.
+     */
     private fun openGooglePhotos() {
         utils.openApplication(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, this)
     }
 
+    /**
+     * Show a dialog offering options to share or save the exported JSON configuration.
+     */
     private fun showExportDialog() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.export_config)
@@ -380,6 +448,9 @@ class ActivityMain : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Show a confirmation dialog before importing a configuration JSON file.
+     */
     private fun showImportDialog() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.import_config)
@@ -389,6 +460,9 @@ class ActivityMain : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Show the version changelog dialog.
+     */
     private fun showChangeLog() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.version_head)
@@ -397,11 +471,17 @@ class ActivityMain : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Inflate options menu.
+     */
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_activity_main, menu)
         return super.onCreateOptionsMenu(menu)
     }
 
+    /**
+     * Prepare dynamic options menu items based on current UI mode.
+     */
     override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
         val switchUiItem = menu?.findItem(R.id.menu_switch_ui)
         if (isClassicUi) {
@@ -412,6 +492,9 @@ class ActivityMain : AppCompatActivity() {
         return super.onPrepareOptionsMenu(menu)
     }
 
+    /**
+     * Handle options menu item selection.
+     */
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_export -> showExportDialog()
@@ -426,6 +509,11 @@ class ActivityMain : AppCompatActivity() {
         return super.onOptionsItemSelected(item)
     }
 
+    /**
+     * Check remote endpoints for new version updates.
+     *
+     * @return Releases page URL if an update is available, or null if up-to-date or on error.
+     */
     private fun isUpdateAvailable(): String? {
         fun getUpdateStatus(url: String): Boolean {
             val baos = ByteArrayOutputStream()
@@ -464,6 +552,11 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * Open an external web link in the default browser.
+     *
+     * @param url Web URL string to open.
+     */
     fun openWebLink(url: String) {
         try {
             startActivity(Intent(Intent.ACTION_VIEW).apply {
@@ -474,6 +567,9 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * Export the current configuration to cache and launch the Android share sheet.
+     */
     private fun shareConfFile() {
         val pref = getPrefs()
         try {
@@ -503,6 +599,9 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * Launch the Storage Access Framework document creation picker to save configuration JSON.
+     */
     private fun saveConfFile() {
         val openIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -513,6 +612,9 @@ class ActivityMain : AppCompatActivity() {
         configCreateLauncher.launch(openIntent)
     }
 
+    /**
+     * ActivityResultLauncher handling SAF document creation result for configuration export.
+     */
     private val configCreateLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
         val pref = getPrefs()
         try {
@@ -529,6 +631,9 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * Launch the Storage Access Framework document picker to select a configuration JSON for import.
+     */
     private fun importConfFile() {
         val openIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -537,6 +642,9 @@ class ActivityMain : AppCompatActivity() {
         configOpenLauncher.launch(openIntent)
     }
 
+    /**
+     * ActivityResultLauncher handling SAF document selection result for configuration import.
+     */
     private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
         val pref = getPrefs()
         try {
@@ -554,6 +662,9 @@ class ActivityMain : AppCompatActivity() {
         }
     }
 
+    /**
+     * Activity destroy lifecycle callback. Shuts down background update executor.
+     */
     override fun onDestroy() {
         updateExecutor.shutdownNow()
         super.onDestroy()
