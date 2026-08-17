@@ -99,12 +99,12 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           
           python3 - << 'PYEOF'
-          import json, re, subprocess
+          import os, json, re, subprocess
           from pathlib import Path
 
-          version_name = "${VERSION_NAME}"
-          canonical_tag = "${CANONICAL_TAG}"
-          apk_path = "${APK_PATH}"
+          version_name = os.environ.get("VERSION_NAME", "")
+          canonical_tag = os.environ.get("CANONICAL_TAG", "")
+          apk_path = os.environ.get("APK_PATH", "")
           cert_sha256 = "37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1"
 
           apk_sha256 = subprocess.check_output(["sha256sum", apk_path], text=True).split()[0]
