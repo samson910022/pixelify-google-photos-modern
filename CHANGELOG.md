@@ -6,7 +6,7 @@
 
 - **Modern Material 3 Interface**: Card-based modern layout (`activity_main_modern.xml`) with dynamic Monet color extraction, status cards, and large accessible action buttons.
 - **Dual UI Mode**: Retained classic UI mode via `PREF_USE_CLASSIC_UI` preference and menu toggle for backward compatibility and seamless user transition.
-- **Expanded Pixel Device Profiles**: Added official release-keys profiles for **Pixel 6** (`oriole`), **Pixel Fold** (`felix`), **Pixel Tablet** (`tangorpro`), and **Pixel 9 Pro Fold** (`comet`) (30 total device entries).
+- **Expanded Pixel Device Profiles**: Added official release-keys profiles for **Pixel 6** (`oriole`), **Pixel Fold** (`felix`), **Pixel Tablet** (`tangorpro`), and **Pixel 9 Pro Fold** (`comet`) (30 total entries including 'None').
 - **First-Run Onboarding Guide**: Explains default Pixel XL unlimited backup profile and provides a 1-click action to force-stop scoped apps and launch Google Photos.
 - **Normalized Vector Assets**: Standardized vector drawables (24dp x 24dp) with theme-aware tints across light and dark themes.
 
