@@ -25,6 +25,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: temurin
+          java-version: "17"
+          check-latest: false
+
       - name: Verify XPOSED_REPO_TOKEN secret
         shell: bash
         env:
@@ -94,19 +101,19 @@ jobs:
           
           APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
           
-          cat << EOF > /tmp/mirror_notes.md
-          ### Verification
+          cat << 'INNER_EOF' > /tmp/mirror_notes.md
+### Verification
 
-          Release signing certificate SHA-256 fingerprint:
-          \`\`\`
-          37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1
-          \`\`\`
+Release signing certificate SHA-256 fingerprint:
+```
+37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1
+```
 
-          APK SHA-256:
-          \`\`\`
-          ${APK_SHA256}
-          \`\`\`
-          EOF
+APK SHA-256:
+```
+INNER_EOF
+          echo "${APK_SHA256}" >> /tmp/mirror_notes.md
+          echo '```' >> /tmp/mirror_notes.md
 
       - name: Sync metadata files to Xposed-Modules-Repo
         if: env.XPOSED_TOKEN_PRESENT == 'true'
@@ -152,10 +159,16 @@ jobs:
           set -euo pipefail
           MIRROR_REPO="Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos"
           
-          echo "Publishing release $XPOSED_TAG to $MIRROR_REPO..."
-          gh release create "$XPOSED_TAG" \
-            -R "$MIRROR_REPO" \
-            --title "$VERSION_NAME" \
-            --notes-file /tmp/mirror_notes.md \
-            "$APK_PATH"
-          echo "Successfully published to Xposed Modules Repository!"
+          if gh release view "$XPOSED_TAG" -R "$MIRROR_REPO" >/dev/null 2>&1; then
+            echo "Release $XPOSED_TAG already exists on $MIRROR_REPO. Updating release notes and asset..."
+            gh release edit "$XPOSED_TAG" -R "$MIRROR_REPO" --notes-file /tmp/mirror_notes.md
+            gh release upload "$XPOSED_TAG" -R "$MIRROR_REPO" "$APK_PATH" --clobber
+          else
+            echo "Publishing release $XPOSED_TAG to $MIRROR_REPO..."
+            gh release create "$XPOSED_TAG" \
+              -R "$MIRROR_REPO" \
+              --title "$VERSION_NAME" \
+              --notes-file /tmp/mirror_notes.md \
+              "$APK_PATH"
+          fi
+          echo "Successfully synchronized to Xposed Modules Repository!"
