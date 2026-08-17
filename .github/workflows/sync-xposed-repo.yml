@@ -1,0 +1,161 @@
+name: Sync Xposed Modules Repo
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag on canonical repo to sync (leave blank for latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  sync-to-xposed-repo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out canonical repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify XPOSED_REPO_TOKEN secret
+        shell: bash
+        env:
+          XPOSED_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
+        run: |
+          if [ -z "$XPOSED_TOKEN" ]; then
+            echo "::warning ::Secret XPOSED_REPO_TOKEN is not set. Skipping mirror sync."
+            echo "To enable automatic publishing to Xposed-Modules-Repo, set XPOSED_REPO_TOKEN in repository secrets."
+            exit 0
+          fi
+          echo "XPOSED_TOKEN_PRESENT=true" >> "$GITHUB_ENV"
+
+      - name: Determine release tag
+        if: env.XPOSED_TOKEN_PRESENT == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.release_tag || github.event.release.tag_name }}"
+          if [ -z "$TAG" ]; then
+            TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo "")"
+          fi
+          test -n "$TAG"
+          echo "Syncing release tag: $TAG"
+          echo "CANONICAL_TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Download signed release APK from GitHub Release
+        if: env.XPOSED_TOKEN_PRESENT == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/release_assets
+          gh release download "$CANONICAL_TAG" --pattern "*.apk" --dir /tmp/release_assets
+          APK_FILE="$(find /tmp/release_assets -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK_FILE"
+          echo "Found APK: $APK_FILE"
+          echo "APK_PATH=$APK_FILE" >> "$GITHUB_ENV"
+
+      - name: Verify APK certificate fingerprint
+        if: env.XPOSED_TOKEN_PRESENT == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_FINGERPRINT="37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
+          
+          # Extract SHA-256 fingerprint using keytool
+          ACTUAL_FINGERPRINT="$(keytool -printcert -jarfile "$APK_PATH" | grep -i "SHA256:" | head -n 1 | awk -F 'SHA256:' '{print $2}' | tr -d ' :' | tr '[:lower:]' '[:upper:]')"
+          
+          if [ "$ACTUAL_FINGERPRINT" != "$EXPECTED_FINGERPRINT" ]; then
+            echo "::error ::APK certificate fingerprint mismatch! Expected $EXPECTED_FINGERPRINT, got $ACTUAL_FINGERPRINT"
+            exit 1
+          fi
+          echo "APK certificate fingerprint verified: $ACTUAL_FINGERPRINT"
+
+      - name: Extract version metadata and prepare release notes
+        if: env.XPOSED_TOKEN_PRESENT == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_CODE="$(python3 -c "import json; print(json.load(open('update_info.json'))['latest_version_code'])")"
+          VERSION_NAME="$(python3 -c "import re; m = re.search(r'val\s+appVersionName\s*=\s*\"([^\"]+)\"', open('app/build.gradle.kts').read()); print(m.group(1))")"
+          
+          XPOSED_TAG="${VERSION_CODE}-${VERSION_NAME}"
+          echo "XPOSED_TAG=$XPOSED_TAG" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          
+          APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+          
+          cat << EOF > /tmp/mirror_notes.md
+          ### Verification
+
+          Release signing certificate SHA-256 fingerprint:
+          \`\`\`
+          37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1
+          \`\`\`
+
+          APK SHA-256:
+          \`\`\`
+          ${APK_SHA256}
+          \`\`\`
+          EOF
+
+      - name: Sync metadata files to Xposed-Modules-Repo
+        if: env.XPOSED_TOKEN_PRESENT == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          MIRROR_REPO="Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos"
+          
+          TMP_CLONE="$(mktemp -d)"
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${MIRROR_REPO}.git" "$TMP_CLONE"
+          
+          cp -f distribution/xposed-repository/README.md "$TMP_CLONE/README.md"
+          cp -f distribution/xposed-repository/SUMMARY "$TMP_CLONE/SUMMARY"
+          cp -f distribution/xposed-repository/SOURCE_URL "$TMP_CLONE/SOURCE_URL"
+          cp -f distribution/xposed-repository/SCOPE "$TMP_CLONE/SCOPE"
+          cp -f distribution/xposed-repository/update_info.json "$TMP_CLONE/update_info.json"
+          if [ -f distribution/xposed-repository/banner.png ]; then
+            cp -f distribution/xposed-repository/banner.png "$TMP_CLONE/banner.png"
+          fi
+          
+          cd "$TMP_CLONE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if ! git diff --quiet; then
+            git add .
+            git commit -m "sync: update mirror metadata for release ${VERSION_NAME}"
+            git push origin main
+            echo "Mirror repository metadata updated."
+          else
+            echo "Mirror repository metadata is already up to date."
+          fi
+          rm -rf "$TMP_CLONE"
+
+      - name: Publish Release to Xposed-Modules-Repo
+        if: env.XPOSED_TOKEN_PRESENT == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.XPOSED_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          MIRROR_REPO="Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos"
+          
+          echo "Publishing release $XPOSED_TAG to $MIRROR_REPO..."
+          gh release create "$XPOSED_TAG" \
+            -R "$MIRROR_REPO" \
+            --title "$VERSION_NAME" \
+            --notes-file /tmp/mirror_notes.md \
+            "$APK_PATH"
+          echo "Successfully published to Xposed Modules Repository!"

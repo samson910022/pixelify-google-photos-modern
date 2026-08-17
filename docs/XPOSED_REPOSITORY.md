@@ -41,6 +41,23 @@ Before submitting or updating that mirror:
    - **Asset**: signed APK (`content-type` must be an Android package archive)
 7. Verify the mirror release asset after upload before announcing it.
 
+## Automated CI Synchronization
+
+The repository includes an automated workflow (`.github/workflows/sync-xposed-repo.yml`) that automatically synchronizes metadata and publishes releases to `Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos` whenever a new release is published on the canonical source repository.
+
+### How it works:
+1. Maintainer compiles and signs the release locally using `:app:verifiedRelease`.
+2. Maintainer publishes the release (with signed APK asset) on the main repository (`samson910022/pixelify-google-photos-modern`).
+3. GitHub Actions workflow triggers automatically on release publication:
+   - Downloads the signed release APK from the release.
+   - Verifies the APK certificate fingerprint matches the pinned release certificate.
+   - Formats the mirror tag as `{versionCode}-{versionName}` (e.g. `7-1.2.0`).
+   - Synchronizes metadata files from `distribution/xposed-repository/` to the mirror's `main` branch.
+   - Creates the matching release and uploads the signed APK to `Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos`.
+
+### Required Secret:
+- Set `XPOSED_REPO_TOKEN` in canonical repository Settings → Secrets and variables → Actions (a Personal Access Token with `repo` write permissions for `Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos`).
+
 Submission, mirror creation, release creation, and repository-visibility changes require explicit maintainer approval.
 
 ## Why a module may not appear on the website
