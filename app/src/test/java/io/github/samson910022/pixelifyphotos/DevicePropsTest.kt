@@ -183,9 +183,49 @@ class DevicePropsTest {
     }
 
     @Test
-    fun `all devices have allDevices count of 26`() {
-        // 1 "None" + 25 actual devices (was 20 + Pixel 10 series 5)
-        assertEquals(26, DeviceProps.allDevices.size)
+    fun `all devices have allDevices count of 30`() {
+        // 1 "None" + 29 actual devices
+        assertEquals(30, DeviceProps.allDevices.size)
+    }
+
+    @Test
+    fun `Pixel 6 has correct props`() {
+        val device = DeviceProps.getDeviceProps("Pixel 6")
+        assertNotNull(device)
+        assertEquals("oriole", device!!.props["DEVICE"])
+        assertEquals("Pixel 6", device.props["MODEL"])
+        assertEquals("Pixel 2021", device.featureLevelName)
+        assertEquals("Android 15", device.androidVersion?.label)
+    }
+
+    @Test
+    fun `Pixel Fold has correct props`() {
+        val device = DeviceProps.getDeviceProps("Pixel Fold")
+        assertNotNull(device)
+        assertEquals("felix", device!!.props["DEVICE"])
+        assertEquals("Pixel Fold", device.props["MODEL"])
+        assertEquals("Pixel 2023", device.featureLevelName)
+        assertEquals("Android 15", device.androidVersion?.label)
+    }
+
+    @Test
+    fun `Pixel Tablet has correct props`() {
+        val device = DeviceProps.getDeviceProps("Pixel Tablet")
+        assertNotNull(device)
+        assertEquals("tangorpro", device!!.props["DEVICE"])
+        assertEquals("Pixel Tablet", device.props["MODEL"])
+        assertEquals("Pixel 2023", device.featureLevelName)
+        assertEquals("Android 15", device.androidVersion?.label)
+    }
+
+    @Test
+    fun `Pixel 9 Pro Fold has correct props`() {
+        val device = DeviceProps.getDeviceProps("Pixel 9 Pro Fold")
+        assertNotNull(device)
+        assertEquals("comet", device!!.props["DEVICE"])
+        assertEquals("Pixel 9 Pro Fold", device.props["MODEL"])
+        assertEquals("Pixel 2024", device.featureLevelName)
+        assertEquals("Android 16", device.androidVersion?.label)
     }
 
     @Test

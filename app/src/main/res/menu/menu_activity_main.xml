@@ -2,10 +2,32 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <item android:id="@+id/menu_changelog"
-        android:icon="@drawable/ic_info"
-        app:showAsAction="ifRoom"
-        android:title="@string/changelog"
-        />
+    <item
+        android:id="@+id/menu_export"
+        android:icon="@drawable/ic_export"
+        android:title="@string/export_config"
+        app:showAsAction="ifRoom" />
 
+    <item
+        android:id="@+id/menu_import"
+        android:icon="@drawable/ic_import"
+        android:title="@string/import_config"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/menu_switch_ui"
+        android:icon="@drawable/ic_style"
+        android:title="@string/switch_to_classic_ui"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_reset"
+        android:title="@string/reset"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_changelog"
+        android:icon="@drawable/ic_info"
+        android:title="@string/changelog"
+        app:showAsAction="never" />
 </menu>

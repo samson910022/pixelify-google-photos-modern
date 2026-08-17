@@ -15,6 +15,11 @@ class ConstantsTest {
     }
 
     @Test
+    fun `PACKAGE_NAME_MODULE matches atomic project identity`() {
+        assertEquals("io.github.samson910022.pixelifyphotos", Constants.PACKAGE_NAME_MODULE)
+    }
+
+    @Test
     fun `SHARED_PREF_FILE_NAME is non-empty`() {
         assertTrue(Constants.SHARED_PREF_FILE_NAME.isNotEmpty())
     }
@@ -29,6 +34,8 @@ class ConstantsTest {
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
             Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL,
             Constants.PREF_LAST_VERSION,
+            Constants.PREF_USE_CLASSIC_UI,
+            Constants.PREF_FIRST_RUN_COMPLETED,
         )
         assertEquals(
             "Preference keys should all be unique",
@@ -47,6 +54,8 @@ class ConstantsTest {
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
             Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL,
             Constants.PREF_LAST_VERSION,
+            Constants.PREF_USE_CLASSIC_UI,
+            Constants.PREF_FIRST_RUN_COMPLETED,
         )
         prefKeys.forEach { key ->
             assertTrue("Pref key '$key' should be non-empty", key.isNotEmpty())
@@ -84,5 +93,18 @@ class ConstantsTest {
     @Test
     fun `FIELD_LATEST_VERSION_CODE is non-empty`() {
         assertTrue(Constants.FIELD_LATEST_VERSION_CODE.isNotEmpty())
+    }
+
+    @Test
+    fun `specific preference key values are expected`() {
+        assertEquals("PREF_SPOOF_FEATURES_LIST", Constants.PREF_SPOOF_FEATURES_LIST)
+        assertEquals("PREF_DEVICE_TO_SPOOF", Constants.PREF_DEVICE_TO_SPOOF)
+        assertEquals("PREF_OVERRIDE_ROM_FEATURE_LEVELS", Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS)
+        assertEquals("PREF_ENABLE_VERBOSE_LOGS", Constants.PREF_ENABLE_VERBOSE_LOGS)
+        assertEquals("PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE", Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE)
+        assertEquals("PREF_SPOOF_ANDROID_VERSION_MANUAL", Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL)
+        assertEquals("PREF_LAST_VERSION", Constants.PREF_LAST_VERSION)
+        assertEquals("PREF_USE_CLASSIC_UI", Constants.PREF_USE_CLASSIC_UI)
+        assertEquals("PREF_FIRST_RUN_COMPLETED", Constants.PREF_FIRST_RUN_COMPLETED)
     }
 }

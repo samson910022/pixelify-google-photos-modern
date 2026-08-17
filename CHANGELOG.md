@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.0] - 2026-08-18
+
+### Added
+
+- **Modern Material 3 Interface**: Card-based modern layout (`activity_main_modern.xml`) with dynamic Monet color extraction, status cards, and large accessible action buttons.
+- **Dual UI Mode**: Retained classic UI mode via `PREF_USE_CLASSIC_UI` preference and menu toggle for backward compatibility and seamless user transition.
+- **Expanded Pixel Device Profiles**: Added official release-keys profiles for **Pixel 6** (`oriole`), **Pixel Fold** (`felix`), **Pixel Tablet** (`tangorpro`), and **Pixel 9 Pro Fold** (`comet`) (30 total entries including 'None').
+- **First-Run Onboarding Guide**: Explains default Pixel XL unlimited backup profile and provides a 1-click action to force-stop scoped apps and launch Google Photos.
+- **Normalized Vector Assets**: Standardized vector drawables (24dp x 24dp) with theme-aware tints across light and dark themes.
+
+### Changed
+
+- Bumped version to `1.2.0` (`versionCode 7`).
+- **Generalized Fallback Pipeline**: Multi-tier capability-driven write pipeline in `DeviceSpoofer.kt` (Reflection -> Unsafe Static Put -> JNI `libpixelify_build.so` -> Xposed SystemProperties hook fallback) that seamlessly supports Android 14, 15, 16, 17, 18+ and hardened OEM ROMs.
+- **Layout & Anti-Clipping Fixes**: Fixed top clipping on long feature flag lists (`feature_customize.xml`) for Pixel 7+ devices and prevented text squashing in `ActivityMain.kt` and `AdvancedOptionsActivity.kt`.
+- **Contrast & Theme Improvements**: Added `colorOnPrimary` tokens for Material 3 Day/Night palettes meeting WCAG AAA accessibility standards.
+- **Strict Project Identity**: Aligned Traditional Chinese strings with atomic project identity `Pixelify Infinity`.
+
 ## [1.1.0] - 2026-07-30
 
 ### Added

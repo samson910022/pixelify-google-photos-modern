@@ -17,8 +17,8 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.1.0</string>
-    <string name="version_desc">Pixel 10 series + Pixel 2025 flags, multi-app LSPosed scope (Photos recommended; soft denylist), default Pixel XL, experimental Fold/10a labels, Force-stop scoped apps via LSPosed scope list, and build env helper.</string>
+    <string name="version_head">Version 1.2.0</string>
+    <string name="version_desc">Modern Material 3 card interface with dynamic theming and dual UI toggle, official device profiles for Pixel 6 / Fold / Tablet / 9 Pro Fold, generalized capability-based write fallback engine across Android versions, first-run onboarding guide, and layout anti-clipping fixes.</string>
     <string name="changelog">Change log</string>
 
     <!-- Configuration import/export -->
@@ -57,4 +57,29 @@
     <string name="failed_to_stop_package">Unable to force-stop one or more scoped apps automatically. Stop them from Android settings.</string>
     <string name="failed_to_launch_package">Unable to open Google Photos automatically.</string>
     <string name="unable_to_open_link">No application is available to open this link.</string>
+
+    <!-- First-run onboarding -->
+    <string name="onboarding_title">Welcome to Pixelify Infinity</string>
+    <string name="onboarding_default_profile_title">Pixel XL is selected by default</string>
+    <string name="onboarding_default_profile_desc">Pixel XL enables &lt;b&gt;Unlimited Original Quality Google Photos backup&lt;/b&gt; at no storage cost. If you prefer newer editing features (e.g. Magic Eraser, Ultra HDR), you can switch to a newer Pixel in the settings anytime.</string>
+    <string name="onboarding_force_stop_warning_title">Important: Force-stop Google Photos</string>
+    <string name="onboarding_force_stop_warning_desc">Even though Pixel XL is already selected, Google Photos will not apply the spoofing until it is completely stopped and reopened. Tap the button below to apply changes immediately.</string>
+    <string name="onboarding_action_force_stop_and_launch">Force-Stop &amp; Launch Photos</string>
+    <string name="onboarding_action_got_it">Got it</string>
+
+    <!-- Dual UI Mode -->
+    <string name="switch_to_classic_ui">Switch to Classic UI</string>
+    <string name="switch_to_modern_ui">Switch to Modern UI</string>
+    <string name="ui_mode_changed">UI mode changed</string>
+
+    <!-- Modern UI Strings -->
+    <string name="module_status_active">LSPosed Module Active</string>
+    <string name="module_status_inactive">Module Not Active</string>
+    <string name="module_scope_info">Scope: Google Photos</string>
+    <string name="section_device_profile">Device Profile</string>
+    <string name="section_features">Feature Flags</string>
+    <string name="section_actions">Actions</string>
+    <string name="customize_flags_summary">Configured feature flags</string>
+    <string name="device_spoofed_active">Active Profile: %1$s</string>
+    <string name="reopen_photos_hint">Force-stop scoped apps after changing settings to apply</string>
 </resources>
