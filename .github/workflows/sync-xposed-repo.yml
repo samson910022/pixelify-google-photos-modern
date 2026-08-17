@@ -87,6 +87,8 @@ jobs:
       - name: Extract version metadata and prepare release notes
         if: env.XPOSED_TOKEN_PRESENT == 'true'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           VERSION_CODE="$(python3 -c "import json; print(json.load(open('update_info.json'))['latest_version_code'])")"
@@ -96,9 +98,47 @@ jobs:
           echo "XPOSED_TAG=$XPOSED_TAG" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           
-          APK_SHA256="$(sha256sum "$APK_PATH" | awk '{print $1}')"
-          
-          printf '### Verification\n\nRelease signing certificate SHA-256 fingerprint:\n```\n37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1\n```\n\nAPK SHA-256:\n```\n%s\n```\n' "$APK_SHA256" > /tmp/mirror_notes.md
+          python3 - << 'PYEOF'
+          import json, re, subprocess
+          from pathlib import Path
+
+          version_name = "${VERSION_NAME}"
+          canonical_tag = "${CANONICAL_TAG}"
+          apk_path = "${APK_PATH}"
+          cert_sha256 = "37:18:6E:5C:26:94:E5:53:E5:FA:B1:F7:78:7C:04:DB:CD:43:84:AB:84:96:3E:60:BE:9C:3C:CB:6B:A9:07:B1"
+
+          apk_sha256 = subprocess.check_output(["sha256sum", apk_path], text=True).split()[0]
+
+          changelog_text = ""
+          try:
+              content = Path("CHANGELOG.md").read_text(encoding="utf-8")
+              pattern = rf"##\s*\[{re.escape(version_name)}\].*?(?=\n##\s*\[|\Z)"
+              m = re.search(pattern, content, re.DOTALL)
+              if m:
+                  changelog_text = m.group(0).strip()
+          except Exception:
+              pass
+
+          if not changelog_text:
+              try:
+                  out = subprocess.check_output(["gh", "release", "view", canonical_tag, "--json", "body", "--jq", ".body"], text=True)
+                  changelog_text = out.strip()
+              except Exception:
+                  pass
+
+          verification_block = (
+              f"\n\n### Verification\n\n"
+              f"Release signing certificate SHA-256 fingerprint:\n```\n{cert_sha256}\n```\n\n"
+              f"APK SHA-256:\n```\n{apk_sha256}\n```\n"
+          )
+
+          if "### Verification" in changelog_text:
+              final_notes = changelog_text
+          else:
+              final_notes = (changelog_text + "\n" + verification_block).strip()
+
+          Path("/tmp/mirror_notes.md").write_text(final_notes, encoding="utf-8")
+          PYEOF
 
       - name: Sync metadata files to Xposed-Modules-Repo
         if: env.XPOSED_TOKEN_PRESENT == 'true'
