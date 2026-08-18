@@ -36,6 +36,20 @@ Pixelify Infinity は、一部の Google Pixel 端末プロパティとシステ
 
 **Android 17 以降の互換性：**対応するすべての Android バージョン（API 37+ を含む）で Build プロパティの偽装を試行します。一部の Android 17 では ART が `public static final` の `Build` フィールドへの `Field.set` を拒否します（`IllegalAccessException`）。これは ART の制限であり、libxposed API 101 が原因ではありません。モジュールは複数戦略の書き込み（可能な場合は reflected `final` 解除後の反射 `Field.set`、続けて複数バリエーションの `Unsafe` static put、その後 JNI `libpixelify_build` フォールバック）、副次経路としての `SystemProperties` 読み取りフック、パッケージ読み込み早期の適用（ready 時に再適用）、および検証用の再読み取りを行います。すべての Android 17 ROM での成功を保証しません。VERIFY が継続して失敗した場合は、サイレントではなく Toast と通知で知らせます。機能フラグと端末プロファイルは、端末・ROM・フレームワーク・Google フォトのバージョンに依存します。
 
+## 対応・検証済みバージョン
+
+Build プロパティの偽装はフレームワークレベルのクラス（`android.os.Build` フィールドと `SystemProperties` の読み取り）をフックするもので、Google フォトの内部には依存しないため、特定の Google フォトビルドに紐づくものではありません。機能フラグの偽装や無制限オリジナル品質アップロードは、引き続き Google フォトのバージョンやサーバー側設定の影響を受けます。
+
+検証済みの組み合わせ（メンテナー動作確認済み）：
+
+| Android バージョン | Google フォトのバージョン | 端末 | 状態 |
+| --- | --- | --- | --- |
+| Android 15 | 7.84.0.949657053 | Android 15 端末 2 台 | 動作確認済み |
+| Android 17 | 7.84.0.949657053 | Pixel 6 Pro（`CP2A.260705.006`） | 動作確認済み |
+| Android 16 | — | — | メンテナー未検証。報告歓迎 |
+
+Google フォトのアップデートで挙動が変わった場合は、アプリ内の「診断」画面（モジュールアプリ → 診断）でフックのマイルストーンと直近の端末偽装 VERIFY 結果を確認し、問題報告時にはコピーしたレポートを添付してください。
+
 ## インストール
 
 1. このリポジトリの [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) ページから APK をダウンロードします。

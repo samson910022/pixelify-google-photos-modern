@@ -1,28 +1,18 @@
 # Changelog
 
-## [1.4.0] - 2026-08-19
+## [1.3.0] - 2026-08-19
 
 ### Added
 
-- **AI review bot `1.4.0`**: CPA LLM proxy provider support (`responses` endpoint with SSE chunk streaming and 404 fallback to `chat/completions`).
-- Updated primary bot models: identity/docs review `gemini-3.7-flash-high`, Android/Xposed review `claude-opus-4-6-thinking`, issue triage/PR explainer `grok-4.6`, multimodal OCR `gemini-3.7-flash-high` (fallbacks `mimo-v2.5-free`, `grok-4.6`).
-- Expanded `opencode` model catalog with 20+ latest free models from `models.dev`.
-- Dynamic model discovery with TTL caching, model-ID allowlist validation, and internal registration logging.
-- Streaming enabled by default on both CPA and OpenCode endpoints (avoids Cloudflare 524 idle timeouts); per-provider `timeoutSeconds` aligned to 300 s.
-- `reasoningEffort` validation (allowed: `low`, `medium`, `high`, `max`) for model catalog and role-level overrides.
+- **In-app Diagnostics screen**: Module UI → Diagnostics surfaces, without logcat: module active state and LSPosed scope, hook milestones recorded in the Google Photos process (module loaded / package loaded / package ready), the last device-spoof VERIFY outcome (OK/FAIL, failed fields, device, package, native writer availability, `SystemProperties` hook state), and real `Build` values vs the selected profile's spoof target.
+- **Copy diagnostics report**: One tap copies a sanitized report (module state, milestones, VERIFY result, Build comparison) for pasting into an issue. The report includes the module scope list and device Build values, but no account data.
+- **Fail-closed diagnostics recording**: The module records hook milestones and VERIFY results into the shared preferences (`PixelifyModule`, `DeviceSpoofer`); recording is wrapped so it can never break the hook path. VERIFY records are cleared when no spoofing is configured.
+- **Tested-version matrix**: README (EN, zh-TW, zh-CN, ja) and SUPPORT.md now document maintainer-verified Android × Google Photos combinations (Android 15 / Android 17 with Google Photos 7.84.0), and clarify that Build-property spoofing hooks framework classes rather than Google Photos internals.
+- **Unit tests**: `DiagnosticsCollectorTest` covers field comparison, milestone interpretation (all branches), timestamp formatting, and the copyable report; `ConstantsTest` now covers the new diagnostic preference keys.
 
 ### Changed
 
-- Added `grok-composer-2.5-fast` (CPA, text-only, 200 000 context) to the CPA model catalog and as a text-only large-context fallback in `fallbackModels`; primary role models unchanged.
-- Fallback candidates whose provider lacks credentials are skipped before any HTTP attempt (no wasted retries on OpenCode-only forks).
-- OCR now uses the client's built-in fallback chain (`fallback_models=`) instead of a manual per-model loop, inheriting multimodal skip and length-retry handling.
-- Public error sanitization hardened: provider names, env-var names, and compound tokens (`cpa_proxy`, `CPA_API_KEY`, `provider='cpa'`, `vertex/imagen-*`) are scrubbed before model names.
-- `.env` default scan is now idempotent (once per process); explicit-path scans still always run.
-- Config schema normalized in `load_config`: `contextWindow`/`maxTokens` are mapped to `maxContextTokens`/`maxOutputTokens`.
-
-### Documentation
-
-- Documented provider selection (auto-switch behavior), timeout resolution, and model/OCR defaults in `docs/AI_REVIEW_BOT.md` and `github_bot/README.md`.
+- Bumped version to `1.3.0` (`versionCode 8`).
 
 ## [1.2.0] - 2026-08-18
 

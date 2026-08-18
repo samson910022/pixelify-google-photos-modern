@@ -34,6 +34,20 @@ Legacy XposedBridge/EdXposed environments are not supported by this modern-API b
 
 **Android 17+ compatibility:** Build-property spoofing is attempted on all supported Android versions, including API 37+. On some Android 17 builds, ART blocks `Field.set` on `public static final` `Build` fields (`IllegalAccessException`); that is an ART restriction, not a libxposed API 101 limitation. The module uses multi-strategy writes (reflection `Field.set` after clearing reflected `final` where possible, multi-variant `Unsafe` static puts, then a JNI `libpixelify_build` fallback), hooks `SystemProperties` reads as a secondary path, applies spoofing early on package load (and again when the package is ready), and re-reads fields for verification. Success is not guaranteed on every Android 17 ROM; persistent VERIFY failures raise a Toast and notification instead of failing silently. Feature-flag spoofing and device profiles still depend on the device, ROM, framework, and Google Photos version.
 
+## Supported and tested versions
+
+Build-property spoofing hooks framework-level classes (`android.os.Build` fields and `SystemProperties` reads), not Google Photos internals, so it is not tied to a specific Google Photos build. Feature-flag spoofing and unlimited-upload behavior are still affected by Google Photos versions and server-side configuration.
+
+Verified combinations (maintainer-tested):
+
+| Android version | Google Photos version | Device | Status |
+| --- | --- | --- | --- |
+| Android 15 | 7.84.0.949657053 | two Android 15 devices | Working |
+| Android 17 | 7.84.0.949657053 | Pixel 6 Pro (`CP2A.260705.006`) | Working |
+| Android 16 | — | — | Not verified by the maintainer; reports welcome |
+
+If a Google Photos update changes behavior, the in-app **Diagnostics** screen (module app → Diagnostics) shows hook milestones and the last device-spoof VERIFY result; include the copied report when reporting an issue.
+
 ## Installation
 
 1. Download the APK from this repository's [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) page.

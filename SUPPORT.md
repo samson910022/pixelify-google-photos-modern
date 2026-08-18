@@ -30,8 +30,22 @@ A reproducible report should include:
 - Xposed manager/framework and API version (for example LSPosed variant);
 - Google Photos version (exact build string when possible);
 - exact reproduction steps and expected/actual behavior;
-- whether a VERIFY toast/notification appeared after force-stopping and reopening Google Photos; and
+- whether a VERIFY toast/notification appeared after force-stopping and reopening Google Photos;
+- the copied report from the in-app **Diagnostics** screen (see below); and
 - the smallest relevant, sanitized log excerpt (prefer logcat lines for tag `Pixelify`).
+
+### In-app diagnostics screen
+
+The module app has a **Diagnostics** screen (module app → Diagnostics) that shows, without logcat:
+
+- whether the module is active and which packages are in the LSPosed scope;
+- hook milestones recorded by the module in the Google Photos process: module loaded, package loaded (early device spoof), package ready (hooks re-applied);
+- the last device-spoof VERIFY outcome: OK/FAIL, failed fields, device, package, time, native writer (JNI) availability, and whether `SystemProperties` hooks are registered; and
+- real `Build` values of this device vs the spoof target of the selected profile.
+
+**Copy diagnostics report** copies a sanitized report for pasting into an issue. The report includes the module scope list and device Build values, but no account data.
+
+Interpretation: no hook milestones at all usually means the module never loaded into Google Photos (check LSPosed enable + scope, then reboot); "package loaded but never ready" points to a framework/API compatibility problem in the Xposed variant; a failed VERIFY means the module ran but could not write `Build` fields.
 
 ### Load / VERIFY signals
 
@@ -50,3 +64,5 @@ Use GitHub Issues for reproducible bugs and feature requests. Use the structured
 Opened issues (and `/triage` / `/review` comments on issues) may receive an **advisory issue investigation** comment that scores report completeness, lists missing evidence, and proposes root-cause hypotheses. That bot is advisory only and does not replace maintainer triage. Details: [docs/AI_REVIEW_BOT.md](docs/AI_REVIEW_BOT.md).
 
 Feature availability may depend on Google Photos, server-side configuration, account, region, device, ROM, or Android version. Build-property spoofing is attempted on all supported Android versions, including API 37+, but success is not guaranteed on every ROM.
+
+Build-property spoofing hooks framework-level classes (`android.os.Build` fields and `SystemProperties` reads), not Google Photos internals, so it is not tied to a specific Google Photos build. The tested-version matrix (maintainer-verified Android × Google Photos combinations) is documented in the [README](README.md#supported-and-tested-versions).
