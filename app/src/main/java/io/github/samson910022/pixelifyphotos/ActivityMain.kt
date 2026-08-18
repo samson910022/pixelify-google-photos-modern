@@ -266,6 +266,13 @@ class ActivityMain : AppCompatActivity() {
             }
         }
 
+        findViewById<TextView>(R.id.diagnostics_link)?.apply {
+            paintFlags = Paint.UNDERLINE_TEXT_FLAG
+            setOnClickListener {
+                startActivity(Intent(this@ActivityMain, DiagnosticsActivity::class.java))
+            }
+        }
+
         forceStopGooglePhotos?.setOnClickListener { forceStopScopedApps() }
         openGooglePhotos?.setOnClickListener { openGooglePhotos() }
         customizeFeatureFlags?.setOnClickListener {
@@ -337,6 +344,10 @@ class ActivityMain : AppCompatActivity() {
 
         findViewById<View>(R.id.modern_item_advanced_options)?.setOnClickListener {
             childActivityLauncher.launch(Intent(this, AdvancedOptionsActivity::class.java))
+        }
+
+        findViewById<View>(R.id.modern_item_diagnostics)?.setOnClickListener {
+            startActivity(Intent(this, DiagnosticsActivity::class.java))
         }
 
         findViewById<View>(R.id.modern_item_switch_ui)?.setOnClickListener { toggleUiMode() }

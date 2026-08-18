@@ -17,8 +17,8 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.2.0</string>
-    <string name="version_desc">Modern Material 3 card interface with dynamic theming and dual UI toggle, official device profiles for Pixel 6 / Fold / Tablet / 9 Pro Fold, generalized capability-based write fallback engine across Android versions, first-run onboarding guide, and layout anti-clipping fixes.</string>
+    <string name="version_head">Version 1.3.0</string>
+    <string name="version_desc">New in-app Diagnostics screen that surfaces hook milestones, the last device-spoof VERIFY result, and real vs spoof-target Build values with a copyable report for issue reports; documented tested Google Photos / Android version matrix.</string>
     <string name="changelog">Change log</string>
 
     <!-- Configuration import/export -->
@@ -82,4 +82,38 @@
     <string name="customize_flags_summary">Configured feature flags</string>
     <string name="device_spoofed_active">Active Profile: %1$s</string>
     <string name="reopen_photos_hint">Force-stop scoped apps after changing settings to apply</string>
+
+    <!-- Diagnostics -->
+    <string name="diagnostics">Diagnostics</string>
+    <string name="diagnostics_title">Pixelify Infinity Diagnostics</string>
+    <string name="diagnostics_section_status">Module status</string>
+    <string name="diagnostics_section_milestones">Hook milestones</string>
+    <string name="diagnostics_section_verify">Last device-spoof VERIFY</string>
+    <string name="diagnostics_section_build">Build fields: real vs spoof target</string>
+    <string name="diagnostics_section_build_desc">Values are read in this app process (the real device). Spoofing is applied only inside scoped apps such as Google Photos — the VERIFY result above reflects the hook process.</string>
+    <string name="diagnostics_section_howto">How to read this screen</string>
+    <string name="diagnostics_howto_desc">"No hook milestones recorded" usually means the module never loaded into Google Photos — check LSPosed enable + scope, then reboot. "Package loaded but never ready" points to a framework/API compatibility problem in your Xposed variant. A failed VERIFY means the module ran but could not write Build fields. Use "Copy diagnostics report" when reporting an issue — the report includes the module scope list and device Build values, but no account data.</string>
+    <string name="diagnostics_copy_report">Copy diagnostics report</string>
+    <string name="diagnostics_copied">Diagnostics report copied</string>
+    <string name="diagnostics_copy_failed">Unable to access the clipboard.</string>
+    <string name="diagnostics_module_active">Module active: %1$s</string>
+    <string name="diagnostics_scope">Scope: %1$s</string>
+    <string name="diagnostics_yes">Yes</string>
+    <string name="diagnostics_no">No</string>
+    <string name="diagnostics_unknown">unknown</string>
+    <string name="diagnostics_unavailable">&lt;unavailable&gt;</string>
+    <string name="diagnostics_none">&lt;none&gt;</string>
+    <string name="diagnostics_build_column_field">Field</string>
+    <string name="diagnostics_build_column_real">Real (this device)</string>
+    <string name="diagnostics_build_column_target">Spoof target</string>
+    <string name="diagnostics_verify_result">Result: %1$s</string>
+    <string name="diagnostics_verify_device">Device: %1$s</string>
+    <string name="diagnostics_verify_package">Package: %1$s</string>
+    <string name="diagnostics_verify_time">Time: %1$s</string>
+    <string name="diagnostics_verify_native">Native writer (JNI): %1$s</string>
+    <string name="diagnostics_verify_sysprops">SystemProperties hooks: %1$s</string>
+    <string name="diagnostics_verify_ok">OK</string>
+    <string name="diagnostics_verify_failed">FAIL — %1$s</string>
+    <string name="diagnostics_verify_not_recorded">No VERIFY record yet. Open Google Photos once, wait a few seconds, then reopen this screen.</string>
+    <string name="diagnostics_verify_no_package_ready">No VERIFY record yet — the scoped package has not reached the ready state.</string>
 </resources>

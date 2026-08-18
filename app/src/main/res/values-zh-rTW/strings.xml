@@ -17,8 +17,8 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.2.0</string>
-    <string name="version_desc">全新 Material 3 卡片化現代介面（支援動態取色與雙介面切換）、新增 Pixel 6／Fold／Tablet／9 Pro Fold 官方裝置設定檔、通用能力探測多層級退避管線、首次啟動引導教學，以及修復長列表排版裁切問題。</string>
+    <string name="version_head">版本 1.3.0</string>
+    <string name="version_desc">新增 App 內「診斷」畫面（顯示 Hook 里程碑、上次裝置模擬 VERIFY 結果、實際與模擬目標 Build 欄位，並可複製報告方便回報問題）；文件新增已測試的 Google 相簿／Android 版本矩陣。</string>
     <string name="changelog">變更記錄</string>
 
     <!-- 設定匯入／匯出 -->
@@ -82,4 +82,38 @@
     <string name="customize_flags_summary">已自訂之功能旗標</string>
     <string name="device_spoofed_active">目前模擬機型：%1$s</string>
     <string name="reopen_photos_hint">變更設定後請強制停止作用範圍 App 讓變更生效</string>
+
+    <!-- 診斷 -->
+    <string name="diagnostics">診斷</string>
+    <string name="diagnostics_title">Pixelify Infinity 診斷</string>
+    <string name="diagnostics_section_status">模組狀態</string>
+    <string name="diagnostics_section_milestones">Hook 里程碑</string>
+    <string name="diagnostics_section_verify">上次裝置模擬 VERIFY</string>
+    <string name="diagnostics_section_build">Build 欄位：實際值 vs 模擬目標</string>
+    <string name="diagnostics_section_build_desc">數值是在本 App 程序內讀取（實際裝置）。模擬只會套用於作用範圍內的 App（例如 Google 相簿）——上方的 VERIFY 結果反映的是 Hook 程序。</string>
+    <string name="diagnostics_section_howto">如何解讀此畫面</string>
+    <string name="diagnostics_howto_desc">「未記錄任何 Hook 里程碑」通常代表模組從未載入 Google 相簿——請檢查 LSPosed 是否啟用與作用範圍，然後重新啟動。「已載入套件但從未 ready」指向您的 Xposed 版本的框架／API 相容性問題。VERIFY 失敗代表模組有執行但無法寫入 Build 欄位。回報問題時請使用「複製診斷報告」——報告包含模組作用範圍清單與裝置 Build 數值，但不含任何帳號資料。</string>
+    <string name="diagnostics_copy_report">複製診斷報告</string>
+    <string name="diagnostics_copied">診斷報告已複製</string>
+    <string name="diagnostics_copy_failed">無法存取剪貼簿。</string>
+    <string name="diagnostics_module_active">模組已啟用：%1$s</string>
+    <string name="diagnostics_scope">作用範圍：%1$s</string>
+    <string name="diagnostics_yes">是</string>
+    <string name="diagnostics_no">否</string>
+    <string name="diagnostics_unknown">未知</string>
+    <string name="diagnostics_unavailable">&lt;無法取得&gt;</string>
+    <string name="diagnostics_none">&lt;無&gt;</string>
+    <string name="diagnostics_build_column_field">欄位</string>
+    <string name="diagnostics_build_column_real">實際（本裝置）</string>
+    <string name="diagnostics_build_column_target">模擬目標</string>
+    <string name="diagnostics_verify_result">結果：%1$s</string>
+    <string name="diagnostics_verify_device">裝置：%1$s</string>
+    <string name="diagnostics_verify_package">套件：%1$s</string>
+    <string name="diagnostics_verify_time">時間：%1$s</string>
+    <string name="diagnostics_verify_native">原生寫入器（JNI）：%1$s</string>
+    <string name="diagnostics_verify_sysprops">SystemProperties hooks：%1$s</string>
+    <string name="diagnostics_verify_ok">成功</string>
+    <string name="diagnostics_verify_failed">失敗 — %1$s</string>
+    <string name="diagnostics_verify_not_recorded">尚無 VERIFY 記錄。請開啟一次 Google 相簿、等候數秒，再重新開啟此畫面。</string>
+    <string name="diagnostics_verify_no_package_ready">尚無 VERIFY 記錄——作用範圍套件尚未到達 ready 狀態。</string>
 </resources>

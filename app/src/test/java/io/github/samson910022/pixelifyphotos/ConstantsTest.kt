@@ -36,6 +36,17 @@ class ConstantsTest {
             Constants.PREF_LAST_VERSION,
             Constants.PREF_USE_CLASSIC_UI,
             Constants.PREF_FIRST_RUN_COMPLETED,
+            Constants.PREF_DIAG_MODULE_LOADED_AT,
+            Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
+            Constants.PREF_DIAG_LAST_PACKAGE_READY,
+            Constants.PREF_DIAG_LAST_PACKAGE_READY_AT,
+            Constants.PREF_DIAG_VERIFY_AT,
+            Constants.PREF_DIAG_VERIFY_DEVICE,
+            Constants.PREF_DIAG_VERIFY_PACKAGE,
+            Constants.PREF_DIAG_VERIFY_OK,
+            Constants.PREF_DIAG_VERIFY_FAILED,
+            Constants.PREF_DIAG_VERIFY_NATIVE_READY,
+            Constants.PREF_DIAG_VERIFY_SYSPROPS,
         )
         assertEquals(
             "Preference keys should all be unique",
@@ -56,6 +67,17 @@ class ConstantsTest {
             Constants.PREF_LAST_VERSION,
             Constants.PREF_USE_CLASSIC_UI,
             Constants.PREF_FIRST_RUN_COMPLETED,
+            Constants.PREF_DIAG_MODULE_LOADED_AT,
+            Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
+            Constants.PREF_DIAG_LAST_PACKAGE_READY,
+            Constants.PREF_DIAG_LAST_PACKAGE_READY_AT,
+            Constants.PREF_DIAG_VERIFY_AT,
+            Constants.PREF_DIAG_VERIFY_DEVICE,
+            Constants.PREF_DIAG_VERIFY_PACKAGE,
+            Constants.PREF_DIAG_VERIFY_OK,
+            Constants.PREF_DIAG_VERIFY_FAILED,
+            Constants.PREF_DIAG_VERIFY_NATIVE_READY,
+            Constants.PREF_DIAG_VERIFY_SYSPROPS,
         )
         prefKeys.forEach { key ->
             assertTrue("Pref key '$key' should be non-empty", key.isNotEmpty())
