@@ -1013,6 +1013,98 @@ public
         self.assertIn("Detected Pixelify Settings UI", context)
         self.assertEqual(mock_llm.chat_completion.call_count, 2)
 
+    def test_load_dotenv_preserves_existing_environment(self) -> None:
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".env") as f:
+            f.write("EXISTING_KEY=new_file_value\n")
+            f.write("BRAND_NEW_KEY=file_value\n")
+            temp_path = f.name
+
+        try:
+            with mock.patch.dict(os.environ, {"EXISTING_KEY": "prior_value"}, clear=True):
+                loaded = llm_client_mod.load_dotenv(temp_path)
+                self.assertEqual(os.environ["EXISTING_KEY"], "prior_value")
+                self.assertNotIn("EXISTING_KEY", loaded)
+                self.assertEqual(loaded.get("BRAND_NEW_KEY"), "file_value")
+        finally:
+            os.unlink(temp_path)
+
+    def test_fetch_models_dev_free_ids_success_and_error(self) -> None:
+        # Success case
+        mock_payload = {
+            "opencode": {
+                "models": {
+                    "free-model-a": {"cost": {"input": 0, "output": 0}},
+                    "paid-model-b": {"cost": {"input": 5, "output": 10}},
+                }
+            }
+        }
+        mock_resp = mock.MagicMock()
+        mock_resp.read.return_value = json.dumps(mock_payload).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with mock.patch("urllib.request.urlopen", return_value=mock_resp):
+            ids = llm_client_mod.fetch_models_dev_free_ids(timeout_seconds=5)
+            self.assertIn("free-model-a", ids)
+            self.assertNotIn("paid-model-b", ids)
+
+        # Network error fallback returns empty set cleanly
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Network unreachable")):
+            fallback_ids = llm_client_mod.fetch_models_dev_free_ids(timeout_seconds=5)
+            self.assertEqual(fallback_ids, set())
+
+    def test_cpa_responses_404_fallback_to_chat_completions(self) -> None:
+        client = llm_client_mod.LLMClient.__new__(llm_client_mod.LLMClient)
+        client.default_provider = "cpa"
+        client.providers = {
+            "cpa": {
+                "name": "cpa",
+                "baseUrl": "https://cpa.example.com/",
+                "apikey": "cpa-key",
+                "api": "responses",
+                "stream": False,
+                "timeoutSeconds": 30,
+            }
+        }
+        client.models = {"grok-4.6": {"id": "grok-4.6", "_provider": "cpa"}}
+        client.enable_streaming = False
+        client.reject_finish_reasons = set()
+
+        # Mock responses endpoint returning 404, fallback openai call returning 200
+        err_fp = io.BytesIO(b"Not Found")
+        http_404 = urllib.error.HTTPError("https://cpa.example.com/responses", 404, "Not Found", {}, err_fp)
+
+        fallback_resp_payload = {
+            "choices": [{"message": {"content": "CLASSIFICATION\nbug\nSUMMARY\nfallback ok"}, "finish_reason": "stop"}]
+        }
+        mock_fallback_resp = mock.MagicMock()
+        mock_fallback_resp.headers = {"Content-Type": "application/json"}
+        mock_fallback_resp.read.return_value = json.dumps(fallback_resp_payload).encode("utf-8")
+        mock_fallback_resp.__enter__.return_value = mock_fallback_resp
+
+        def urlopen_side_effect(req, *args, **kwargs):
+            if "responses" in req.full_url:
+                raise http_404
+            return mock_fallback_resp
+
+        try:
+            with mock.patch("urllib.request.urlopen", side_effect=urlopen_side_effect):
+                result = client._single_call(
+                    "grok-4.6",
+                    [{"role": "user", "content": "hi"}],
+                    temperature=0.2,
+                    max_tokens=100,
+                    timeout_seconds=30,
+                    min_chars=0,
+                    required_markers=None,
+                )
+                self.assertIn("fallback ok", result)
+        finally:
+            try:
+                http_404.close()
+            except Exception:
+                pass
+            err_fp.close()
+
 
 if __name__ == "__main__":
     unittest.main()
