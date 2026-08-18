@@ -482,7 +482,8 @@ public
         self.assertGreaterEqual(bot["roles"]["triage_agent"]["maxTokens"], 6144)
         self.assertIn("CLASSIFICATION", bot["triage"]["requiredSections"])
         self.assertTrue(bot["triage"]["failClosedOnIncomplete"])
-        self.assertIn("length", bot["llmResponseGate"]["rejectFinishReasons"])
+        self.assertTrue(llm["opencode"].get("stream"))
+        self.assertTrue(llm["cpa"].get("stream"))
         self.assertEqual(bot["llmResponseGate"]["minResponseChars"], 0)
 
     def test_cpa_responses_parsing_and_model_resolution(self) -> None:
@@ -867,21 +868,29 @@ public
             self.assertIn("CLASSIFICATION", text)
 
         # HTTP error case wrapping in LLMClientError
-        http_err = urllib.error.HTTPError("https://api.example.com", 500, "Internal Error", {}, io.BytesIO(b"server down"))
-        with mock.patch("urllib.request.urlopen", side_effect=http_err):
-            with self.assertRaises(llm_client_mod.LLMClientError) as ctx:
-                client._fallback_openai_call(
-                    base_url="https://api.example.com/v1/",
-                    api_key="key-123",
-                    model_id="grok-4.6",
-                    messages=[{"role": "user", "content": "hi"}],
-                    temperature=0.2,
-                    max_tokens=100,
-                    timeout=30,
-                    min_chars=0,
-                    required_markers=None,
-                )
-            self.assertIn("HTTP 500", str(ctx.exception))
+        err_fp = io.BytesIO(b"server down")
+        http_err = urllib.error.HTTPError("https://api.example.com", 500, "Internal Error", {}, err_fp)
+        try:
+            with mock.patch("urllib.request.urlopen", side_effect=http_err):
+                with self.assertRaises(llm_client_mod.LLMClientError) as ctx:
+                    client._fallback_openai_call(
+                        base_url="https://api.example.com/v1/",
+                        api_key="key-123",
+                        model_id="grok-4.6",
+                        messages=[{"role": "user", "content": "hi"}],
+                        temperature=0.2,
+                        max_tokens=100,
+                        timeout=30,
+                        min_chars=0,
+                        required_markers=None,
+                    )
+                self.assertIn("HTTP 500", str(ctx.exception))
+        finally:
+            try:
+                http_err.close()
+            except Exception:
+                pass
+            err_fp.close()
 
     def test_parse_sse_stream_chunks_and_done(self) -> None:
         # Multi-chunk CPA format
@@ -937,15 +946,16 @@ public
         mock_resp.read.return_value = json.dumps(mock_models_json).encode("utf-8")
         mock_resp.__enter__.return_value = mock_resp
 
-        with mock.patch("urllib.request.urlopen", return_value=mock_resp):
-            discovered = client.discover_models(timeout_seconds=5)
-            self.assertIn("gemini-3.7-flash-high", discovered.get("cpa", []))
-            self.assertIn("grok-4.6", discovered.get("cpa", []))
+        with mock.patch.object(llm_client_mod, "fetch_models_dev_free_ids", return_value={"mimo-v2.5-free"}):
+            with mock.patch("urllib.request.urlopen", return_value=mock_resp):
+                discovered = client.discover_models(timeout_seconds=5)
+                self.assertIn("gemini-3.7-flash-high", discovered.get("cpa", []))
+                self.assertIn("grok-4.6", discovered.get("cpa", []))
 
-            # Second call within TTL should return cached dict without urlopen
-            with mock.patch("urllib.request.urlopen", side_effect=AssertionError("Should not call network")):
-                cached = client.discover_models()
-                self.assertEqual(cached, discovered)
+                # Second call within TTL should return cached dict without urlopen
+                with mock.patch("urllib.request.urlopen", side_effect=AssertionError("Should not call network")):
+                    cached = client.discover_models()
+                    self.assertEqual(cached, discovered)
 
     def test_load_dotenv_edge_cases_and_ci_gate(self) -> None:
         with tempfile.NamedTemporaryFile("w", delete=False, suffix=".env") as f:

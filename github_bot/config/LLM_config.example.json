@@ -3,6 +3,7 @@
     "baseUrl": "https://opencode.ai/zen/v1/",
     "api": "openai-completions",
     "apikey": "${OPENCODE_API_KEY}",
+    "stream": true,
     "timeoutSeconds": 300,
     "models": [
       {
@@ -280,6 +281,7 @@
     "baseUrl": "${CPA_BASE_URL}",
     "api": "responses",
     "apikey": "${CPA_API_KEY}",
+    "stream": true,
     "timeoutSeconds": 180,
     "models": [
       {

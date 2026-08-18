@@ -183,12 +183,14 @@ class LLMClient:
 
             api_type = pdata.get("api", "openai-completions")
             timeout_seconds = int(pdata.get("timeoutSeconds", DEFAULT_TIMEOUT_SECONDS))
+            stream_enabled = bool(pdata.get("stream", True))
 
             self.providers[provider_name] = {
                 "name": provider_name,
                 "baseUrl": base_url,
                 "apikey": api_key,
                 "api": api_type,
+                "stream": stream_enabled,
                 "timeoutSeconds": timeout_seconds,
                 "models": pdata.get("models", []),
             }
@@ -457,7 +459,8 @@ class LLMClient:
             "Authorization": f"Bearer {api_key}",
             "User-Agent": "pixelify-infinity-ai-review-bot/1.0",
         }
-        if getattr(self, "enable_streaming", True):
+        enable_stream = getattr(self, "enable_streaming", True) and provider.get("stream", True)
+        if enable_stream:
             body["stream"] = True
             headers["Accept"] = "text/event-stream"
 
