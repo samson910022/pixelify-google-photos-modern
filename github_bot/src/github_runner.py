@@ -42,9 +42,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not os.environ.get("OPENCODE_API_KEY") and not args.dry_run:
+    has_creds = bool(
+        os.environ.get("OPENCODE_API_KEY")
+        or (os.environ.get("CPA_API_KEY") and os.environ.get("CPA_BASE_URL"))
+    )
+    if not has_creds and not args.dry_run:
         # dry-run without key can still validate local scaffolding with mocked path.
-        print("OPENCODE_API_KEY is required", file=sys.stderr)
+        print("OPENCODE_API_KEY or CPA_API_KEY + CPA_BASE_URL is required", file=sys.stderr)
         return 2
 
     orchestrator = AgentOrchestrator()

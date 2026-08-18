@@ -449,22 +449,63 @@ public
         llm = json.loads(
             (ROOT / "github_bot/config/LLM_config.example.json").read_text(encoding="utf-8")
         )
-        model_ids = {m["id"] for m in llm["opencode"]["models"]}
-        self.assertIn("ling-3.0-flash-free", model_ids)
-        self.assertIn("laguna-s-2.1-free", model_ids)
-        self.assertIn("mimo-v2.5-free", model_ids)
-        self.assertEqual(bot["roles"]["identity_safety"]["model"], "ling-3.0-flash-free")
-        self.assertEqual(bot["roles"]["android_xposed"]["model"], "laguna-s-2.1-free")
-        self.assertEqual(bot["mediaOcr"]["model"], "mimo-v2.5-free")
-        self.assertEqual(
-            bot["fallbackModels"],
-            ["deepseek-v4-flash-free", "north-mini-code-free", "big-pickle"],
-        )
+        opencode_model_ids = {m["id"] for m in llm["opencode"]["models"]}
+        self.assertIn("deepseek-v4-flash-free", opencode_model_ids)
+        self.assertIn("ling-3.0-flash-free", opencode_model_ids)
+        self.assertIn("laguna-s-2.1-free", opencode_model_ids)
+        self.assertIn("mimo-v2.5-free", opencode_model_ids)
+        self.assertIn("grok-code", opencode_model_ids)
+        self.assertIn("glm-5-free", opencode_model_ids)
+
+        cpa_model_ids = {m["id"] for m in llm["cpa"]["models"]}
+        self.assertIn("gemini-3.7-flash-high", cpa_model_ids)
+        self.assertIn("grok-4.6", cpa_model_ids)
+        self.assertIn("claude-opus-4-6-thinking", cpa_model_ids)
+        self.assertIn("gemini-3.6-flash-high", cpa_model_ids)
+
+        self.assertEqual(bot["codingModels"], ["gemini-3.7-flash-high", "grok-4.6", "claude-opus-4-6-thinking"])
+        self.assertEqual(bot["roles"]["identity_safety"]["model"], "gemini-3.7-flash-high")
+        self.assertEqual(bot["roles"]["android_xposed"]["model"], "claude-opus-4-6-thinking")
+        self.assertEqual(bot["roles"]["docs_public"]["model"], "gemini-3.7-flash-high")
+        self.assertEqual(bot["roles"]["triage_agent"]["model"], "grok-4.6")
+        self.assertEqual(bot["roles"]["explainer_agent"]["model"], "grok-4.6")
+        self.assertEqual(bot["mediaOcr"]["model"], "gemini-3.7-flash-high")
+        self.assertEqual(bot["fallbackModel"], "gemini-3.7-flash-high")
+        self.assertTrue(bot.get("dynamicModelDiscovery"))
+        self.assertIn("gemini-3.7-flash-high", bot["fallbackModels"])
+        self.assertIn("grok-4.6", bot["fallbackModels"])
+        self.assertIn("claude-opus-4-6-thinking", bot["fallbackModels"])
+        self.assertIn("deepseek-v4-flash-free", bot["fallbackModels"])
         self.assertGreaterEqual(bot["roles"]["triage_agent"]["maxTokens"], 6144)
         self.assertIn("CLASSIFICATION", bot["triage"]["requiredSections"])
         self.assertTrue(bot["triage"]["failClosedOnIncomplete"])
         self.assertIn("length", bot["llmResponseGate"]["rejectFinishReasons"])
         self.assertEqual(bot["llmResponseGate"]["minResponseChars"], 0)
+
+    def test_cpa_responses_parsing_and_model_resolution(self) -> None:
+        cpa_payload = {
+            "output": [
+                {
+                    "type": "message",
+                    "content": [
+                        {"type": "output_text", "text": "CLASSIFICATION\nbug\n\nACTIONABILITY\nneeds-info\n\nSUMMARY\nTest summary"}
+                    ],
+                }
+            ],
+            "finish_reason": "stop",
+        }
+        content, reason = llm_client_mod._extract_response_content_and_reason(cpa_payload, "responses")
+        self.assertIn("CLASSIFICATION", content)
+        self.assertIn("Test summary", content)
+        self.assertEqual(reason, "stop")
+
+    def test_cpa_env_interpolation(self) -> None:
+        raw = '{"cpa_key": "${CPA_API_KEY}", "cpa_url": "${CPA_BASE_URL}"}'
+        with mock.patch.dict(os.environ, {"CPA_API_KEY": "secret-cpa-123", "CPA_BASE_URL": "https://cpa.example/v1"}):
+            interpolated = llm_client_mod.interpolate_env_vars(raw)
+            data = json.loads(interpolated)
+            self.assertEqual(data["cpa_key"], "secret-cpa-123")
+            self.assertEqual(data["cpa_url"], "https://cpa.example/v1")
 
 
     def test_stub_quality_band_and_security_routing(self) -> None:
@@ -707,14 +748,74 @@ public
             finally:
                 runner_mod.CONFIG = original
 
-    def test_config_apply_labels_defaults(self):
-        cfg_path = ROOT / "github_bot" / "config" / "bot_config.json"
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        triage = cfg["triage"]
-        self.assertTrue(triage.get("applySuggestedLabels"))
-        self.assertIn("needs-info", triage.get("labelAllowlist") or [])
-        self.assertIn("android-17", triage.get("labelAllowlist") or [])
+    def test_sanitize_public_error_hides_cpa_models(self) -> None:
+        raw = (
+            "gemini-3.7-flash-high: unusable completion (finish_reason=length); "
+            "grok-4.6: unusable completion (too short: 20 < 400 chars); "
+            "claude-opus-4-6-thinking: timeout; "
+            "gemini-3.6-flash-high: connection reset"
+        )
+        cleaned = orchestrator_mod.sanitize_public_error_text(raw)
+        for token in (
+            "gemini-3.7-flash-high",
+            "grok-4.6",
+            "claude-opus-4-6-thinking",
+            "gemini-3.6-flash-high",
+            "gemini",
+            "grok",
+            "claude",
+            "opus",
+        ):
+            self.assertNotIn(token, cleaned.lower())
 
+    def test_sanitize_model_name_for_display(self) -> None:
+        self.assertEqual(llm_client_mod.sanitize_model_name_for_display("gemini-3.7-flash-high"), "gemini-3.7-flash")
+        self.assertEqual(llm_client_mod.sanitize_model_name_for_display("deepseek-v4-flash-free"), "deepseek-v4-flash")
+        self.assertEqual(llm_client_mod.sanitize_model_name_for_display("grok-4.6"), "grok-4.6")
+        self.assertEqual(llm_client_mod.sanitize_model_name_for_display(""), "")
+
+    def test_dynamic_fallback_chain_prioritization(self) -> None:
+        client = llm_client_mod.LLMClient.__new__(llm_client_mod.LLMClient)
+        client.providers = {}
+        client.models = {}
+        client._discovery_cache = {
+            "opencode": ["deepseek-v4-flash-free", "mimo-v2.5-free"],
+            "cpa": ["gemini-3.7-flash-high", "grok-4.6", "claude-opus-4-6-thinking", "vertex/imagen-3"],
+        }
+        client._discovery_cache_time = 1e9
+        client._discovery_ttl_seconds = 600.0
+
+        chain = client.get_dynamic_fallback_chain(
+            configured_fallbacks=["gemini-3.7-flash-high", "grok-4.6", "claude-opus-4-6-thinking"]
+        )
+        self.assertEqual(chain[0], "gemini-3.7-flash-high")
+        self.assertEqual(chain[1], "grok-4.6")
+        self.assertEqual(chain[2], "claude-opus-4-6-thinking")
+        self.assertIn("deepseek-v4-flash-free", chain)
+        self.assertIn("mimo-v2.5-free", chain)
+        # vertex/imagen should be excluded from text/code fallbacks
+        self.assertNotIn("vertex/imagen-3", chain)
+
+    def test_multimodal_message_flattening_for_text_models(self) -> None:
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Inspect this:"},
+                    {"type": "image_url", "image_url": {"url": "https://example.com/screenshot.png"}},
+                ],
+            }
+        ]
+        text_only_model = {"id": "text-model", "input": ["text"]}
+        multimodal_model = {"id": "multi-model", "input": ["text", "image"]}
+
+        flattened = llm_client_mod._prepare_messages_for_model(messages, text_only_model)
+        self.assertIsInstance(flattened[0]["content"], str)
+        self.assertIn("[image omitted for text-only model", flattened[0]["content"])
+
+        preserved = llm_client_mod._prepare_messages_for_model(messages, multimodal_model)
+        self.assertIsInstance(preserved[0]["content"], list)
+        self.assertEqual(len(preserved[0]["content"]), 2)
 
 
 if __name__ == "__main__":

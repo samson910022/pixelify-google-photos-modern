@@ -1,7 +1,7 @@
 {
   "name": "Pixelify-Infinity-GitHub-AI-Bot",
-  "version": "1.3.0",
-  "description": "Issue investigation (quality score + root-cause hypotheses) and multi-agent PR code review for Pixelify Infinity using OpenCode free models. Optionally applies allowlisted suggested labels.",
+  "version": "1.4.0",
+  "description": "Issue investigation (quality score + root-cause hypotheses) and multi-agent PR code review for Pixelify Infinity using Grok, Gemini, Opus, and OpenCode fallback models. Optionally applies allowlisted suggested labels.",
   "llmConfigFile": "./config/LLM_config.example.json",
   "defaultProvider": "opencode",
   "commentMarker": "<!-- PIXELIFY_AI_REVIEW_REPORT -->",
@@ -14,18 +14,30 @@
   "maxDiffChars": 180000,
   "maxIssueBodyChars": 40000,
   "codingModels": [
-    "ling-3.0-flash-free",
-    "laguna-s-2.1-free"
+    "gemini-3.7-flash-high",
+    "grok-4.6",
+    "claude-opus-4-6-thinking"
   ],
   "fallbackModels": [
+    "gemini-3.7-flash-high",
+    "grok-4.6",
+    "claude-opus-4-6-thinking",
+    "gemini-3.6-flash-high",
     "deepseek-v4-flash-free",
+    "mimo-v2.5-free",
+    "nemotron-3-ultra-free",
     "north-mini-code-free",
     "big-pickle"
   ],
-  "fallbackModel": "deepseek-v4-flash-free",
+  "fallbackModel": "gemini-3.7-flash-high",
+  "dynamicModelDiscovery": true,
   "mediaOcr": {
     "enabled": true,
-    "model": "mimo-v2.5-free",
+    "model": "gemini-3.7-flash-high",
+    "fallbackModels": [
+      "mimo-v2.5-free",
+      "grok-4.6"
+    ],
     "maxItems": 4,
     "maxBytesPerItem": 5000000,
     "maxSummaryChars": 12000,
@@ -48,39 +60,44 @@
   },
   "roles": {
     "identity_safety": {
-      "model": "ling-3.0-flash-free",
+      "model": "gemini-3.7-flash-high",
       "description": "Identity, signing, secrets, package/Xposed scope integrity reviewer",
       "promptFile": "./prompts/roles/reviewer_identity_safety.md",
       "temperature": 0.1,
-      "maxTokens": 6144
+      "maxTokens": 6144,
+      "reasoningEffort": "high"
     },
     "android_xposed": {
-      "model": "laguna-s-2.1-free",
+      "model": "claude-opus-4-6-thinking",
       "description": "Android/Kotlin/Xposed behavior and regression reviewer",
       "promptFile": "./prompts/roles/reviewer_android_xposed.md",
       "temperature": 0.1,
-      "maxTokens": 6144
+      "maxTokens": 6144,
+      "reasoningEffort": "high"
     },
     "docs_public": {
-      "model": "ling-3.0-flash-free",
+      "model": "gemini-3.7-flash-high",
       "description": "Public docs, templates, and contributor surface reviewer",
       "promptFile": "./prompts/roles/reviewer_docs_public.md",
       "temperature": 0.2,
-      "maxTokens": 4096
+      "maxTokens": 4096,
+      "reasoningEffort": "high"
     },
     "triage_agent": {
-      "model": "deepseek-v4-flash-free",
+      "model": "grok-4.6",
       "description": "Issue investigator: decision-first classification, quality scoring, thread-aware missing-info, root-cause hypotheses",
       "promptFile": "./prompts/roles/triage_agent.md",
       "temperature": 0.2,
-      "maxTokens": 6144
+      "maxTokens": 6144,
+      "reasoningEffort": "high"
     },
     "explainer_agent": {
-      "model": "deepseek-v4-flash-free",
+      "model": "grok-4.6",
       "description": "Plain-language PR explainer for maintainers",
       "promptFile": "./prompts/roles/explainer_agent.md",
       "temperature": 0.3,
-      "maxTokens": 4096
+      "maxTokens": 4096,
+      "reasoningEffort": "high"
     }
   },
   "reviewPipeline": [

@@ -75,7 +75,7 @@ class AgentOrchestrator:
         gate = self.config.get("llmResponseGate") or {}
         self.llm = LLMClient(
             fallback_models=fallback_models,
-            fallback_model=self.config.get("fallbackModel", "deepseek-v4-flash-free"),
+            fallback_model=self.config.get("fallbackModel", "gemini-3.7-flash-high"),
             min_response_chars=int(gate.get("minResponseChars", 0)),
             reject_finish_reasons=list(gate.get("rejectFinishReasons") or ["length", "content_filter"]),
             same_model_retry_on_length=int(gate.get("sameModelRetryOnLength", 1)),
@@ -764,13 +764,17 @@ def sanitize_public_error_text(text: str) -> str:
         return "investigation backend error"
 
     known_model = re.compile(
-        r"(?i)\b(?:deepseek-[a-z0-9._-]+|ling-[a-z0-9._-]+|laguna-[a-z0-9._-]+|"
-        r"north-[a-z0-9._-]+|mimo-[a-z0-9._-]+|big-pickle|"
-        r"[a-z0-9][a-z0-9._-]{2,}-free)\b"
+        r"(?i)\b(?:gemini-[a-z0-9._-]+|grok-[a-z0-9._-]+|claude-[a-z0-9._-]+|opus-[a-z0-9._-]+|"
+        r"deepseek-[a-z0-9._-]+|ling-[a-z0-9._-]+|laguna-[a-z0-9._-]+|nemotron-[a-z0-9._-]+|"
+        r"north-[a-z0-9._-]+|mimo-[a-z0-9._-]+|big-pickle|grok-code|glm-[a-z0-9._-]+|"
+        r"kimi-[a-z0-9._-]+|minimax-[a-z0-9._-]+|qwen[a-z0-9._-]*|ring-[a-z0-9._-]+|"
+        r"trinity-[a-z0-9._-]+|hy3-[a-z0-9._-]+|longcat-[a-z0-9._-]+|"
+        r"[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\b"
     )
     # Only treat as model-id prefix when the token looks like a model id.
     model_prefix = re.compile(
-        r"(?i)\b((?:deepseek|ling|laguna|north|mimo)[a-z0-9._-]*|big-pickle|[a-z0-9][a-z0-9._-]{2,}-free)\s*:\s*"
+        r"(?i)\b((?:gemini|grok|claude|opus|deepseek|ling|laguna|nemotron|north|mimo|glm|kimi|minimax|qwen|ring|trinity|hy3|longcat)[a-z0-9._-]*|"
+        r"big-pickle|[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\s*:\s*"
     )
 
     parts = re.split(r"\s*;\s*", cleaned)

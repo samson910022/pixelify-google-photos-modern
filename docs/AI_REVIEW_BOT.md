@@ -77,41 +77,51 @@ Reports are posted as issue/PR comments and updated in place using HTML markers:
 - `<!-- PIXELIFY_AI_TRIAGE_REPORT -->` — issue investigation
 - `<!-- PIXELIFY_AI_COMMAND_REPORT -->` — PR explanation / misc command output
 
-## Required secret
+## Required secrets
 
-Create a repository secret:
+Configure repository secrets under Settings → Secrets and variables → Actions:
 
-- Name: `OPENCODE_API_KEY`
-- Value: your OpenCode Zen API key
+- `CPA_BASE_URL` & `CPA_API_KEY` (CPA proxy provider — recommended for Grok, Gemini, Opus)
+- `OPENCODE_API_KEY` (OpenCode Zen provider — free fallback models)
 
-The workflow fails closed if the secret is missing. The bot never uses release-signing secrets.
+The workflow fails closed if neither CPA credentials nor `OPENCODE_API_KEY` is provided. The bot never uses release-signing secrets.
 
-## Free model defaults (maintainer config only)
+## Model defaults (maintainer config only)
 
-Configured free OpenCode models (price 0). These are **not** printed in public comments:
+Configured primary models via CPA and OpenCode fallbacks. These are **not** printed in public comments:
 
-| Model | Default use |
-| --- | --- |
-| `ling-3.0-flash-free` | Primary coding/docs reviewer (identity + docs) |
-| `laguna-s-2.1-free` | Primary Android/Xposed coding reviewer |
-| `mimo-v2.5-free` | Multimodal OCR for screenshots/media before review/investigation |
-| `deepseek-v4-flash-free` | Issue investigation / explain + first fallback |
-| `north-mini-code-free` | Coding fallback |
-| `big-pickle` | Final free fallback |
-| `nemotron-3-ultra-free` | Available large-context swap |
+| Model | Provider | Default use |
+| --- | --- | --- |
+| `gemini-3.7-flash-high` | CPA | Primary identity & docs reviewer, multimodal OCR |
+| `claude-opus-4-6-thinking` | CPA | Primary Android/Xposed coding reviewer |
+| `grok-4.6` | CPA | Issue investigation (`triage_agent`) and PR explanation (`explainer_agent`) |
+| `gemini-3.6-flash-high` | CPA | Large context reasoning fallback |
+| `deepseek-v4-flash-free` | OpenCode | Free issue investigation & general fallback |
+| `mimo-v2.5-free` | OpenCode | Free multimodal OCR fallback |
+| `nemotron-3-ultra-free` | OpenCode | Free 1M context fallback |
+| `north-mini-code-free` | OpenCode | Free coding fallback |
+| `big-pickle` | OpenCode | Free safety fallback |
 
-Fallback chain for text/code roles:
+Fallback chain:
 
-1. `deepseek-v4-flash-free`
-2. `north-mini-code-free`
-3. `big-pickle`
+1. `gemini-3.7-flash-high`
+2. `grok-4.6`
+3. `claude-opus-4-6-thinking`
+4. `gemini-3.6-flash-high`
+5. `deepseek-v4-flash-free`
+6. `mimo-v2.5-free`
+7. `nemotron-3-ultra-free`
+8. `north-mini-code-free`
+9. `big-pickle`
+
+Dynamic model discovery (`dynamicModelDiscovery: true`) automatically discovers live models and expands the fallback chain at runtime.
 
 ### Multimodal OCR
 
 When an issue/PR body contains image/media URLs (Markdown images, GitHub user-attachments, bare media links) or the change set includes media files, the bot:
 
 1. Discovers up to `mediaOcr.maxItems` items
-2. Calls the configured multimodal OCR model
+2. Calls the configured multimodal OCR model (`gemini-3.7-flash-high`, fallback `mimo-v2.5-free`, `grok-4.6`)
 3. Injects the OCR/UI summary into issue investigation or PR review context
 
 OCR failures are non-fatal: the run continues with an OCR error note.
@@ -119,10 +129,10 @@ OCR failures are non-fatal: the run continues with an OCR error note.
 
 ## Maintainer installation
 
-Operational checklist for enabling the bot on this repository (already applied for the canonical remote):
+Operational checklist for enabling the bot on this repository:
 
 1. **Workflow present** — `.github/workflows/ai-review.yml` is active on `master`.
-2. **Secret** — repository secret `OPENCODE_API_KEY` (OpenCode Zen). Never commit the key. The workflow fails closed if missing.
+2. **Secrets** — repository secrets `CPA_BASE_URL` + `CPA_API_KEY` and/or `OPENCODE_API_KEY`. Never commit keys. The workflow fails closed if missing.
 3. **Permissions** — keep repository default Actions token at **read**; the workflow requests only `contents: read`, `issues: write`, `pull-requests: write`. Do **not** grant `GITHUB_TOKEN` approval rights for PRs.
 4. **Labels** — create the allowlisted triage labels the bot may apply:
    - `needs-info`, `needs-triage`, `device-specific`, `photos-version`
@@ -133,11 +143,13 @@ Operational checklist for enabling the bot on this repository (already applied f
 6. **Verify** — open a test issue or comment `/triage` on an issue; confirm a sticky `Pixelify Infinity Issue Investigation` comment appears and allowlisted labels are added.
 7. **Unit tests** — `PYTHONPATH=github_bot/src python3 -m unittest tests.test_ai_review_bot -v`
 
-Fork PRs do not receive `OPENCODE_API_KEY` (GitHub secret isolation). That is intentional.
+Fork PRs do not receive secrets (GitHub secret isolation). That is intentional.
 
 ## Local dry run
 
 ```bash
+export CPA_BASE_URL='...'       # do not commit
+export CPA_API_KEY='...'        # do not commit
 export OPENCODE_API_KEY='...'   # do not commit
 export PYTHONPATH=github_bot/src
 python3 github_bot/src/github_runner.py --mode=review --dry-run

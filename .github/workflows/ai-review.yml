@@ -54,16 +54,18 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Ensure OpenCode API key is configured
+      - name: Ensure LLM credentials are configured
         if: steps.gate.outputs.skip != 'true'
         shell: bash
         env:
+          CPA_BASE_URL: ${{ secrets.CPA_BASE_URL }}
+          CPA_API_KEY: ${{ secrets.CPA_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
         run: |
           set -euo pipefail
-          if [[ -z "${OPENCODE_API_KEY}" ]]; then
-            echo "Repository secret OPENCODE_API_KEY is not set." >&2
-            echo "Add the OpenCode Zen API key as a repository secret named OPENCODE_API_KEY." >&2
+          if [[ -z "${OPENCODE_API_KEY}" && ( -z "${CPA_API_KEY}" || -z "${CPA_BASE_URL}" ) ]]; then
+            echo "Neither OPENCODE_API_KEY nor CPA credentials (CPA_API_KEY and CPA_BASE_URL) are set." >&2
+            echo "Configure either OPENCODE_API_KEY or CPA_API_KEY + CPA_BASE_URL in repository secrets." >&2
             exit 1
           fi
 
@@ -125,6 +127,8 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         shell: bash
         env:
+          CPA_BASE_URL: ${{ secrets.CPA_BASE_URL }}
+          CPA_API_KEY: ${{ secrets.CPA_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           COMMENT_BODY: ${{ github.event.comment.body || '' }}
