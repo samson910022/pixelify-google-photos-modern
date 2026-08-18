@@ -107,34 +107,44 @@ def build_media_context(
     if not items:
         return ""
 
-    model = str(ocr_config.get("model", "mimo-v2.5-free"))
+    primary_model = str(ocr_config.get("model", "gemini-3.7-flash-high"))
+    fallback_models = list(ocr_config.get("fallbackModels") or [])
+    model_candidates = [primary_model] + [m for m in fallback_models if m != primary_model]
     max_bytes = int(ocr_config.get("maxBytesPerItem", 5_000_000))
     max_summary_chars = int(ocr_config.get("maxSummaryChars", 12_000))
     timeout_seconds = int(ocr_config.get("timeoutSeconds", 180))
 
     sections: list[str] = ["### Multimodal OCR context", ""]
     for index, item in enumerate(items, start=1):
-        try:
-            content_parts = _build_user_content(item, max_bytes=max_bytes)
-            raw = llm.chat_completion(
-                model,
-                [
-                    {"role": "system", "content": f"{soul_prompt}\n\n{role_prompt}"},
-                    {"role": "user", "content": content_parts},
-                ],
-                temperature=0.1,
-                max_tokens=2048,
-                allow_fallback=False,
-                timeout_seconds=timeout_seconds,
-            )
+        content_parts = _build_user_content(item, max_bytes=max_bytes)
+        success = False
+        last_error = "no model candidates"
+        for model in model_candidates:
+            try:
+                raw = llm.chat_completion(
+                    model,
+                    [
+                        {"role": "system", "content": f"{soul_prompt}\n\n{role_prompt}"},
+                        {"role": "user", "content": content_parts},
+                    ],
+                    temperature=0.1,
+                    max_tokens=2048,
+                    allow_fallback=False,
+                    timeout_seconds=timeout_seconds,
+                )
+                sections.append(f"#### Media {index}: `{item.label}`")
+                sections.append("")
+                sections.append(raw.strip())
+                sections.append("")
+                success = True
+                break
+            except Exception as exc:  # noqa: BLE001 - try next OCR model or record failure
+                last_error = str(exc)
+
+        if not success:
             sections.append(f"#### Media {index}: `{item.label}`")
             sections.append("")
-            sections.append(raw.strip())
-            sections.append("")
-        except Exception as exc:  # noqa: BLE001 - keep review flowing if OCR fails
-            sections.append(f"#### Media {index}: `{item.label}`")
-            sections.append("")
-            sections.append(f"OCR failed: {exc}")
+            sections.append(f"OCR failed: {last_error}")
             sections.append("")
 
     text = "\n".join(sections).strip()

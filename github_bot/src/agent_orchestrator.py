@@ -771,11 +771,12 @@ def sanitize_public_error_text(text: str) -> str:
         r"trinity-[a-z0-9._-]+|hy3-[a-z0-9._-]+|longcat-[a-z0-9._-]+|"
         r"[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\b"
     )
-    # Only treat as model-id prefix when the token looks like a model id.
+    # Only treat as model/provider prefix when the token matches prefix patterns.
     model_prefix = re.compile(
         r"(?i)\b((?:gemini|grok|claude|opus|deepseek|ling|laguna|nemotron|north|mimo|glm|kimi|minimax|qwen|ring|trinity|hy3|longcat)[a-z0-9._-]*|"
-        r"big-pickle|[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\s*:\s*"
+        r"big-pickle|grok-code|cpa|opencode|provider\s*['\"][a-z0-9_-]+['\"]|[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\s*:\s*"
     )
+    provider_pattern = re.compile(r"(?i)\bprovider\s*['\"]?(?:cpa|opencode)['\"]?\b|\b(?:cpa|opencode)\b")
 
     parts = re.split(r"\s*;\s*", cleaned)
     scrubbed: list[str] = []
@@ -783,12 +784,13 @@ def sanitize_public_error_text(text: str) -> str:
         part = part.strip()
         if not part:
             continue
-        # Strip leading model-id prefixes repeatedly.
+        # Strip leading model/provider prefixes repeatedly.
         while True:
             updated = model_prefix.sub("", part, count=1)
             if updated == part:
                 break
             part = updated.strip()
+        part = provider_pattern.sub("[provider]", part)
         part = known_model.sub("[model]", part)
         part = re.sub(r"\s+", " ", part).strip(" ;,")
         if part:

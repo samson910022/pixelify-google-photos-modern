@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import sys
+import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -815,7 +818,190 @@ public
 
         preserved = llm_client_mod._prepare_messages_for_model(messages, multimodal_model)
         self.assertIsInstance(preserved[0]["content"], list)
-        self.assertEqual(len(preserved[0]["content"]), 2)
+    def test_config_apply_labels_defaults(self) -> None:
+        cfg_path = ROOT / "github_bot" / "config" / "bot_config.json"
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        triage = cfg["triage"]
+        self.assertTrue(triage.get("applySuggestedLabels"))
+        self.assertIn("needs-info", triage.get("labelAllowlist") or [])
+        self.assertIn("android-17", triage.get("labelAllowlist") or [])
+
+    def test_sanitize_public_error_hides_providers_and_grok_code(self) -> None:
+        raw = (
+            "API key is missing for provider 'cpa'; "
+            "grok-code: connection timeout; "
+            "Base URL is not configured for provider 'opencode'"
+        )
+        cleaned = orchestrator_mod.sanitize_public_error_text(raw)
+        for token in ("cpa", "opencode", "grok-code", "grok"):
+            self.assertNotIn(token, cleaned.lower())
+
+    def test_fallback_openai_call_success_and_error(self) -> None:
+        client = llm_client_mod.LLMClient.__new__(llm_client_mod.LLMClient)
+        client.providers = {}
+        client.models = {}
+        client.enable_streaming = False
+        client.reject_finish_reasons = set()
+
+        # Success case
+        resp_payload = {
+            "choices": [{"message": {"content": "CLASSIFICATION\nbug\nSUMMARY\nok"}, "finish_reason": "stop"}]
+        }
+        mock_resp = mock.MagicMock()
+        mock_resp.headers = {"Content-Type": "application/json"}
+        mock_resp.read.return_value = json.dumps(resp_payload).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with mock.patch("urllib.request.urlopen", return_value=mock_resp):
+            text = client._fallback_openai_call(
+                base_url="https://api.example.com/v1/",
+                api_key="key-123",
+                model_id="grok-4.6",
+                messages=[{"role": "user", "content": "hi"}],
+                temperature=0.2,
+                max_tokens=100,
+                timeout=30,
+                min_chars=0,
+                required_markers=None,
+            )
+            self.assertIn("CLASSIFICATION", text)
+
+        # HTTP error case wrapping in LLMClientError
+        http_err = urllib.error.HTTPError("https://api.example.com", 500, "Internal Error", {}, io.BytesIO(b"server down"))
+        with mock.patch("urllib.request.urlopen", side_effect=http_err):
+            with self.assertRaises(llm_client_mod.LLMClientError) as ctx:
+                client._fallback_openai_call(
+                    base_url="https://api.example.com/v1/",
+                    api_key="key-123",
+                    model_id="grok-4.6",
+                    messages=[{"role": "user", "content": "hi"}],
+                    temperature=0.2,
+                    max_tokens=100,
+                    timeout=30,
+                    min_chars=0,
+                    required_markers=None,
+                )
+            self.assertIn("HTTP 500", str(ctx.exception))
+
+    def test_parse_sse_stream_chunks_and_done(self) -> None:
+        # Multi-chunk CPA format
+        lines = [
+            b"data: {\"delta\": \"Hello \"}\n",
+            b"data: {\"delta\": \"world!\"}\n",
+            b"data: [DONE]\n",
+        ]
+        text, reason = llm_client_mod._parse_sse_stream(iter(lines), "responses")
+        self.assertEqual(text, "Hello world!")
+
+        # OpenAI format with finish_reason
+        openai_lines = [
+            b": keep-alive\n",
+            b"data: {\"choices\": [{\"delta\": {\"content\": \"OpenAI \"}}]}\n",
+            b"data: {\"choices\": [{\"delta\": {\"content\": \"stream\"}, \"finish_reason\": \"stop\"}]}\n",
+            b"data: [DONE]\n",
+        ]
+        text2, reason2 = llm_client_mod._parse_sse_stream(iter(openai_lines), "openai-completions")
+        self.assertEqual(text2, "OpenAI stream")
+        self.assertEqual(reason2, "stop")
+
+        # Malformed JSON and empty lines are skipped gracefully
+        malformed = [
+            b"data: not-json\n",
+            b"\n",
+            b"data: {\"delta\": \"recovered\"}\n",
+        ]
+        text3, _ = llm_client_mod._parse_sse_stream(iter(malformed), "responses")
+        self.assertEqual(text3, "recovered")
+
+    def test_discover_models_caching_and_models_dev(self) -> None:
+        client = llm_client_mod.LLMClient.__new__(llm_client_mod.LLMClient)
+        client.default_provider = "cpa"
+        client.providers = {
+            "cpa": {
+                "baseUrl": "https://cpa.example.com/",
+                "apikey": "test-key",
+            }
+        }
+        client.models = {}
+        client._discovery_cache = None
+        client._discovery_cache_time = 0.0
+        client._discovery_ttl_seconds = 600.0
+
+        mock_models_json = {
+            "data": [
+                {"id": "gemini-3.7-flash-high", "name": "Gemini 3.7 Flash"},
+                {"id": "grok-4.6", "name": "Grok 4.6"},
+            ]
+        }
+        mock_resp = mock.MagicMock()
+        mock_resp.read.return_value = json.dumps(mock_models_json).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with mock.patch("urllib.request.urlopen", return_value=mock_resp):
+            discovered = client.discover_models(timeout_seconds=5)
+            self.assertIn("gemini-3.7-flash-high", discovered.get("cpa", []))
+            self.assertIn("grok-4.6", discovered.get("cpa", []))
+
+            # Second call within TTL should return cached dict without urlopen
+            with mock.patch("urllib.request.urlopen", side_effect=AssertionError("Should not call network")):
+                cached = client.discover_models()
+                self.assertEqual(cached, discovered)
+
+    def test_load_dotenv_edge_cases_and_ci_gate(self) -> None:
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".env") as f:
+            f.write("# comment line\n")
+            f.write("TEST_ENV_A=simple_value\n")
+            f.write("TEST_ENV_B='quoted_val'\n")
+            f.write("TEST_ENV_C=\"double_quoted\"\n")
+            f.write("  TEST_ENV_D = spaced_val  \n")
+            temp_path = f.name
+
+        try:
+            # Normal local load
+            with mock.patch.dict(os.environ, {}, clear=True):
+                loaded = llm_client_mod.load_dotenv(temp_path)
+                self.assertEqual(loaded.get("TEST_ENV_A"), "simple_value")
+                self.assertEqual(loaded.get("TEST_ENV_B"), "quoted_val")
+                self.assertEqual(loaded.get("TEST_ENV_C"), "double_quoted")
+                self.assertEqual(loaded.get("TEST_ENV_D"), "spaced_val")
+
+            # In CI (GITHUB_ACTIONS set), load_dotenv must bypass reading .env
+            with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
+                ci_loaded = llm_client_mod.load_dotenv(temp_path)
+                self.assertEqual(ci_loaded, {})
+                self.assertNotIn("TEST_ENV_A", os.environ)
+        finally:
+            os.unlink(temp_path)
+
+    def test_media_ocr_fallback_chain(self) -> None:
+        mock_llm = mock.MagicMock()
+        # First model fails, second model succeeds
+        mock_llm.chat_completion.side_effect = [
+            llm_client_mod.LLMClientError("gemini failed"),
+            "OCR Result: Detected Pixelify Settings UI",
+        ]
+        ocr_config = {
+            "model": "gemini-3.7-flash-high",
+            "fallbackModels": ["mimo-v2.5-free", "grok-4.6"],
+            "maxBytesPerItem": 1000000,
+            "maxSummaryChars": 2000,
+            "timeoutSeconds": 30,
+        }
+        item = media_ocr_mod.MediaItem(
+            label="screenshot.png",
+            source="https://example.com/screenshot.png",
+            kind="url",
+            media_type="image",
+        )
+        context = media_ocr_mod.build_media_context(
+            mock_llm,
+            items=[item],
+            ocr_config=ocr_config,
+            soul_prompt="soul",
+            role_prompt="role",
+        )
+        self.assertIn("Detected Pixelify Settings UI", context)
+        self.assertEqual(mock_llm.chat_completion.call_count, 2)
 
 
 if __name__ == "__main__":

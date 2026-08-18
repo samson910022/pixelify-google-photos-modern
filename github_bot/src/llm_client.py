@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -24,7 +26,9 @@ class LLMClientError(RuntimeError):
 
 
 def load_dotenv(dotenv_path: str | Path | None = None) -> dict[str, str]:
-    """Simple .env parser using standard library."""
+    """Simple .env parser using standard library. Bypassed in CI environments."""
+    if os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"):
+        return {}
     loaded: dict[str, str] = {}
     paths_to_check: list[Path] = []
     if dotenv_path:
@@ -194,6 +198,18 @@ class LLMClient:
                 if mid:
                     self.models[mid] = {**m, "_provider": provider_name}
 
+        # Resolve default provider dynamically based on available credentials
+        if getattr(self, "default_provider", "opencode") == "opencode":
+            cpa_pdata = self.providers.get("cpa", {})
+            opencode_pdata = self.providers.get("opencode", {})
+            if cpa_pdata.get("apikey") and cpa_pdata.get("baseUrl") and not opencode_pdata.get("apikey"):
+                self.default_provider = "cpa"
+
+        default_pdata = self.providers.get(self.default_provider) or {}
+        self.base_url = default_pdata.get("baseUrl", "")
+        self.api_key = default_pdata.get("apikey", "")
+        self.timeout_seconds = default_pdata.get("timeoutSeconds", DEFAULT_TIMEOUT_SECONDS)
+
     def supports_input(self, model_id: str, modality: str) -> bool:
         """Check if a model supports a specific input modality (e.g. image, text)."""
         model = self.models.get(model_id)
@@ -204,8 +220,6 @@ class LLMClient:
 
     def discover_models(self, timeout_seconds: int = 8, *, force_refresh: bool = False) -> dict[str, list[str]]:
         """Dynamically query providers' /models endpoints, cross-filter with models.dev, and register active models."""
-        import time
-
         now = time.monotonic()
         if not force_refresh and self._discovery_cache is not None and now - self._discovery_cache_time < self._discovery_ttl_seconds:
             return dict(self._discovery_cache)
@@ -307,21 +321,24 @@ class LLMClient:
         temperature: float = 0.2,
         max_tokens: int = 4096,
         allow_fallback: bool = True,
+        fallback_models: list[str] | None = None,
         timeout_seconds: int | None = None,
         min_chars: int | None = None,
         required_markers: list[str] | None = None,
     ) -> str:
         """Call an LLM model with automatic retry on truncation and fallback candidate chain."""
         candidates = [model_id]
-        fallback_models = getattr(self, "fallback_models", [])
+        fallbacks_to_use = fallback_models if fallback_models is not None else getattr(self, "fallback_models", [])
         if allow_fallback:
-            candidates.extend(m for m in fallback_models if m != model_id)
+            candidates.extend(m for m in fallbacks_to_use if m != model_id)
 
         errors: list[str] = []
         if min_chars is None:
             effective_min_chars = int(getattr(self, "min_response_chars", DEFAULT_MIN_RESPONSE_CHARS))
         else:
             effective_min_chars = int(min_chars)
+
+        models = getattr(self, "models", {})
 
         for candidate in candidates:
             # Multimodal messages should not fall back to text-only models unless content is pure text
@@ -330,8 +347,11 @@ class LLMClient:
                     errors.append(f"{candidate}: skipped (no multimodal input support)")
                     continue
 
+            model_info = models.get(candidate, {"id": candidate})
+            model_max = int(model_info.get("maxTokens") or model_info.get("maxOutputTokens") or 65536)
+
             attempts = 1 + getattr(self, "same_model_retry_on_length", 1)
-            current_max = max_tokens
+            current_max = min(max_tokens, model_max)
 
             for attempt in range(attempts):
                 try:
@@ -347,7 +367,7 @@ class LLMClient:
                 except LLMClientError as exc:
                     reason = str(exc).lower()
                     if attempt + 1 < attempts and ("finish_reason=length" in reason or "truncated" in reason or "too short" in reason):
-                        current_max = min(max(current_max * 2, current_max + 2048), 65536)
+                        current_max = min(max(current_max * 2, current_max + 2048), model_max)
                         continue
                     errors.append(f"{candidate}: {exc}")
                     break
@@ -374,6 +394,7 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             allow_fallback=bool(fallbacks),
+            fallback_models=fallbacks,
             timeout_seconds=timeout_seconds,
             min_chars=min_chars,
             required_markers=required_markers,
@@ -509,14 +530,20 @@ class LLMClient:
         req = urllib.request.Request(endpoint, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
         content = ""
         finish_reason = None
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            headers_obj = getattr(resp, "headers", None)
-            content_type = headers_obj.get("Content-Type", "") if headers_obj is not None else ""
-            if "text/event-stream" in content_type:
-                content, finish_reason = _parse_sse_stream(resp, "openai-completions")
-            else:
-                payload = json.loads(resp.read().decode("utf-8"))
-                content, finish_reason = _extract_response_content_and_reason(payload, "openai-completions")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                headers_obj = getattr(resp, "headers", None)
+                content_type = headers_obj.get("Content-Type", "") if headers_obj is not None else ""
+                if "text/event-stream" in content_type:
+                    content, finish_reason = _parse_sse_stream(resp, "openai-completions")
+                else:
+                    payload = json.loads(resp.read().decode("utf-8"))
+                    content, finish_reason = _extract_response_content_and_reason(payload, "openai-completions")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise LLMClientError(f"HTTP {exc.code} from fallback {endpoint}: {detail[:500]}") from exc
+        except Exception as exc:
+            raise LLMClientError(f"LLM fallback request to {endpoint} failed: {exc}") from exc
 
         reject_finish_reasons = getattr(self, "reject_finish_reasons", DEFAULT_REJECT_FINISH_REASONS)
         rejection = unusable_completion_reason(
@@ -534,8 +561,6 @@ def _parse_sse_stream(
     print_progress: bool = False,
 ) -> tuple[str, str | None]:
     """Parse Server-Sent Events (SSE) stream chunks."""
-    import sys
-
     chunks: list[str] = []
     finish_reason: str | None = None
 
@@ -617,14 +642,6 @@ def _extract_response_content_and_reason(payload: dict[str, Any], api_type: str 
         return payload["content"].strip(), None
 
     return "", "empty_payload"
-
-
-def _extract_choice(payload: dict[str, Any]) -> dict[str, Any]:
-    choices = payload.get("choices") or []
-    if not choices:
-        return {}
-    first = choices[0]
-    return first if isinstance(first, dict) else {}
 
 
 def _normalize_content(content: Any) -> str:

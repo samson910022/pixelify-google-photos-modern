@@ -280,7 +280,7 @@
     "baseUrl": "${CPA_BASE_URL}",
     "api": "responses",
     "apikey": "${CPA_API_KEY}",
-    "timeoutSeconds": 420,
+    "timeoutSeconds": 180,
     "models": [
       {
         "id": "gemini-3.7-flash-high",
