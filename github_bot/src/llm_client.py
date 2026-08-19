@@ -19,15 +19,36 @@ ChatContent = str | list[dict[str, Any]]
 DEFAULT_TIMEOUT_SECONDS = 300
 DEFAULT_MIN_RESPONSE_CHARS = 0
 DEFAULT_REJECT_FINISH_REASONS = ("length", "max_tokens", "content_filter")
+VALID_REASONING_EFFORTS = {"low", "medium", "high", "max"}
+MODEL_ID_ALLOWLIST = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 
 
 class LLMClientError(RuntimeError):
     """Raised when an LLM call fails or returns an unusable completion."""
 
 
+_dotenv_loaded: bool = False
+
+
+def reset_dotenv_loaded_state() -> None:
+    """Test-only hook: clear the idempotency flag so a fresh scan can be forced."""
+    global _dotenv_loaded
+    _dotenv_loaded = False
+
+
 def load_dotenv(dotenv_path: str | Path | None = None) -> dict[str, str]:
-    """Simple .env parser using standard library. Bypassed in CI environments."""
+    """Simple .env parser using standard library. Bypassed in CI environments.
+
+    The default scan (``dotenv_path=None``) runs at most once per process so
+    repeated ``LLMClient`` instantiations do not re-scan ``.env``. Values
+    already present in ``os.environ`` always win. Loading intentionally
+    mutates ``os.environ`` so ``${VAR}`` interpolation and child processes
+    observe the same values.
+    """
+    global _dotenv_loaded
     if os.environ.get("GITHUB_ACTIONS") or os.environ.get("CI"):
+        return {}
+    if dotenv_path is None and _dotenv_loaded:
         return {}
     loaded: dict[str, str] = {}
     paths_to_check: list[Path] = []
@@ -57,6 +78,8 @@ def load_dotenv(dotenv_path: str | Path | None = None) -> dict[str, str]:
                 break
             except Exception:
                 pass
+    if dotenv_path is None:
+        _dotenv_loaded = True
     return loaded
 
 
@@ -198,7 +221,19 @@ class LLMClient:
             for m in pdata.get("models", []):
                 mid = m.get("id")
                 if mid:
-                    self.models[mid] = {**m, "_provider": provider_name}
+                    model_info = {**m, "_provider": provider_name}
+                    effort = model_info.get("reasoningEffort")
+                    if effort and str(effort).lower() not in VALID_REASONING_EFFORTS:
+                        raise LLMClientError(
+                            f"Invalid reasoningEffort {effort!r} for model {mid!r} "
+                            f"(expected one of {sorted(VALID_REASONING_EFFORTS)})"
+                        )
+                    # Normalize token-window naming so callers only read one pair.
+                    if "maxContextTokens" not in model_info and "contextWindow" in model_info:
+                        model_info["maxContextTokens"] = model_info["contextWindow"]
+                    if "maxOutputTokens" not in model_info and "maxTokens" in model_info:
+                        model_info["maxOutputTokens"] = model_info["maxTokens"]
+                    self.models[mid] = model_info
 
         # Resolve default provider dynamically based on available credentials
         if getattr(self, "default_provider", "opencode") == "opencode":
@@ -223,7 +258,11 @@ class LLMClient:
     def discover_models(self, timeout_seconds: int = 8, *, force_refresh: bool = False) -> dict[str, list[str]]:
         """Dynamically query providers' /models endpoints, cross-filter with models.dev, and register active models."""
         now = time.monotonic()
-        if not force_refresh and self._discovery_cache is not None and now - self._discovery_cache_time < self._discovery_ttl_seconds:
+        if (
+            not force_refresh
+            and self._discovery_cache is not None
+            and now - self._discovery_cache_time < self._discovery_ttl_seconds
+        ):
             return dict(self._discovery_cache)
 
         discovered: dict[str, list[str]] = {}
@@ -252,6 +291,9 @@ class LLMClient:
                         mid = item.get("id")
                         if not mid:
                             continue
+                        if not isinstance(mid, str) or not MODEL_ID_ALLOWLIST.fullmatch(mid):
+                            sys.stderr.write(f"[internal] ignoring non-conforming model id from {pname}: {mid!r}\n")
+                            continue
 
                         # If provider is opencode, only keep active free models
                         if pname == "opencode":
@@ -261,6 +303,7 @@ class LLMClient:
 
                         model_list.append(mid)
                         if mid not in self.models:
+                            sys.stderr.write(f"[internal] dynamically registered new model from {pname}: {mid}\n")
                             self.models[mid] = {
                                 "id": mid,
                                 "name": item.get("name", mid),
@@ -327,8 +370,14 @@ class LLMClient:
         timeout_seconds: int | None = None,
         min_chars: int | None = None,
         required_markers: list[str] | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         """Call an LLM model with automatic retry on truncation and fallback candidate chain."""
+        if reasoning_effort and str(reasoning_effort).lower() not in VALID_REASONING_EFFORTS:
+            raise LLMClientError(
+                f"Invalid reasoningEffort {reasoning_effort!r} (expected one of {sorted(VALID_REASONING_EFFORTS)})"
+            )
+        effective_effort_override = reasoning_effort.lower() if reasoning_effort else None
         candidates = [model_id]
         fallbacks_to_use = fallback_models if fallback_models is not None else getattr(self, "fallback_models", [])
         if allow_fallback:
@@ -349,8 +398,34 @@ class LLMClient:
                     errors.append(f"{candidate}: skipped (no multimodal input support)")
                     continue
 
+            # Skip candidates whose provider has no credentials; the primary
+            # candidate records the actionable message and the chain continues
+            # so OpenCode-only forks do not burn retries on CPA models.
+            provider = self.get_provider_for_model(candidate)
+            pname = provider.get("name") or getattr(self, "default_provider", "opencode")
+            if provider:
+                effective_base_url = provider.get("baseUrl")
+                effective_api_key = provider.get("apikey")
+            else:
+                effective_base_url = getattr(self, "base_url", "")
+                effective_api_key = getattr(self, "api_key", "")
+            if not effective_base_url:
+                if candidate == model_id:
+                    errors.append(f"Base URL is not configured for provider '{pname}'")
+                else:
+                    errors.append(f"{candidate}: skipped (provider '{pname}' has no base URL)")
+                continue
+            if not effective_api_key:
+                if candidate == model_id:
+                    errors.append(
+                        f"API key is missing for provider '{pname}' (set OPENCODE_API_KEY or CPA_API_KEY)"
+                    )
+                else:
+                    errors.append(f"{candidate}: skipped (provider '{pname}' has no API key)")
+                continue
+
             model_info = models.get(candidate, {"id": candidate})
-            model_max = int(model_info.get("maxTokens") or model_info.get("maxOutputTokens") or 65536)
+            model_max = int(model_info.get("maxOutputTokens") or 65536)
 
             attempts = 1 + getattr(self, "same_model_retry_on_length", 1)
             current_max = min(max_tokens, model_max)
@@ -365,6 +440,7 @@ class LLMClient:
                         timeout_seconds=timeout_seconds,
                         min_chars=effective_min_chars,
                         required_markers=required_markers,
+                        reasoning_effort=effective_effort_override,
                     )
                 except LLMClientError as exc:
                     reason = str(exc).lower()
@@ -387,6 +463,7 @@ class LLMClient:
         min_chars: int = DEFAULT_MIN_RESPONSE_CHARS,
         required_markers: list[str] | None = None,
         fallback_models: list[str] | None = None,
+        reasoning_effort: str | None = None,
     ) -> str:
         """Alternative entry point to chat_completion."""
         fallbacks = fallback_models if fallback_models is not None else getattr(self, "fallback_models", [])
@@ -400,6 +477,7 @@ class LLMClient:
             timeout_seconds=timeout_seconds,
             min_chars=min_chars,
             required_markers=required_markers,
+            reasoning_effort=reasoning_effort,
         )
 
     def _single_call(
@@ -412,6 +490,7 @@ class LLMClient:
         timeout_seconds: int | None,
         min_chars: int,
         required_markers: list[str] | None,
+        reasoning_effort: str | None = None,
     ) -> str:
         provider = self.get_provider_for_model(model_id)
         base_url = provider.get("baseUrl") or getattr(self, "base_url", "")
@@ -427,7 +506,7 @@ class LLMClient:
         models = getattr(self, "models", {})
         model_info = models.get(model_id, {"id": model_id})
         prepared_messages = _prepare_messages_for_model(messages, model_info)
-        reasoning_effort = model_info.get("reasoningEffort")
+        effective_effort = reasoning_effort or model_info.get("reasoningEffort")
         thinking_cfg = model_info.get("thinking")
 
         # Check API endpoints (CPA responses vs OpenAI chat/completions)
@@ -439,8 +518,8 @@ class LLMClient:
                 "temperature": temperature,
                 "max_output_tokens": max_tokens,
             }
-            if reasoning_effort:
-                body["reasoning_effort"] = reasoning_effort
+            if effective_effort:
+                body["reasoning_effort"] = effective_effort
         else:
             endpoint = f"{base_url}chat/completions" if not base_url.rstrip("/").endswith("/chat/completions") else base_url
             body = {
@@ -449,8 +528,8 @@ class LLMClient:
                 "temperature": temperature,
                 "max_tokens": max_tokens,
             }
-            if reasoning_effort:
-                body["reasoning_effort"] = reasoning_effort
+            if effective_effort:
+                body["reasoning_effort"] = effective_effort
             if thinking_cfg:
                 body["thinking"] = thinking_cfg
 
@@ -464,43 +543,33 @@ class LLMClient:
             body["stream"] = True
             headers["Accept"] = "text/event-stream"
 
-        req_data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(endpoint, data=req_data, headers=headers, method="POST")
-
-        content = ""
-        finish_reason = None
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                headers_obj = getattr(resp, "headers", None)
-                content_type = headers_obj.get("Content-Type", "") if headers_obj is not None else ""
-                if "text/event-stream" in content_type:
-                    content, finish_reason = _parse_sse_stream(resp, api_type)
-                else:
-                    resp_bytes = resp.read()
-                    payload = json.loads(resp_bytes.decode("utf-8"))
-                    content, finish_reason = _extract_response_content_and_reason(payload, api_type)
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
+        def on_http_error(exc: urllib.error.HTTPError) -> str | None:
             # If responses endpoint failed with 404, attempt fallback to chat/completions
             if exc.code == 404 and "responses" in endpoint:
                 return self._fallback_openai_call(
-                    base_url, api_key, model_id, prepared_messages, temperature, max_tokens, timeout, min_chars, required_markers
+                    base_url,
+                    api_key,
+                    model_id,
+                    prepared_messages,
+                    temperature,
+                    max_tokens,
+                    timeout,
+                    min_chars,
+                    required_markers,
+                    stream_enabled=enable_stream,
                 )
-            raise LLMClientError(f"HTTP {exc.code} from {endpoint}: {detail[:500]}") from exc
-        except Exception as exc:
-            raise LLMClientError(f"LLM request to {endpoint} failed: {exc}") from exc
+            return None
 
-        reject_finish_reasons = getattr(self, "reject_finish_reasons", DEFAULT_REJECT_FINISH_REASONS)
-        rejection = unusable_completion_reason(
-            content,
-            finish_reason,
-            min_chars=min_chars,
-            required_markers=required_markers,
-            reject_finish_reasons=reject_finish_reasons,
+        return self._post_and_parse(
+            endpoint,
+            body,
+            headers,
+            timeout,
+            api_type,
+            min_chars,
+            required_markers,
+            on_http_error=on_http_error,
         )
-        if rejection:
-            raise LLMClientError(rejection)
-        return content
 
     def _fallback_openai_call(
         self,
@@ -513,6 +582,7 @@ class LLMClient:
         timeout: int,
         min_chars: int,
         required_markers: list[str] | None,
+        stream_enabled: bool | None = None,
     ) -> str:
         endpoint = f"{base_url}chat/completions"
         body = {
@@ -520,37 +590,72 @@ class LLMClient:
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "stream": getattr(self, "enable_streaming", True),
         }
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
             "User-Agent": "pixelify-infinity-ai-review-bot/1.0",
         }
-        if getattr(self, "enable_streaming", True):
+        enable_stream = self.enable_streaming if stream_enabled is None else stream_enabled
+        if enable_stream:
+            body["stream"] = True
             headers["Accept"] = "text/event-stream"
 
+        return self._post_and_parse(
+            endpoint,
+            body,
+            headers,
+            timeout,
+            "openai-completions",
+            min_chars,
+            required_markers,
+            error_label="fallback",
+        )
+
+    def _post_and_parse(
+        self,
+        endpoint: str,
+        body: dict[str, Any],
+        headers: dict[str, str],
+        timeout: int,
+        api_type: str,
+        min_chars: int,
+        required_markers: list[str] | None,
+        *,
+        error_label: str = "",
+        on_http_error: Callable[[urllib.error.HTTPError], str | None] | None = None,
+    ) -> str:
+        """POST a request and parse/validate the completion, wrapping failures as LLMClientError."""
         req = urllib.request.Request(endpoint, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
         content = ""
         finish_reason = None
+        label = f"{error_label} " if error_label else ""
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 headers_obj = getattr(resp, "headers", None)
                 content_type = headers_obj.get("Content-Type", "") if headers_obj is not None else ""
                 if "text/event-stream" in content_type:
-                    content, finish_reason = _parse_sse_stream(resp, "openai-completions")
+                    content, finish_reason = _parse_sse_stream(resp, api_type)
                 else:
                     payload = json.loads(resp.read().decode("utf-8"))
-                    content, finish_reason = _extract_response_content_and_reason(payload, "openai-completions")
+                    content, finish_reason = _extract_response_content_and_reason(payload, api_type)
         except urllib.error.HTTPError as exc:
+            if on_http_error is not None:
+                handled = on_http_error(exc)
+                if handled is not None:
+                    return handled
             detail = exc.read().decode("utf-8", errors="replace")
-            raise LLMClientError(f"HTTP {exc.code} from fallback {endpoint}: {detail[:500]}") from exc
+            raise LLMClientError(f"HTTP {exc.code} from {label}{endpoint}: {detail[:500]}") from exc
         except Exception as exc:
-            raise LLMClientError(f"LLM fallback request to {endpoint} failed: {exc}") from exc
+            raise LLMClientError(f"LLM {label}request to {endpoint} failed: {exc}") from exc
 
         reject_finish_reasons = getattr(self, "reject_finish_reasons", DEFAULT_REJECT_FINISH_REASONS)
         rejection = unusable_completion_reason(
-            content, finish_reason, min_chars=min_chars, required_markers=required_markers, reject_finish_reasons=reject_finish_reasons
+            content,
+            finish_reason,
+            min_chars=min_chars,
+            required_markers=required_markers,
+            reject_finish_reasons=reject_finish_reasons,
         )
         if rejection:
             raise LLMClientError(rejection)

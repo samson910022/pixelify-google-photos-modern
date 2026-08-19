@@ -9,7 +9,7 @@ It is inspired by:
 
 The bot never replaces CI or human review. Required hard gates remain `./.github/workflows/ci.yml` and the maintainer release process.
 
-Public bot comments intentionally **do not disclose model names**. Model routing is maintainer configuration only (`github_bot/config/bot_config.json`, currently bot config version `1.3.0`).
+Public bot comments intentionally **do not disclose model names**. Model routing is maintainer configuration only (`github_bot/config/bot_config.json`, currently bot config version `1.4.0`).
 
 ## What it does
 
@@ -85,6 +85,16 @@ Configure repository secrets under Settings → Secrets and variables → Action
 - `OPENCODE_API_KEY` (OpenCode Zen provider — free fallback models)
 
 The workflow fails closed if neither CPA credentials nor `OPENCODE_API_KEY` is provided. The bot never uses release-signing secrets.
+
+### Provider selection
+
+- When **both** CPA credentials and `OPENCODE_API_KEY` are set, `defaultProvider` stays `opencode` and the configured fallback chain starts with CPA models (they are skipped quickly if credentials are absent).
+- When **only** CPA credentials are set, `defaultProvider` auto-switches to `cpa`.
+- When **only** `OPENCODE_API_KEY` is set, CPA candidates are skipped without burning retries; the chain falls through to OpenCode free models.
+
+### Timeouts
+
+Per-call timeout resolution: call-level `timeout_seconds` → provider `timeoutSeconds` → default 300 s. Both providers default to `timeoutSeconds: 300` (streaming to avoid Cloudflare 524 idle timeouts); `mediaOcr.timeoutSeconds` (default 300) overrides the provider value on OCR calls.
 
 ## Model defaults (maintainer config only)
 

@@ -41,7 +41,7 @@
     "maxItems": 4,
     "maxBytesPerItem": 5000000,
     "maxSummaryChars": 12000,
-    "timeoutSeconds": 180,
+    "timeoutSeconds": 300,
     "extensions": [
       ".png",
       ".jpg",

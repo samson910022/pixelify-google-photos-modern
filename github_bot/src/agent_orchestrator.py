@@ -428,6 +428,7 @@ class AgentOrchestrator:
                 max_tokens=int(role.get("maxTokens", 4096)),
                 min_chars=min_chars,
                 required_markers=required_markers,
+                reasoning_effort=role.get("reasoningEffort"),
             )
             verdict = _extract_verdict(raw)
             return RoleResult(role=role_id, model=model, verdict=verdict, findings=raw)
@@ -768,15 +769,22 @@ def sanitize_public_error_text(text: str) -> str:
         r"deepseek-[a-z0-9._-]+|ling-[a-z0-9._-]+|laguna-[a-z0-9._-]+|nemotron-[a-z0-9._-]+|"
         r"north-[a-z0-9._-]+|mimo-[a-z0-9._-]+|big-pickle|grok-code|glm-[a-z0-9._-]+|"
         r"kimi-[a-z0-9._-]+|minimax-[a-z0-9._-]+|qwen[a-z0-9._-]*|ring-[a-z0-9._-]+|"
-        r"trinity-[a-z0-9._-]+|hy3-[a-z0-9._-]+|longcat-[a-z0-9._-]+|"
+        r"trinity-[a-z0-9._-]+|hy3-[a-z0-9._-]+|longcat-[a-z0-9._-]+|imagen-[a-z0-9._-]+|"
         r"[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\b"
+    )
+    # Provider names plus their compound tokens (env vars, proxy names, slugs) are
+    # scrubbed before the prefix/known-model passes so no casing form survives.
+    # The final arm also scrubs concatenated hostname tokens (e.g. ``vertexai.example``).
+    provider_ref = re.compile(
+        r"(?i)\bprovider\s*[:=]?\s*['\"]?(?:cpa|opencode)['\"]?|"
+        r"\b(?:CPA_API_KEY|OPENCODE_API_KEY|(?:cpa|opencode)[_.-][a-z0-9_.-]*|(?:cpa|opencode|vertex))\b|"
+        r"\b(?:cpa|opencode|vertex|gemini|grok|claude|opus|deepseek|ling|laguna|nemotron|north|mimo|glm|kimi|minimax|qwen|ring|trinity|hy3|longcat|imagen)[a-z0-9]*(?=\.)"
     )
     # Only treat as model/provider prefix when the token matches prefix patterns.
     model_prefix = re.compile(
         r"(?i)\b((?:gemini|grok|claude|opus|deepseek|ling|laguna|nemotron|north|mimo|glm|kimi|minimax|qwen|ring|trinity|hy3|longcat)[a-z0-9._-]*|"
-        r"big-pickle|grok-code|cpa|opencode|provider\s*['\"][a-z0-9_-]+['\"]|[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\s*:\s*"
+        r"big-pickle|grok-code|provider\s*['\"][a-z0-9_-]+['\"]|[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\s*:\s*"
     )
-    provider_pattern = re.compile(r"(?i)\bprovider\s*['\"]?(?:cpa|opencode)['\"]?\b|\b(?:cpa|opencode)\b")
 
     parts = re.split(r"\s*;\s*", cleaned)
     scrubbed: list[str] = []
@@ -784,13 +792,13 @@ def sanitize_public_error_text(text: str) -> str:
         part = part.strip()
         if not part:
             continue
+        part = provider_ref.sub("[provider]", part)
         # Strip leading model/provider prefixes repeatedly.
         while True:
             updated = model_prefix.sub("", part, count=1)
             if updated == part:
                 break
             part = updated.strip()
-        part = provider_pattern.sub("[provider]", part)
         part = known_model.sub("[model]", part)
         part = re.sub(r"\s+", " ", part).strip(" ;,")
         if part:

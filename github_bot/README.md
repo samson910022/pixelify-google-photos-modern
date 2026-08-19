@@ -14,7 +14,7 @@ Public comments do not disclose model names or provider routing.
 | --- | --- |
 | `src/github_runner.py` | GitHub Actions entry, sticky-comment publish |
 | `src/agent_orchestrator.py` | Issue/PR pipelines, quality gates, fail-closed stubs |
-| `src/llm_client.py` | OpenCode client, truncation rejection, fallbacks |
+| `src/llm_client.py` | CPA + OpenCode client, truncation rejection, fallbacks |
 | `src/media_ocr.py` | Media discovery + multimodal OCR |
 | `config/bot_config.json` | Roles, models, triage required sections |
 | `prompts/` | Soul + role prompts |
