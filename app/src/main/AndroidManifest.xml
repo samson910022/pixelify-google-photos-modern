@@ -29,6 +29,7 @@
 
         <activity android:name=".FeatureCustomize" />
         <activity android:name=".AdvancedOptionsActivity" />
+        <activity android:name=".DiagnosticsActivity" />
 
         <provider
             android:authorities="${applicationId}.fileprovider"

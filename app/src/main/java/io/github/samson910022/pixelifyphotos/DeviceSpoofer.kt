@@ -70,8 +70,14 @@ object DeviceSpoofer {
     /**
      * @param allowFailureUi when false (early package load), VERIFY still logs but does not
      * toast/notify — package-ready re-apply may succeed after host Application exists.
+     * @param packageName optional package the hook runs in, recorded with diagnostics.
      */
-    fun hook(module: XposedModule?, prefs: SharedPreferences?, allowFailureUi: Boolean = true) {
+    fun hook(
+        module: XposedModule?,
+        prefs: SharedPreferences?,
+        allowFailureUi: Boolean = true,
+        packageName: String? = null,
+    ) {
         if (prefs == null) {
             Log.w(TAG, "Remote preferences unavailable, using defaults")
         }
@@ -84,6 +90,7 @@ object DeviceSpoofer {
         val deviceEntries = DeviceProps.getDeviceProps(deviceName)
         if (deviceEntries == null || deviceName == "None" || deviceEntries.props.isEmpty()) {
             Log.d(TAG, "No device spoofing configured, skipping")
+            clearVerifyDiagnostics(prefs)
             return
         }
 
@@ -131,6 +138,7 @@ object DeviceSpoofer {
         // VERSION_* keys share names with Build fields; verify against Build.VERSION class via key set.
         verifyProps.putAll(versionProps)
         val failed = verifySpoof(verifyProps, verboseLog)
+        recordVerifyResult(prefs, deviceName, failed, packageName)
         if (failed.isNotEmpty()) {
             Log.e(
                 TAG,
@@ -174,6 +182,57 @@ object DeviceSpoofer {
             }
         }
         return failed
+    }
+
+    /**
+     * Persist the last VERIFY outcome into the shared remote preferences so the
+     * module UI can surface it without logcat. Never throws — diagnostics must
+     * not break the hook path.
+     */
+    private fun recordVerifyResult(
+        prefs: SharedPreferences?,
+        deviceName: String,
+        failed: List<String>,
+        packageName: String?,
+    ) {
+        if (prefs == null) return
+        try {
+            val resolvedPackage = packageName
+                ?: runCatching { currentApplication()?.packageName }.getOrNull()
+            prefs.edit()
+                .putLong(Constants.PREF_DIAG_VERIFY_AT, System.currentTimeMillis())
+                .putString(Constants.PREF_DIAG_VERIFY_DEVICE, deviceName)
+                .putString(Constants.PREF_DIAG_VERIFY_PACKAGE, resolvedPackage)
+                .putBoolean(Constants.PREF_DIAG_VERIFY_OK, failed.isEmpty())
+                .putStringSet(Constants.PREF_DIAG_VERIFY_FAILED, failed.toSet())
+                .putBoolean(Constants.PREF_DIAG_VERIFY_NATIVE_READY, nativeReady)
+                .putBoolean(Constants.PREF_DIAG_VERIFY_SYSPROPS, systemPropertiesHooked.get())
+                .apply()
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to record VERIFY diagnostics", t)
+        }
+    }
+
+    /**
+     * Remove the persisted VERIFY record when no spoofing is configured, so the
+     * diagnostics screen never shows a stale "VERIFY passed" for a disabled
+     * profile. Never throws.
+     */
+    private fun clearVerifyDiagnostics(prefs: SharedPreferences?) {
+        if (prefs == null) return
+        try {
+            prefs.edit()
+                .remove(Constants.PREF_DIAG_VERIFY_AT)
+                .remove(Constants.PREF_DIAG_VERIFY_DEVICE)
+                .remove(Constants.PREF_DIAG_VERIFY_PACKAGE)
+                .remove(Constants.PREF_DIAG_VERIFY_OK)
+                .remove(Constants.PREF_DIAG_VERIFY_FAILED)
+                .remove(Constants.PREF_DIAG_VERIFY_NATIVE_READY)
+                .remove(Constants.PREF_DIAG_VERIFY_SYSPROPS)
+                .apply()
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to clear VERIFY diagnostics", t)
+        }
     }
 
     private fun targetClassForField(fieldName: String): Class<*> =

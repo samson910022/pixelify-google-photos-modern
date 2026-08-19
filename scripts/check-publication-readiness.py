@@ -19,8 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.samson910022.pixelifyphotos"
 ENTRY_POINT = f"{APP_ID}.PixelifyModule"
 SCOPE = "com.google.android.apps.photos"
-VERSION_CODE = 7
-VERSION_NAME = "1.2.0"
+VERSION_CODE = 8
+VERSION_NAME = "1.3.0"
 CERT_SHA256 = "37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
 PUBLIC_CERT = Path("certificates/pixelifyphotos-release-cert.pem")
 
@@ -127,6 +127,15 @@ def check_identity_and_versions() -> None:
     changelog = text("CHANGELOG.md")
     check(f"## [{VERSION_NAME}] - " in changelog, "CHANGELOG current version heading is missing")
     check(f"versionCode {VERSION_CODE}" in changelog, "CHANGELOG versionCode is missing")
+    check(
+        not re.search(r"^(<<<<<<<|=======|>>>>>>>)", changelog, re.MULTILINE),
+        "CHANGELOG.md contains unresolved git merge-conflict markers",
+    )
+    first_heading = re.search(r"^## \[([^\]]+)\]", changelog, re.MULTILINE)
+    check(
+        first_heading is not None and first_heading.group(1) == VERSION_NAME,
+        "CHANGELOG.md current version must be the first (newest) entry",
+    )
     for strings_file in ("app/src/main/res/values/strings.xml", "app/src/main/res/values-zh-rTW/strings.xml"):
         check(VERSION_NAME in text(strings_file), f"{strings_file} does not mention versionName")
 

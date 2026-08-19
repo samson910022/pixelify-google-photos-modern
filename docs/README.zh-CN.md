@@ -36,6 +36,20 @@ Pixelify Infinity 是一个独立维护的 Xposed 模块，可模拟部分 Googl
 
 **Android 17 及更高版本兼容性：**所有受支持的 Android 版本（含 API 37+）都会尝试 Build 属性模拟。在部分 Android 17 版本上，ART 会拒绝 `public static final` 的 `Build` 字段的 `Field.set`（`IllegalAccessException`）；这是 ART 限制，与 libxposed API 101 无关。模块使用多策略写入（在可清除 reflected `final` 后的反射 `Field.set`，再尝试多变体 `Unsafe` static put，最后 JNI `libpixelify_build` 后备）、拦截 `SystemProperties` 读取作为次要路径、在包加载早期应用（并在 ready 时再次应用），且会回读校验。不保证在所有 Android 17 ROM 上均成功；VERIFY 仍失败时会通过 Toast 与通知提示，而不是静默失败。功能标志与设备配置仍取决于设备、ROM、框架和 Google 相册版本。
 
+## 支持与已测试版本
+
+Build 属性模拟挂钩的是框架层级类（`android.os.Build` 字段与 `SystemProperties` 读取），并非 Google 相册内部，因此不限定特定 Google 相册版本。功能标志模拟与无限原始画质上传仍会受 Google 相册版本及服务器端配置影响。
+
+已验证组合（维护者实测）：
+
+| Android 版本 | Google 相册版本 | 设备 | 状态 |
+| --- | --- | --- | --- |
+| Android 15 | 7.84.0.949657053 | 两台 Android 15 设备 | 正常 |
+| Android 17 | 7.84.0.949657053 | Pixel 6 Pro（`CP2A.260705.006`） | 正常 |
+| Android 16 | — | — | 维护者尚未验证；欢迎反馈 |
+
+若 Google 相册更新后行为改变，请使用应用内「**诊断**」界面（模块应用 → 诊断）查看 Hook 里程碑与上次设备模拟 VERIFY 结果，报告问题时请附上复制的报告。
+
 ## 安装
 
 1. 从本仓库的 [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) 页面下载 APK。

@@ -36,6 +36,20 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可模擬特定 Google Pixe
 
 **Android 17 以上相容性：**所有支援的 Android 版本（含 API 37+）都會嘗試 Build 屬性模擬。部分 Android 17 版本上，ART 會對 `public static final` 的 `Build` 欄位拒絕 `Field.set`（`IllegalAccessException`）；這是 ART 限制，與 libxposed API 101 無關。模組會使用多策略寫入（可清除 reflected `final` 後的反射 `Field.set`，再嘗試多變體 `Unsafe` static put，最後 JNI `libpixelify_build` 後備）、攔截 `SystemProperties` 讀取作為次要路徑、在套件載入早期套用（並在 ready 時再套用），且會回讀驗證。並非保證在所有 Android 17 ROM 上皆成功；VERIFY 仍失敗時會以 Toast 與通知提示，而非靜默失敗。功能旗標與裝置設定檔仍取決於裝置、ROM、框架及 Google 相簿版本。
 
+## 支援與已測試版本
+
+Build 屬性模擬掛接的是框架層級類別（`android.os.Build` 欄位與 `SystemProperties` 讀取），並非 Google 相簿內部，因此不限定特定 Google 相簿版本。功能旗標模擬與無限原始畫質上傳仍會受 Google 相簿版本及伺服器端設定影響。
+
+目前已驗證組合（維護者實測）：
+
+| Android 版本 | Google 相簿版本 | 裝置 | 狀態 |
+| --- | --- | --- | --- |
+| Android 15 | 7.84.0.949657053 | 兩台 Android 15 裝置 | 正常運作 |
+| Android 17 | 7.84.0.949657053 | Pixel 6 Pro（`CP2A.260705.006`） | 正常運作 |
+| Android 16 | — | — | 尚未由維護者驗證；歡迎回報 |
+
+若 Google 相簿更新後行為改變，請使用 App 內「**診斷**」畫面（模組 App → 診斷）查看 Hook 里程碑與上次裝置模擬 VERIFY 結果，回報問題時請附上複製的報告。
+
 ## 安裝
 
 1. 從本 repository 的 [Releases](https://github.com/samson910022/pixelify-google-photos-modern/releases) 頁面下載 APK。
