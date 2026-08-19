@@ -346,6 +346,16 @@
         "reasoningEffort": "high",
         "contextWindow": 1000000,
         "maxTokens": 64000
+      },
+      {
+        "id": "grok-composer-2.5-fast",
+        "name": "Grok Composer 2.5 Fast",
+        "description": "xAI Grok Composer 2.5 Fast text-only model via CPA",
+        "input": ["text"],
+        "output": ["text"],
+        "reasoningEffort": "high",
+        "maxContextTokens": 200000,
+        "maxOutputTokens": 32768
       }
     ]
   }

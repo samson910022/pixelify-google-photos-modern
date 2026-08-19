@@ -13,6 +13,7 @@
 
 ### Changed
 
+- Added `grok-composer-2.5-fast` (CPA, text-only, 200 000 context) to the CPA model catalog and as a text-only large-context fallback in `fallbackModels`; primary role models unchanged.
 - Fallback candidates whose provider lacks credentials are skipped before any HTTP attempt (no wasted retries on OpenCode-only forks).
 - OCR now uses the client's built-in fallback chain (`fallback_models=`) instead of a manual per-model loop, inheriting multimodal skip and length-retry handling.
 - Public error sanitization hardened: provider names, env-var names, and compound tokens (`cpa_proxy`, `CPA_API_KEY`, `provider='cpa'`, `vertex/imagen-*`) are scrubbed before model names.

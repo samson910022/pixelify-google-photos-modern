@@ -64,7 +64,7 @@ Configured primary models via CPA & OpenCode fallbacks:
 - Android/Xposed primary: `claude-opus-4-6-thinking`
 - Multimodal OCR: `gemini-3.7-flash-high` (fallbacks: `mimo-v2.5-free`, `grok-4.6`)
 - Issue investigation / explain primary: `grok-4.6`
-- Fallbacks: `gemini-3.7-flash-high` → `grok-4.6` → `claude-opus-4-6-thinking` → `gemini-3.6-flash-high` → `deepseek-v4-flash-free` → `mimo-v2.5-free` → `nemotron-3-ultra-free` → `north-mini-code-free` → `big-pickle`
+- Fallbacks: `gemini-3.7-flash-high` → `grok-4.6` → `claude-opus-4-6-thinking` → `gemini-3.6-flash-high` → `grok-composer-2.5-fast` → `deepseek-v4-flash-free` → `mimo-v2.5-free` → `nemotron-3-ultra-free` → `north-mini-code-free` → `big-pickle`
 
 These names must never appear in public issue/PR comments.
 

@@ -106,6 +106,7 @@ Configured primary models via CPA and OpenCode fallbacks. These are **not** prin
 | `claude-opus-4-6-thinking` | CPA | Primary Android/Xposed coding reviewer |
 | `grok-4.6` | CPA | Issue investigation (`triage_agent`) and PR explanation (`explainer_agent`) |
 | `gemini-3.6-flash-high` | CPA | Large context reasoning fallback |
+| `grok-composer-2.5-fast` | CPA | Text-only large-context fallback |
 | `deepseek-v4-flash-free` | OpenCode | Free issue investigation & general fallback |
 | `mimo-v2.5-free` | OpenCode | Free multimodal OCR fallback |
 | `nemotron-3-ultra-free` | OpenCode | Free 1M context fallback |
@@ -118,11 +119,12 @@ Fallback chain:
 2. `grok-4.6`
 3. `claude-opus-4-6-thinking`
 4. `gemini-3.6-flash-high`
-5. `deepseek-v4-flash-free`
-6. `mimo-v2.5-free`
-7. `nemotron-3-ultra-free`
-8. `north-mini-code-free`
-9. `big-pickle`
+5. `grok-composer-2.5-fast`
+6. `deepseek-v4-flash-free`
+7. `mimo-v2.5-free`
+8. `nemotron-3-ultra-free`
+9. `north-mini-code-free`
+10. `big-pickle`
 
 Dynamic model discovery (`dynamicModelDiscovery: true`) automatically discovers live models and expands the fallback chain at runtime.
 
