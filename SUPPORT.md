@@ -32,7 +32,7 @@ A reproducible report should include:
 - exact reproduction steps and expected/actual behavior;
 - whether a VERIFY toast/notification appeared after force-stopping and reopening Google Photos;
 - the copied report from the in-app **Diagnostics** screen (see below); and
-- the smallest relevant, sanitized log excerpt (prefer logcat lines for tag `Pixelify`).
+- only if the Diagnostics report is insufficient, the smallest relevant, sanitized verbose-logging excerpt (tag `Pixelify`). The Diagnostics report is normally enough on its own — no logcat required.
 
 ### In-app diagnostics screen
 
@@ -53,7 +53,7 @@ After enable + recommended Photos scope + force-stop/reopen Photos:
 
 - **No toast and no notification** often means the module did not load or did not reach VERIFY.
 - **Toast or notification about VERIFY / device spoof failed** means the module loaded, but Build spoof VERIFY failed (common on some Android 17+ ROMs; multi-strategy writes are attempted, success is not guaranteed on every ROM).
-- **No visible failure and Photos still shows the real device model** still needs sanitized `Pixelify` logcat lines to distinguish load failure from VERIFY failure.
+- **No visible failure and Photos still shows the real device model**: open the in-app **Diagnostics** screen — an empty/absent milestone section points to a load failure, while a recorded VERIFY FAIL points to a spoof write failure. Sanitized logcat is only needed for deeper debugging.
 
 Remove account identifiers, device serials, file-system paths, tokens, exported preferences, and unrelated application data before sharing diagnostics. Enable verbose logging only while reproducing a problem, then disable it.
 

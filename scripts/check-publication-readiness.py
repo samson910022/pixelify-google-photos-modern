@@ -127,6 +127,15 @@ def check_identity_and_versions() -> None:
     changelog = text("CHANGELOG.md")
     check(f"## [{VERSION_NAME}] - " in changelog, "CHANGELOG current version heading is missing")
     check(f"versionCode {VERSION_CODE}" in changelog, "CHANGELOG versionCode is missing")
+    check(
+        not re.search(r"^(<<<<<<<|=======|>>>>>>>)", changelog, re.MULTILINE),
+        "CHANGELOG.md contains unresolved git merge-conflict markers",
+    )
+    first_heading = re.search(r"^## \[([^\]]+)\]", changelog, re.MULTILINE)
+    check(
+        first_heading is not None and first_heading.group(1) == VERSION_NAME,
+        "CHANGELOG.md current version must be the first (newest) entry",
+    )
     for strings_file in ("app/src/main/res/values/strings.xml", "app/src/main/res/values-zh-rTW/strings.xml"):
         check(VERSION_NAME in text(strings_file), f"{strings_file} does not mention versionName")
 
