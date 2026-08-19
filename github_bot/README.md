@@ -14,7 +14,7 @@ Public comments do not disclose model names or provider routing.
 | --- | --- |
 | `src/github_runner.py` | GitHub Actions entry, sticky-comment publish |
 | `src/agent_orchestrator.py` | Issue/PR pipelines, quality gates, fail-closed stubs |
-| `src/llm_client.py` | OpenCode client, truncation rejection, fallbacks |
+| `src/llm_client.py` | CPA + OpenCode client, truncation rejection, fallbacks |
 | `src/media_ocr.py` | Media discovery + multimodal OCR |
 | `config/bot_config.json` | Roles, models, triage required sections |
 | `prompts/` | Soul + role prompts |
@@ -25,6 +25,8 @@ Public comments do not disclose model names or provider routing.
 ## Commands
 
 ```bash
+export CPA_BASE_URL='...'       # never commit
+export CPA_API_KEY='...'        # never commit
 export OPENCODE_API_KEY='...'   # never commit
 export PYTHONPATH=github_bot/src
 python3 github_bot/src/github_runner.py --mode=review --dry-run
@@ -56,12 +58,13 @@ Do not commit real API keys or a `config/LLM_config.json` that embeds secrets. P
 
 ## Model routing (internal maintainer config only)
 
-Configured free OpenCode models (price 0):
+Configured primary models via CPA & OpenCode fallbacks:
 
-- Coding primaries: `ling-3.0-flash-free`, `laguna-s-2.1-free`
-- Multimodal OCR: `mimo-v2.5-free` (auto on media attachments/files)
-- Issue investigation / explain primary: `deepseek-v4-flash-free`
-- Fallbacks: `deepseek-v4-flash-free` → `north-mini-code-free` → `big-pickle`
+- Identity & docs primary: `gemini-3.7-flash-high`
+- Android/Xposed primary: `claude-opus-4-6-thinking`
+- Multimodal OCR: `gemini-3.7-flash-high` (fallbacks: `mimo-v2.5-free`, `grok-4.6`)
+- Issue investigation / explain primary: `grok-4.6`
+- Fallbacks: `gemini-3.7-flash-high` → `grok-4.6` → `claude-opus-4-6-thinking` → `gemini-3.6-flash-high` → `grok-composer-2.5-fast` → `deepseek-v4-flash-free` → `mimo-v2.5-free` → `nemotron-3-ultra-free` → `north-mini-code-free` → `big-pickle`
 
 These names must never appear in public issue/PR comments.
 

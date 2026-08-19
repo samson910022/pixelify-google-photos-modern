@@ -75,7 +75,7 @@ class AgentOrchestrator:
         gate = self.config.get("llmResponseGate") or {}
         self.llm = LLMClient(
             fallback_models=fallback_models,
-            fallback_model=self.config.get("fallbackModel", "deepseek-v4-flash-free"),
+            fallback_model=self.config.get("fallbackModel", "gemini-3.7-flash-high"),
             min_response_chars=int(gate.get("minResponseChars", 0)),
             reject_finish_reasons=list(gate.get("rejectFinishReasons") or ["length", "content_filter"]),
             same_model_retry_on_length=int(gate.get("sameModelRetryOnLength", 1)),
@@ -428,6 +428,7 @@ class AgentOrchestrator:
                 max_tokens=int(role.get("maxTokens", 4096)),
                 min_chars=min_chars,
                 required_markers=required_markers,
+                reasoning_effort=role.get("reasoningEffort"),
             )
             verdict = _extract_verdict(raw)
             return RoleResult(role=role_id, model=model, verdict=verdict, findings=raw)
@@ -764,13 +765,25 @@ def sanitize_public_error_text(text: str) -> str:
         return "investigation backend error"
 
     known_model = re.compile(
-        r"(?i)\b(?:deepseek-[a-z0-9._-]+|ling-[a-z0-9._-]+|laguna-[a-z0-9._-]+|"
-        r"north-[a-z0-9._-]+|mimo-[a-z0-9._-]+|big-pickle|"
-        r"[a-z0-9][a-z0-9._-]{2,}-free)\b"
+        r"(?i)\b(?:gemini-[a-z0-9._-]+|grok-[a-z0-9._-]+|claude-[a-z0-9._-]+|opus-[a-z0-9._-]+|"
+        r"deepseek-[a-z0-9._-]+|ling-[a-z0-9._-]+|laguna-[a-z0-9._-]+|nemotron-[a-z0-9._-]+|"
+        r"north-[a-z0-9._-]+|mimo-[a-z0-9._-]+|big-pickle|grok-code|glm-[a-z0-9._-]+|"
+        r"kimi-[a-z0-9._-]+|minimax-[a-z0-9._-]+|qwen[a-z0-9._-]*|ring-[a-z0-9._-]+|"
+        r"trinity-[a-z0-9._-]+|hy3-[a-z0-9._-]+|longcat-[a-z0-9._-]+|imagen-[a-z0-9._-]+|"
+        r"[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\b"
     )
-    # Only treat as model-id prefix when the token looks like a model id.
+    # Provider names plus their compound tokens (env vars, proxy names, slugs) are
+    # scrubbed before the prefix/known-model passes so no casing form survives.
+    # The final arm also scrubs concatenated hostname tokens (e.g. ``vertexai.example``).
+    provider_ref = re.compile(
+        r"(?i)\bprovider\s*[:=]?\s*['\"]?(?:cpa|opencode)['\"]?|"
+        r"\b(?:CPA_API_KEY|OPENCODE_API_KEY|(?:cpa|opencode)[_.-][a-z0-9_.-]*|(?:cpa|opencode|vertex))\b|"
+        r"\b(?:cpa|opencode|vertex|gemini|grok|claude|opus|deepseek|ling|laguna|nemotron|north|mimo|glm|kimi|minimax|qwen|ring|trinity|hy3|longcat|imagen)[a-z0-9]*(?=\.)"
+    )
+    # Only treat as model/provider prefix when the token matches prefix patterns.
     model_prefix = re.compile(
-        r"(?i)\b((?:deepseek|ling|laguna|north|mimo)[a-z0-9._-]*|big-pickle|[a-z0-9][a-z0-9._-]{2,}-free)\s*:\s*"
+        r"(?i)\b((?:gemini|grok|claude|opus|deepseek|ling|laguna|nemotron|north|mimo|glm|kimi|minimax|qwen|ring|trinity|hy3|longcat)[a-z0-9._-]*|"
+        r"big-pickle|grok-code|provider\s*['\"][a-z0-9_-]+['\"]|[a-z0-9][a-z0-9._-]{2,}-(?:free|high|thinking|extra-low|low))\s*:\s*"
     )
 
     parts = re.split(r"\s*;\s*", cleaned)
@@ -779,7 +792,8 @@ def sanitize_public_error_text(text: str) -> str:
         part = part.strip()
         if not part:
             continue
-        # Strip leading model-id prefixes repeatedly.
+        part = provider_ref.sub("[provider]", part)
+        # Strip leading model/provider prefixes repeatedly.
         while True:
             updated = model_prefix.sub("", part, count=1)
             if updated == part:

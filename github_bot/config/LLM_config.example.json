@@ -3,143 +3,359 @@
     "baseUrl": "https://opencode.ai/zen/v1/",
     "api": "openai-completions",
     "apikey": "${OPENCODE_API_KEY}",
-    "timeoutSeconds": 180,
+    "stream": true,
+    "timeoutSeconds": 300,
     "models": [
       {
-        "id": "mimo-v2.5-free",
-        "name": "mimo-v2.5-free",
-        "input": [
-          "text",
-          "image",
-          "video",
-          "audio"
-        ],
-        "reasoning": true,
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cacheRead": 0,
-          "cacheWrite": 0
-        },
-        "contextWindow": 1000000,
-        "compat": {
-          "requiresStringContent": true
-        },
-        "maxTokens": 8192
-      },
-      {
         "id": "deepseek-v4-flash-free",
-        "name": "deepseek-v4-flash-free",
-        "input": [
-          "text"
-        ],
+        "name": "DeepSeek V4 Flash Free",
+        "input": ["text"],
         "reasoning": true,
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cacheRead": 0,
-          "cacheWrite": 0
-        },
+        "reasoningEffort": "max",
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
         "contextWindow": 200000,
-        "compat": {
-          "requiresStringContent": true
-        },
-        "maxTokens": 8192
-      },
-      {
-        "id": "big-pickle",
-        "name": "big-pickle",
-        "input": [
-          "text"
-        ],
-        "reasoning": true,
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cacheRead": 0,
-          "cacheWrite": 0
-        },
-        "contextWindow": 200000,
-        "compat": {
-          "requiresStringContent": true
-        },
-        "maxTokens": 8192
-      },
-      {
-        "id": "nemotron-3-ultra-free",
-        "name": "nemotron-3-ultra-free",
-        "input": [
-          "text"
-        ],
-        "reasoning": true,
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cacheRead": 0,
-          "cacheWrite": 0
-        },
-        "contextWindow": 1000000,
-        "compat": {
-          "requiresStringContent": true
-        },
-        "maxTokens": 8192
-      },
-      {
-        "id": "north-mini-code-free",
-        "name": "north-mini-code-free",
-        "input": [
-          "text"
-        ],
-        "reasoning": true,
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cacheRead": 0,
-          "cacheWrite": 0
-        },
-        "contextWindow": 256000,
-        "compat": {
-          "requiresStringContent": true
-        },
-        "maxTokens": 8192
-      },
-      {
-        "id": "laguna-s-2.1-free",
-        "name": "laguna-s-2.1-free",
-        "input": [
-          "text"
-        ],
-        "reasoning": true,
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cacheRead": 0,
-          "cacheWrite": 0
-        },
-        "contextWindow": 256000,
-        "compat": {
-          "requiresStringContent": true
-        },
-        "maxTokens": 8192
+        "maxTokens": 128000,
+        "compat": { "requiresStringContent": true }
       },
       {
         "id": "ling-3.0-flash-free",
-        "name": "ling-3.0-flash-free",
-        "input": [
-          "text"
-        ],
+        "name": "Ling-3.0-flash Free",
+        "input": ["text"],
         "reasoning": true,
-        "cost": {
-          "input": 0,
-          "output": 0,
-          "cacheRead": 0,
-          "cacheWrite": 0
-        },
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
         "contextWindow": 262144,
+        "maxTokens": 32768,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "laguna-s-2.1-free",
+        "name": "Laguna S 2.1 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 256000,
+        "maxTokens": 32000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "mimo-v2.5-free",
+        "name": "MiMo V2.5 Free",
+        "input": ["text", "image", "audio", "video"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 1000000,
+        "maxTokens": 32000
+      },
+      {
+        "id": "nemotron-3-ultra-free",
+        "name": "Nemotron 3 Ultra Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 1000000,
+        "maxTokens": 128000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "nemotron-3.5-lightning-free",
+        "name": "Nemotron 3.5 Lightning Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 1000000,
+        "maxTokens": 128000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "nemotron-3-super-free",
+        "name": "Nemotron 3 Super Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 1000000,
+        "maxTokens": 128000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "longcat-2.0-free",
+        "name": "LongCat 2.0 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 1000000,
+        "maxTokens": 131072,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "north-mini-code-free",
+        "name": "North Mini Code Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 256000,
+        "maxTokens": 64000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "big-pickle",
+        "name": "Big Pickle",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 200000,
+        "maxTokens": 32000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "grok-code",
+        "name": "Grok Code Fast 1",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 256000,
+        "maxTokens": 64000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "glm-4.7-free",
+        "name": "GLM-4.7 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 128000,
+        "maxTokens": 16384,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "glm-5-free",
+        "name": "GLM-5 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 200000,
+        "maxTokens": 32768,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "kimi-k2.5-free",
+        "name": "Kimi K2.5 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 256000,
+        "maxTokens": 32768,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "minimax-m2.1-free",
+        "name": "MiniMax-M2.1 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 200000,
+        "maxTokens": 32000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "minimax-m2.5-free",
+        "name": "MiniMax-M2.5 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 200000,
+        "maxTokens": 32000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "minimax-m3-free",
+        "name": "MiniMax-M3 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 200000,
+        "maxTokens": 32000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "qwen3.6-plus-free",
+        "name": "Qwen 3.6 Plus Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 256000,
+        "maxTokens": 32768,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "ring-2.6-1t-free",
+        "name": "Ring 2.6 1T Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 1000000,
+        "maxTokens": 64000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "trinity-large-preview-free",
+        "name": "Trinity Large Preview Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 128000,
+        "maxTokens": 16384,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "ling-2.6-flash-free",
+        "name": "Ling 2.6 Flash Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 128000,
+        "maxTokens": 16384,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "ling-3.0-tiny-free",
+        "name": "Ling 3.0 Tiny Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 64000,
         "maxTokens": 8192,
-        "compat": {
-          "requiresStringContent": true
-        }
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "mimo-v2-flash-free",
+        "name": "MiMo V2 Flash Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 128000,
+        "maxTokens": 16384,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "mimo-v2-omni-free",
+        "name": "MiMo V2 Omni Free",
+        "input": ["text", "image", "audio", "video"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 200000,
+        "maxTokens": 32000
+      },
+      {
+        "id": "mimo-v2-pro-free",
+        "name": "MiMo V2 Pro Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 200000,
+        "maxTokens": 32000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "hy3-free",
+        "name": "Hy3 Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 128000,
+        "maxTokens": 16384,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "hy3-preview-free",
+        "name": "Hy3 Preview Free",
+        "input": ["text"],
+        "reasoning": true,
+        "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+        "contextWindow": 128000,
+        "maxTokens": 16384,
+        "compat": { "requiresStringContent": true }
+      }
+    ]
+  },
+  "cpa": {
+    "baseUrl": "${CPA_BASE_URL}",
+    "api": "responses",
+    "apikey": "${CPA_API_KEY}",
+    "stream": true,
+    "timeoutSeconds": 300,
+    "models": [
+      {
+        "id": "gemini-3.7-flash-high",
+        "name": "Gemini 3.7 Flash High",
+        "description": "Google Gemini 3.7 Flash High reasoning model via CPA",
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"],
+        "reasoning": true,
+        "reasoningEffort": "high",
+        "maxContextTokens": 1048576,
+        "maxOutputTokens": 65536
+      },
+      {
+        "id": "grok-4.6",
+        "name": "Grok 4.6",
+        "description": "xAI Grok 4.6 high performance reasoning model via CPA",
+        "input": ["text", "image"],
+        "output": ["text"],
+        "reasoning": true,
+        "reasoningEffort": "high",
+        "maxContextTokens": 131072,
+        "maxOutputTokens": 16384
+      },
+      {
+        "id": "claude-opus-4-6-thinking",
+        "name": "Claude Opus 4.6 Thinking",
+        "description": "Anthropic Claude Opus 4.6 Thinking reasoning model via CPA",
+        "input": ["text", "image"],
+        "output": ["text"],
+        "reasoning": true,
+        "reasoningEffort": "high",
+        "maxContextTokens": 200000,
+        "maxOutputTokens": 32768
+      },
+      {
+        "id": "gemini-3.6-flash-high",
+        "name": "Gemini 3.6 Flash High",
+        "description": "Google Gemini 3.6 Flash High via CPA",
+        "input": ["text", "image", "audio", "video"],
+        "output": ["text"],
+        "reasoning": true,
+        "reasoningEffort": "high",
+        "maxContextTokens": 1048576,
+        "maxOutputTokens": 65536
+      },
+      {
+        "id": "grok-4.5",
+        "name": "Grok 4.5 (CPA)",
+        "input": ["text", "image"],
+        "reasoning": true,
+        "reasoningEffort": "high",
+        "contextWindow": 500000,
+        "maxTokens": 500000,
+        "compat": { "requiresStringContent": true }
+      },
+      {
+        "id": "claude-sonnet-4-6",
+        "name": "Claude Sonnet 4.6 (CPA)",
+        "input": ["text", "image"],
+        "reasoning": true,
+        "reasoningEffort": "high",
+        "contextWindow": 1000000,
+        "maxTokens": 64000
+      },
+      {
+        "id": "grok-composer-2.5-fast",
+        "name": "Grok Composer 2.5 Fast",
+        "description": "xAI Grok Composer 2.5 Fast text-only model via CPA",
+        "input": ["text"],
+        "output": ["text"],
+        "reasoningEffort": "high",
+        "maxContextTokens": 200000,
+        "maxOutputTokens": 32768
       }
     ]
   }

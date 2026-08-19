@@ -107,31 +107,33 @@ def build_media_context(
     if not items:
         return ""
 
-    model = str(ocr_config.get("model", "mimo-v2.5-free"))
+    primary_model = str(ocr_config.get("model", "gemini-3.7-flash-high"))
+    fallback_models = [m for m in (ocr_config.get("fallbackModels") or []) if m != primary_model]
     max_bytes = int(ocr_config.get("maxBytesPerItem", 5_000_000))
     max_summary_chars = int(ocr_config.get("maxSummaryChars", 12_000))
-    timeout_seconds = int(ocr_config.get("timeoutSeconds", 180))
+    timeout_seconds = int(ocr_config.get("timeoutSeconds", 300))
 
     sections: list[str] = ["### Multimodal OCR context", ""]
     for index, item in enumerate(items, start=1):
+        content_parts = _build_user_content(item, max_bytes=max_bytes)
         try:
-            content_parts = _build_user_content(item, max_bytes=max_bytes)
             raw = llm.chat_completion(
-                model,
+                primary_model,
                 [
                     {"role": "system", "content": f"{soul_prompt}\n\n{role_prompt}"},
                     {"role": "user", "content": content_parts},
                 ],
                 temperature=0.1,
                 max_tokens=2048,
-                allow_fallback=False,
+                allow_fallback=True,
+                fallback_models=fallback_models,
                 timeout_seconds=timeout_seconds,
             )
             sections.append(f"#### Media {index}: `{item.label}`")
             sections.append("")
             sections.append(raw.strip())
             sections.append("")
-        except Exception as exc:  # noqa: BLE001 - keep review flowing if OCR fails
+        except Exception as exc:  # noqa: BLE001 - record failure and move on
             sections.append(f"#### Media {index}: `{item.label}`")
             sections.append("")
             sections.append(f"OCR failed: {exc}")
