@@ -116,4 +116,15 @@
     <string name="diagnostics_verify_failed">FAIL — %1$s</string>
     <string name="diagnostics_verify_not_recorded">No VERIFY record yet. Open Google Photos once, wait a few seconds, then reopen this screen.</string>
     <string name="diagnostics_verify_no_package_ready">No VERIFY record yet — the scoped package has not reached the ready state.</string>
+    <string name="diagnostics_connection_banner">Module service not connected. Diagnostic data is read from the Xposed module\'s remote preferences. Enable this module in LSPosed, open Google Photos, then reopen this screen.</string>
+    <string name="diagnostics_milestone_no_record">No hook activity recorded yet. Open Google Photos once, wait a few seconds, then reopen this screen.</string>
+    <string name="diagnostics_milestone_module_loaded">Module loaded in a scoped process (%1$s).</string>
+    <string name="diagnostics_milestone_no_package">Module loaded, but no scoped package was ever seen. Check that Google Photos is in the LSPosed module scope, then reboot.</string>
+    <string name="diagnostics_milestone_package_loaded">Package loaded: %1$s (early device spoof ran here).</string>
+    <string name="diagnostics_milestone_package_not_ready">Package loaded but never became ready — this points to a framework/API compatibility problem in your Xposed variant.</string>
+    <string name="diagnostics_milestone_package_ready">Package ready: %1$s (hooks re-applied).</string>
+    <string name="diagnostics_milestone_verify_ok">Last device-spoof VERIFY passed (nativeReady=%1$s).</string>
+    <string name="diagnostics_milestone_verify_failed">Last device-spoof VERIFY failed: %1$s (nativeReady=%2$s). See the copied diagnostics report or enable verbose logging.</string>
+    <string name="diagnostics_milestone_verify_unexpected">VERIFY ran but no result was recorded (unexpected).</string>
+    <string name="diagnostics_milestone_verify_none">Package-ready ran but no VERIFY result was recorded; enable verbose logging in Advanced options and retry.</string>
 </resources>

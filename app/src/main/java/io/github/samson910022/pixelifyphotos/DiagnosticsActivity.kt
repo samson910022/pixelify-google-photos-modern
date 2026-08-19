@@ -12,6 +12,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.widget.TextViewCompat
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import io.github.samson910022.pixelifyphotos.Constants.PREF_DEVICE_TO_SPOOF
@@ -28,8 +29,11 @@ import io.github.samson910022.pixelifyphotos.Constants.PREF_DIAG_VERIFY_PACKAGE
 import io.github.samson910022.pixelifyphotos.Constants.PREF_DIAG_VERIFY_SYSPROPS
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL
+import io.github.samson910022.pixelifyphotos.Constants.PREF_USE_CLASSIC_UI
 import io.github.samson910022.pixelifyphotos.DiagnosticsCollector.FieldCheck
 import io.github.samson910022.pixelifyphotos.DiagnosticsCollector.HookState
+import io.github.samson910022.pixelifyphotos.DiagnosticsCollector.MilestoneKind
+import io.github.samson910022.pixelifyphotos.DiagnosticsCollector.MilestoneSignal
 
 /**
  * In-app diagnostics / self-test screen.
@@ -55,6 +59,15 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prefs = PrefUtils.getPrefs(this)
+        val isClassicUi = prefs?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
+        setTheme(
+            if (isClassicUi) {
+                R.style.Theme_PixelifyGooglePhotos_Classic
+            } else {
+                R.style.Theme_PixelifyGooglePhotos
+            }
+        )
         super.onCreate(savedInstanceState)
         val toolbar = findViewById<MaterialToolbar>(R.id.diagnostics_toolbar)
         if (toolbar != null) {
@@ -81,6 +94,15 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
 
     private fun render() {
         val snapshot = collectSnapshot()
+
+        findViewById<View>(R.id.diagnostics_connection_banner)?.let { banner ->
+            if (snapshot.moduleActive) {
+                banner.visibility = View.GONE
+            } else {
+                banner.visibility = View.VISIBLE
+            }
+        }
+
         findViewById<TextView>(R.id.diagnostics_status_text)?.text = buildString {
             appendLine(
                 getString(
@@ -95,12 +117,15 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             append(
                 getString(
                     R.string.diagnostics_scope,
-                    snapshot.scope?.joinToString() ?: getString(R.string.diagnostics_unknown)
+                    snapshot.scope?.takeIf { it.isNotEmpty() }?.joinToString()
+                        ?: getString(R.string.diagnostics_unknown)
                 )
             )
         }
 
-        val milestoneLines = DiagnosticsCollector.interpretMilestones(snapshot.state)
+        val milestoneLines = DiagnosticsCollector.milestoneSignals(snapshot.state).map {
+            localizedMilestone(it)
+        }
         findViewById<TextView>(R.id.diagnostics_milestones_text)?.text =
             milestoneLines.joinToString("\n\n")
 
@@ -286,10 +311,40 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             }
             val resolved = android.util.TypedValue()
             if (theme.resolveAttribute(appearanceAttr, resolved, true)) {
-                setTextAppearance(resolved.resourceId)
+                TextViewCompat.setTextAppearance(this, resolved.resourceId)
             }
             if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
+
+    private fun localizedMilestone(signal: MilestoneSignal): String = when (signal.kind) {
+        MilestoneKind.NO_RECORD -> getString(R.string.diagnostics_milestone_no_record)
+        MilestoneKind.MODULE_LOADED ->
+            getString(R.string.diagnostics_milestone_module_loaded, formatTs(signal.timestamp))
+        MilestoneKind.NO_PACKAGE_SEEN -> getString(R.string.diagnostics_milestone_no_package)
+        MilestoneKind.PACKAGE_LOADED ->
+            getString(R.string.diagnostics_milestone_package_loaded, signal.pkg ?: getString(R.string.diagnostics_unknown))
+        MilestoneKind.PACKAGE_NOT_READY ->
+            getString(R.string.diagnostics_milestone_package_not_ready)
+        MilestoneKind.PACKAGE_READY ->
+            getString(R.string.diagnostics_milestone_package_ready, signal.pkg ?: getString(R.string.diagnostics_unknown))
+        MilestoneKind.VERIFY_OK ->
+            getString(
+                R.string.diagnostics_milestone_verify_ok,
+                signal.nativeReady?.toString() ?: getString(R.string.diagnostics_unknown)
+            )
+        MilestoneKind.VERIFY_FAILED ->
+            getString(
+                R.string.diagnostics_milestone_verify_failed,
+                signal.failedFields.joinToString().ifEmpty { getString(R.string.diagnostics_unknown) },
+                signal.nativeReady?.toString() ?: getString(R.string.diagnostics_unknown)
+            )
+        MilestoneKind.VERIFY_UNEXPECTED ->
+            getString(R.string.diagnostics_milestone_verify_unexpected)
+        MilestoneKind.VERIFY_NONE_BUT_READY ->
+            getString(R.string.diagnostics_milestone_verify_none)
+    }
+
+    private fun formatTs(epochMillis: Long?): String = DiagnosticsCollector.formatTimestamp(epochMillis)
 
     private fun copyReport() {
         val snapshot = collectSnapshot()

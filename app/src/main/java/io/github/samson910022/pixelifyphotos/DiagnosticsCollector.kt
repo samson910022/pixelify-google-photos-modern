@@ -63,50 +63,103 @@ object DiagnosticsCollector {
         }
 
     /**
-     * Plain-language interpretation of the recorded hook milestones, mirroring
-     * the load/VERIFY signal table documented in SUPPORT.md.
-     *
-     * Returns one line per observed milestone; an empty state produces a single
-     * "no records yet" line.
+     * Structured hook-lifecycle signal, the single source of truth for both the
+     * English copyable report ([interpretMilestones]) and the localized on-screen
+     * rendering in `DiagnosticsActivity`.
      */
-    fun interpretMilestones(state: HookState): List<String> {
+    enum class MilestoneKind {
+        NO_RECORD,
+        MODULE_LOADED,
+        NO_PACKAGE_SEEN,
+        PACKAGE_LOADED,
+        PACKAGE_NOT_READY,
+        PACKAGE_READY,
+        VERIFY_OK,
+        VERIFY_FAILED,
+        VERIFY_UNEXPECTED,
+        VERIFY_NONE_BUT_READY,
+    }
+
+    data class MilestoneSignal(
+        val kind: MilestoneKind,
+        val pkg: String? = null,
+        val timestamp: Long? = null,
+        val failedFields: List<String> = emptyList(),
+        val nativeReady: Boolean? = null,
+    )
+
+    /**
+     * Derive the ordered list of hook-lifecycle signals from a [HookState].
+     * Presentation-free and pure so it can be unit-tested and reused by both the
+     * English report and the localized UI.
+     */
+    fun milestoneSignals(state: HookState): List<MilestoneSignal> {
         if (!state.anyRecorded) {
-            return listOf(
-                "No hook activity recorded yet. Open Google Photos once, wait a few " +
-                    "seconds, then reopen this screen."
-            )
+            return listOf(MilestoneSignal(MilestoneKind.NO_RECORD))
         }
 
-        val lines = mutableListOf<String>()
+        val signals = mutableListOf<MilestoneSignal>()
         if (state.moduleLoadedAt != null) {
-            lines += "Module loaded in a scoped process (${formatTimestamp(state.moduleLoadedAt)})."
+            signals += MilestoneSignal(MilestoneKind.MODULE_LOADED, timestamp = state.moduleLoadedAt)
         }
         if (state.lastPackageLoaded == null) {
-            lines += "Module loaded, but no scoped package was ever seen. Check that " +
-                "Google Photos is in the LSPosed module scope, then reboot."
+            signals += MilestoneSignal(MilestoneKind.NO_PACKAGE_SEEN)
         } else {
-            lines += "Package loaded: ${state.lastPackageLoaded} (early device spoof ran here)."
+            signals += MilestoneSignal(MilestoneKind.PACKAGE_LOADED, pkg = state.lastPackageLoaded)
             if (state.lastPackageReady == null) {
-                lines += "Package loaded but never became ready — this points to a " +
-                    "framework/API compatibility problem in your Xposed variant."
+                signals += MilestoneSignal(MilestoneKind.PACKAGE_NOT_READY)
             } else {
-                lines += "Package ready: ${state.lastPackageReady} (hooks re-applied)."
+                signals += MilestoneSignal(MilestoneKind.PACKAGE_READY, pkg = state.lastPackageReady)
             }
         }
         if (state.verifyAt != null) {
             when (state.verifyOk) {
-                true -> lines += "Last device-spoof VERIFY passed " +
-                    "(nativeReady=${state.nativeReady ?: false})."
-                false -> lines += "Last device-spoof VERIFY failed: " +
-                    state.verifyFailed.joinToString().ifEmpty { "unknown fields" } +
-                    " (nativeReady=${state.nativeReady ?: false}). See logcat tag Pixelify."
-                null -> lines += "VERIFY ran but no result was recorded (unexpected)."
+                true -> signals += MilestoneSignal(MilestoneKind.VERIFY_OK, nativeReady = state.nativeReady)
+                false -> signals += MilestoneSignal(
+                    MilestoneKind.VERIFY_FAILED,
+                    failedFields = state.verifyFailed,
+                    nativeReady = state.nativeReady,
+                )
+                null -> signals += MilestoneSignal(MilestoneKind.VERIFY_UNEXPECTED)
             }
         } else if (state.lastPackageReady != null) {
-            lines += "Package-ready ran but no VERIFY result was recorded; enable verbose " +
-                "logging in Advanced options and retry."
+            signals += MilestoneSignal(MilestoneKind.VERIFY_NONE_BUT_READY)
         }
-        return lines
+        return signals
+    }
+
+    /**
+     * Plain-language (English) interpretation of the recorded hook milestones,
+     * mirroring the load/VERIFY signal table documented in SUPPORT.md. Used by
+     * the copyable report; the on-screen UI uses [milestoneSignals] with
+     * localized strings.
+     */
+    fun interpretMilestones(state: HookState): List<String> =
+        milestoneSignals(state).map { englishMilestone(it) }
+
+    private fun englishMilestone(signal: MilestoneSignal): String = when (signal.kind) {
+        MilestoneKind.NO_RECORD ->
+            "No hook activity recorded yet. Open Google Photos once, wait a few seconds, then reopen this screen."
+        MilestoneKind.MODULE_LOADED ->
+            "Module loaded in a scoped process (${formatTimestamp(signal.timestamp)})."
+        MilestoneKind.NO_PACKAGE_SEEN ->
+            "Module loaded, but no scoped package was ever seen. Check that Google Photos is in the LSPosed module scope, then reboot."
+        MilestoneKind.PACKAGE_LOADED ->
+            "Package loaded: ${signal.pkg} (early device spoof ran here)."
+        MilestoneKind.PACKAGE_NOT_READY ->
+            "Package loaded but never became ready — this points to a framework/API compatibility problem in your Xposed variant."
+        MilestoneKind.PACKAGE_READY ->
+            "Package ready: ${signal.pkg} (hooks re-applied)."
+        MilestoneKind.VERIFY_OK ->
+            "Last device-spoof VERIFY passed (nativeReady=${signal.nativeReady ?: false})."
+        MilestoneKind.VERIFY_FAILED ->
+            "Last device-spoof VERIFY failed: " +
+                signal.failedFields.joinToString().ifEmpty { "unknown fields" } +
+                " (nativeReady=${signal.nativeReady ?: false}). See the copied diagnostics report or enable verbose logging."
+        MilestoneKind.VERIFY_UNEXPECTED ->
+            "VERIFY ran but no result was recorded (unexpected)."
+        MilestoneKind.VERIFY_NONE_BUT_READY ->
+            "Package-ready ran but no VERIFY result was recorded; enable verbose logging in Advanced options and retry."
     }
 
     /** Format an epoch-millis timestamp for diagnostics output. */

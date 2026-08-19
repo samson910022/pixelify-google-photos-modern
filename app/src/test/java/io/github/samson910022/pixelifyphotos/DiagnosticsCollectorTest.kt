@@ -165,7 +165,7 @@ class DiagnosticsCollectorTest {
         assertTrue(failLine.contains("MODEL(actual=Redmi)"))
         assertTrue(failLine.contains("FINGERPRINT(actual=unknown)"))
         assertTrue(failLine.contains("nativeReady=false"))
-        assertTrue(failLine.contains("logcat tag Pixelify"))
+        assertTrue(failLine.contains("enable verbose logging"))
     }
 
     @Test
@@ -203,6 +203,86 @@ class DiagnosticsCollectorTest {
             HookState(moduleLoadedAt = 1L, lastPackageLoaded = "com.google.android.apps.photos", verifyAt = 2L, verifyOk = null)
         )
         assertTrue(lines.any { it.contains("no result was recorded (unexpected)") })
+    }
+
+    // =========================================================================
+    // milestoneSignals (structured, presentation-free)
+    // =========================================================================
+
+    @Test
+    fun `milestoneSignals empty state yields single NO_RECORD`() {
+        val signals = DiagnosticsCollector.milestoneSignals(HookState())
+        assertEquals(listOf(DiagnosticsCollector.MilestoneKind.NO_RECORD), signals.map { it.kind })
+    }
+
+    @Test
+    fun `milestoneSignals full happy path order and payload`() {
+        val signals = DiagnosticsCollector.milestoneSignals(
+            HookState(
+                moduleLoadedAt = 1L,
+                lastPackageLoaded = "com.google.android.apps.photos",
+                lastPackageReady = "com.google.android.apps.photos",
+                verifyAt = 2L,
+                verifyOk = true,
+                nativeReady = true,
+            )
+        )
+        assertEquals(
+            listOf(
+                DiagnosticsCollector.MilestoneKind.MODULE_LOADED,
+                DiagnosticsCollector.MilestoneKind.PACKAGE_LOADED,
+                DiagnosticsCollector.MilestoneKind.PACKAGE_READY,
+                DiagnosticsCollector.MilestoneKind.VERIFY_OK,
+            ),
+            signals.map { it.kind }
+        )
+        assertEquals("com.google.android.apps.photos", signals[1].pkg)
+        assertEquals(true, signals[3].nativeReady)
+    }
+
+    @Test
+    fun `milestoneSignals verify fail carries fields and nativeReady`() {
+        val signals = DiagnosticsCollector.milestoneSignals(
+            HookState(
+                moduleLoadedAt = 1L,
+                lastPackageLoaded = "com.google.android.apps.photos",
+                lastPackageReady = "com.google.android.apps.photos",
+                verifyAt = 2L,
+                verifyOk = false,
+                verifyFailed = listOf("MODEL(actual=Redmi)"),
+                nativeReady = false,
+            )
+        )
+        val failed = signals.single { it.kind == DiagnosticsCollector.MilestoneKind.VERIFY_FAILED }
+        assertEquals(listOf("MODEL(actual=Redmi)"), failed.failedFields)
+        assertEquals(false, failed.nativeReady)
+    }
+
+    @Test
+    fun `milestoneSignals no package seen when loaded but never scoped`() {
+        val signals = DiagnosticsCollector.milestoneSignals(HookState(moduleLoadedAt = 1L))
+        assertEquals(
+            listOf(
+                DiagnosticsCollector.MilestoneKind.MODULE_LOADED,
+                DiagnosticsCollector.MilestoneKind.NO_PACKAGE_SEEN,
+            ),
+            signals.map { it.kind }
+        )
+    }
+
+    @Test
+    fun `milestoneSignals verify none but ready suggests verbose logging`() {
+        val signals = DiagnosticsCollector.milestoneSignals(
+            HookState(
+                moduleLoadedAt = 1L,
+                lastPackageLoaded = "com.google.android.apps.photos",
+                lastPackageReady = "com.google.android.apps.photos",
+            )
+        )
+        assertEquals(
+            DiagnosticsCollector.MilestoneKind.VERIFY_NONE_BUT_READY,
+            signals.last().kind
+        )
     }
 
     // =========================================================================

@@ -116,4 +116,15 @@
     <string name="diagnostics_verify_failed">失敗 — %1$s</string>
     <string name="diagnostics_verify_not_recorded">尚無 VERIFY 記錄。請開啟一次 Google 相簿、等候數秒，再重新開啟此畫面。</string>
     <string name="diagnostics_verify_no_package_ready">尚無 VERIFY 記錄——作用範圍套件尚未到達 ready 狀態。</string>
+    <string name="diagnostics_connection_banner">模組服務未連線。診斷資料是從 Xposed 模組的遠端偏好設定讀取。請在 LSPosed 中啟用此模組、開啟 Google 相簿，再重新開啟此畫面。</string>
+    <string name="diagnostics_milestone_no_record">尚無任何 Hook 活動記錄。請開啟一次 Google 相簿、等候數秒，再重新開啟此畫面。</string>
+    <string name="diagnostics_milestone_module_loaded">模組已載入於作用範圍程序（%1$s）。</string>
+    <string name="diagnostics_milestone_no_package">模組已載入，但從未看到任何作用範圍套件。請檢查 Google 相簿是否在 LSPosed 模組作用範圍內，然後重新啟動。</string>
+    <string name="diagnostics_milestone_package_loaded">套件已載入：%1$s（此處已執行早期裝置模擬）。</string>
+    <string name="diagnostics_milestone_package_not_ready">套件已載入但從未就緒——這指向您的 Xposed 版本的框架／API 相容性問題。</string>
+    <string name="diagnostics_milestone_package_ready">套件已就緒：%1$s（已重新套用 hooks）。</string>
+    <string name="diagnostics_milestone_verify_ok">上次裝置模擬 VERIFY 成功（nativeReady=%1$s）。</string>
+    <string name="diagnostics_milestone_verify_failed">上次裝置模擬 VERIFY 失敗：%1$s（nativeReady=%2$s）。請參閱複製的診斷報告，或啟用詳細記錄。</string>
+    <string name="diagnostics_milestone_verify_unexpected">VERIFY 已執行但未記錄任何結果（異常）。</string>
+    <string name="diagnostics_milestone_verify_none">套件已 ready 但未記錄任何 VERIFY 結果；請在進階選項中啟用詳細記錄後重試。</string>
 </resources>
