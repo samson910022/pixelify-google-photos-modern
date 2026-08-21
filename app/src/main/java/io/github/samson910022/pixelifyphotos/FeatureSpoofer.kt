@@ -72,33 +72,24 @@ object FeatureSpoofer {
      */
     private var verboseLog = false
 
-    private val hooksRegistered = java.util.concurrent.atomic.AtomicBoolean(false)
-
     // ──────────────────────────────────────────────────────────────────────────
     // Public API
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Called from [PixelifyModule.onPackageLoaded] and [PixelifyModule.onPackageReady].
+     * Called from [PixelifyModule.onPackageReady].
      *
      * Reads user preferences via [XposedModule.getRemotePreferences],
-     * resolves the feature flag lists, and registers interceptors on
-     * [hasSystemFeature] overloads and [getSystemAvailableFeatures].
+     * resolves the feature flag lists, and registers interceptors on both
+     * [hasSystemFeature] overloads.
      *
-     * Idempotent: method hooks are registered exactly once per process.
-     *
-     * @param module      The module instance used to register hooks and read prefs.
+     * @param module     The module instance used to register hooks and read prefs.
      * @param classLoader The class loader of the target package (Google Photos).
      */
     fun hook(module: XposedModule, classLoader: ClassLoader) {
         try {
             val prefs = module.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
             initFromPrefs(prefs)
-
-            if (!hooksRegistered.compareAndSet(false, true)) {
-                if (verboseLog) Log.d(TAG, "FeatureSpoofer hooks already registered; prefs refreshed")
-                return
-            }
 
             val clazz = classLoader.loadClass(CLASS_APPLICATION_MANAGER)
 
@@ -115,17 +106,8 @@ object FeatureSpoofer {
             )
             module.hook(methodStringInt).intercept { chain -> decideSpoof(chain) }
 
-            // getSystemAvailableFeatures() – queries the full list of features
-            try {
-                val methodFeatures = clazz.getDeclaredMethod("getSystemAvailableFeatures")
-                module.hook(methodFeatures).intercept { chain -> decideFeatures(chain) }
-            } catch (t: Throwable) {
-                Log.w(TAG, "Failed to hook getSystemAvailableFeatures", t)
-            }
-
             Log.d(TAG, "FeatureSpoofer hooks registered successfully")
         } catch (t: Throwable) {
-            hooksRegistered.set(false)
             Log.e(TAG, "Failed to register FeatureSpoofer hooks", t)
         }
     }
@@ -244,51 +226,5 @@ object FeatureSpoofer {
                 chain.proceed()
             }
         }
-    }
-
-    /**
-     * Interceptor for [android.content.pm.PackageManager.getSystemAvailableFeatures].
-     *
-     * Hides features in [featuresNotToSpoof] and ensures all [finalFeaturesToSpoof]
-     * are present in the returned array.
-     */
-    @Suppress("UNCHECKED_CAST")
-    private fun decideFeatures(chain: XposedInterface.Chain): Any? {
-        if (!initialized || passThroughAll) {
-            return chain.proceed()
-        }
-
-        val originalRaw = chain.proceed()
-        val original = originalRaw as? Array<android.content.pm.FeatureInfo> ?: return originalRaw
-
-        val resultList = mutableListOf<android.content.pm.FeatureInfo>()
-        val seenNames = mutableSetOf<String>()
-
-        for (info in original) {
-            val name = info.name
-            if (name == null) {
-                resultList.add(info)
-                continue
-            }
-            if (overrideCustomROMLevels && name in featuresNotToSpoof) {
-                if (verboseLog) Log.d(TAG, "getSystemAvailableFeatures: HIDE - $name")
-                continue
-            }
-            resultList.add(info)
-            seenNames.add(name)
-        }
-
-        for (feature in finalFeaturesToSpoof) {
-            if (feature !in seenNames) {
-                if (verboseLog) Log.d(TAG, "getSystemAvailableFeatures: ADD - $feature")
-                val newInfo = android.content.pm.FeatureInfo().apply {
-                    this.name = feature
-                }
-                resultList.add(newInfo)
-                seenNames.add(feature)
-            }
-        }
-
-        return resultList.toTypedArray()
     }
 }

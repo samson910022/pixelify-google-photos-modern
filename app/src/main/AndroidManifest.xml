@@ -41,11 +41,6 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
-        <provider
-            android:authorities="${applicationId}.diagnostics"
-            android:name=".DiagnosticsProvider"
-            android:exported="true" />
-
     </application>
 
 </manifest>

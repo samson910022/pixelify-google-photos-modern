@@ -42,9 +42,4 @@ object Constants {
     val PREF_DIAG_VERIFY_FAILED = "PREF_DIAG_VERIFY_FAILED"
     val PREF_DIAG_VERIFY_NATIVE_READY = "PREF_DIAG_VERIFY_NATIVE_READY"
     val PREF_DIAG_VERIFY_SYSPROPS = "PREF_DIAG_VERIFY_SYSPROPS"
-
-    val DIAGNOSTICS_AUTHORITY = "io.github.samson910022.pixelifyphotos.diagnostics"
-    val METHOD_RECORD_DIAGNOSTICS = "recordDiagnostics"
-    val METHOD_RECORD_VERIFY = "recordVerify"
-    val METHOD_CLEAR_VERIFY = "clearVerify"
 }

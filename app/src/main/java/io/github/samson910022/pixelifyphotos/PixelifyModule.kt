@@ -1,6 +1,5 @@
 package io.github.samson910022.pixelifyphotos
 
-import android.os.Build
 import android.util.Log
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
@@ -13,8 +12,8 @@ class PixelifyModule : XposedModule() {
 
     override fun onModuleLoaded(params: XposedModuleInterface.ModuleLoadedParam) {
         Log.d(TAG, "Pixelify Infinity module loaded (libxposed Modern API)")
-        DiagnosticsReporter.recordMilestone { bundle ->
-            bundle.putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, System.currentTimeMillis())
+        recordDiagnostics { editor ->
+            editor.putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, System.currentTimeMillis())
         }
     }
 
@@ -56,17 +55,8 @@ class PixelifyModule : XposedModule() {
         } catch (t: Throwable) {
             Log.e(TAG, "Failed early DeviceSpoofer apply for ${params.packageName}", t)
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                FeatureSpoofer.hook(this, params.defaultClassLoader)
-                Log.d(TAG, "FeatureSpoofer early apply done for ${params.packageName}")
-            } catch (t: Throwable) {
-                Log.e(TAG, "Failed early FeatureSpoofer apply for ${params.packageName}", t)
-            }
-        }
-        DiagnosticsReporter.recordMilestone { bundle ->
-            bundle.putString(Constants.PREF_DIAG_LAST_PACKAGE_LOADED, params.packageName)
+        recordDiagnostics { editor ->
+            editor.putString(Constants.PREF_DIAG_LAST_PACKAGE_LOADED, params.packageName)
         }
     }
 
@@ -106,9 +96,9 @@ class PixelifyModule : XposedModule() {
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to register hooks for ${params.packageName}", t)
         }
-        DiagnosticsReporter.recordMilestone { bundle ->
-            bundle.putString(Constants.PREF_DIAG_LAST_PACKAGE_READY, params.packageName)
-            bundle.putLong(Constants.PREF_DIAG_LAST_PACKAGE_READY_AT, System.currentTimeMillis())
+        recordDiagnostics { editor ->
+            editor.putString(Constants.PREF_DIAG_LAST_PACKAGE_READY, params.packageName)
+            editor.putLong(Constants.PREF_DIAG_LAST_PACKAGE_READY_AT, System.currentTimeMillis())
         }
     }
 
@@ -124,6 +114,21 @@ class PixelifyModule : XposedModule() {
                 "Applying $phase to non-Photos package $packageName " +
                     "(advanced multi-app scope; not restricted to developer/Photos by design)"
             )
+        }
+    }
+
+    /**
+     * Record a hook-lifecycle milestone into the shared remote preferences so
+     * the module UI (DiagnosticsActivity) can surface load state without
+     * logcat. Never throws — diagnostics must not break the hook path.
+     */
+    private fun recordDiagnostics(block: (android.content.SharedPreferences.Editor) -> Unit) {
+        try {
+            val editor = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)?.edit() ?: return
+            block(editor)
+            editor.apply()
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to record hook diagnostics", t)
         }
     }
 }
