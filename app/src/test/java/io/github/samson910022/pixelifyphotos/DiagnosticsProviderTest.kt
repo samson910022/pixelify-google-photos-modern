@@ -60,7 +60,7 @@ class DiagnosticsProviderTest {
 
     @Test
     fun `ALLOWED_DIAG_KEYS only contains PREF_DIAG keys`() {
-        DiagnosticsProvider.ALLOWED_DIAG_KEYS.forEach { key ->
+        DiagnosticsStore.ALLOWED_DIAG_KEYS.forEach { key ->
             assertTrue("Key '$key' must start with PREF_DIAG_", key.startsWith("PREF_DIAG_"))
         }
     }
@@ -85,7 +85,7 @@ class DiagnosticsProviderTest {
         forbiddenKeys.forEach { key ->
             assertFalse(
                 "Forbidden key '$key' must never be writable via DiagnosticsProvider",
-                DiagnosticsProvider.ALLOWED_DIAG_KEYS.contains(key)
+                DiagnosticsStore.ALLOWED_DIAG_KEYS.contains(key)
             )
         }
     }
@@ -97,7 +97,7 @@ class DiagnosticsProviderTest {
     @Test
     fun `caller authorization allows self UID`() {
         assertTrue(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10000,
                 myUid = 10000,
                 callingPackages = null
@@ -108,14 +108,14 @@ class DiagnosticsProviderTest {
     @Test
     fun `caller authorization rejects null or empty calling packages for remote UID`() {
         assertFalse(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10123,
                 myUid = 10000,
                 callingPackages = null
             )
         )
         assertFalse(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10123,
                 myUid = 10000,
                 callingPackages = emptyArray()
@@ -126,7 +126,7 @@ class DiagnosticsProviderTest {
     @Test
     fun `caller authorization allows legitimate scoped apps like Photos`() {
         assertTrue(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10123,
                 myUid = 10000,
                 callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
@@ -137,21 +137,21 @@ class DiagnosticsProviderTest {
     @Test
     fun `caller authorization rejects denylisted system packages`() {
         assertFalse(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10001,
                 myUid = 10000,
                 callingPackages = arrayOf("com.google.android.gms")
             )
         )
         assertFalse(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10002,
                 myUid = 10000,
                 callingPackages = arrayOf("com.android.settings")
             )
         )
         assertFalse(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10003,
                 myUid = 10000,
                 callingPackages = arrayOf("app.grapheneos.gmscompat")
@@ -166,7 +166,7 @@ class DiagnosticsProviderTest {
 
         // Caller is com.rogue.app, falsely claiming to report for Photos
         assertFalse(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10999,
                 myUid = 10000,
                 callingPackages = arrayOf("com.rogue.app"),
@@ -181,7 +181,7 @@ class DiagnosticsProviderTest {
         whenever(extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
 
         assertTrue(
-            DiagnosticsProvider.isCallerAuthorized(
+            DiagnosticsStore.isCallerAuthorized(
                 callingUid = 10123,
                 myUid = 10000,
                 callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
@@ -196,31 +196,31 @@ class DiagnosticsProviderTest {
 
     @Test
     fun `applyExtra handles collections, arrays, and primitive types`() {
-        DiagnosticsProvider.applyExtra(mockEditor, "key_long", 100L)
+        DiagnosticsStore.applyExtra(mockEditor, "key_long", 100L)
         verify(mockEditor).putLong("key_long", 100L)
 
-        DiagnosticsProvider.applyExtra(mockEditor, "key_int", 42)
+        DiagnosticsStore.applyExtra(mockEditor, "key_int", 42)
         verify(mockEditor).putInt("key_int", 42)
 
-        DiagnosticsProvider.applyExtra(mockEditor, "key_bool", true)
+        DiagnosticsStore.applyExtra(mockEditor, "key_bool", true)
         verify(mockEditor).putBoolean("key_bool", true)
 
-        DiagnosticsProvider.applyExtra(mockEditor, "key_float", 3.14f)
+        DiagnosticsStore.applyExtra(mockEditor, "key_float", 3.14f)
         verify(mockEditor).putFloat("key_float", 3.14f)
 
-        DiagnosticsProvider.applyExtra(mockEditor, "key_str", "hello")
+        DiagnosticsStore.applyExtra(mockEditor, "key_str", "hello")
         verify(mockEditor).putString("key_str", "hello")
 
         val list = listOf("a", "b", "c")
-        DiagnosticsProvider.applyExtra(mockEditor, "key_list", list)
+        DiagnosticsStore.applyExtra(mockEditor, "key_list", list)
         verify(mockEditor).putStringSet("key_list", setOf("a", "b", "c"))
 
         val set = setOf("x", "y")
-        DiagnosticsProvider.applyExtra(mockEditor, "key_set", set)
+        DiagnosticsStore.applyExtra(mockEditor, "key_set", set)
         verify(mockEditor).putStringSet("key_set", setOf("x", "y"))
 
         val array = arrayOf("1", "2")
-        DiagnosticsProvider.applyExtra(mockEditor, "key_array", array)
+        DiagnosticsStore.applyExtra(mockEditor, "key_array", array)
         verify(mockEditor).putStringSet("key_array", setOf("1", "2"))
     }
 

@@ -153,6 +153,6 @@ class ConstantsTest {
             Constants.PREF_DIAG_VERIFY_NATIVE_READY,
             Constants.PREF_DIAG_VERIFY_SYSPROPS,
         )
-        assertEquals(expectedKeys, DiagnosticsProvider.ALLOWED_DIAG_KEYS)
+        assertEquals(expectedKeys, DiagnosticsStore.ALLOWED_DIAG_KEYS)
     }
 }

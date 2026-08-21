@@ -18,10 +18,23 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
             .build()
         DynamicColors.applyToActivitiesIfAvailable(this, options)
         XposedServiceHelper.registerListener(this)
+        // Ensure per-install broadcast token is provisioned for diagnostics fallback auth.
+        try {
+            DiagnosticsStore.getOrCreateToken(this)
+        } catch (_: Throwable) {
+        }
     }
 
     override fun onServiceBind(service: XposedService) {
         App.mService = service
+        // Align local and remote copies of the per-install broadcast token now that
+        // remote preferences are reachable, so hooked-process senders and this
+        // process validate against the same canonical value.
+        try {
+            DiagnosticsStore.convergeBroadcastToken(this)
+        } catch (t: Throwable) {
+            android.util.Log.d(TAG, "Broadcast token convergence failed: ${t.message}")
+        }
     }
 
     override fun onServiceDied(service: XposedService) {
@@ -29,6 +42,9 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
     }
 
     companion object {
+        private const val TAG = "Pixelify"
+
+        @Volatile
         var mService: XposedService? = null
             private set
     }
