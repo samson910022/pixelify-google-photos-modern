@@ -46,6 +46,13 @@
             android:name=".DiagnosticsProvider"
             android:exported="true" />
 
+        <!--
+          Explicit-component fallback receiver for diagnostics IPC from hooked host
+          processes (Android 11+ AppsFilter can block provider resolution). Exported is
+          required because senders run under the host app's identity; a signature-level
+          permission would reject Google-signed hosts. Unauthenticated sends are rejected
+          fail-closed in DiagnosticsStore via the per-install broadcast token.
+        -->
         <receiver
             android:name=".DiagnosticsReceiver"
             android:exported="true">

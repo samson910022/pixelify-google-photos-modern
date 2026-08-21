@@ -4,8 +4,11 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.util.Log
+import io.github.libxposed.service.XposedService
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -25,18 +28,23 @@ class DiagnosticsStoreTest {
     private lateinit var mockContext: Context
     private lateinit var mockPrefs: SharedPreferences
     private lateinit var mockEditor: SharedPreferences.Editor
+    private lateinit var mockRemotePrefs: SharedPreferences
+    private lateinit var mockRemoteEditor: SharedPreferences.Editor
 
     @Before
     fun setUp() {
         mockedLog = Mockito.mockStatic(Log::class.java)
         mockedLog.`when`<Int> { Log.d(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>()) }.thenReturn(0)
+        mockedLog.`when`<Int> { Log.w(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.e(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.e(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
 
         mockContext = mock()
         mockPrefs = mock()
         mockEditor = mock()
+        mockRemotePrefs = mock()
+        mockRemoteEditor = mock()
 
         whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
             .thenReturn(mockPrefs)
@@ -48,11 +56,42 @@ class DiagnosticsStoreTest {
         whenever(mockEditor.putInt(any(), any())).thenReturn(mockEditor)
         whenever(mockEditor.putStringSet(any(), any())).thenReturn(mockEditor)
         whenever(mockEditor.remove(any())).thenReturn(mockEditor)
+        // Remote store editor needs fluent chaining too (putX() must return the editor).
+        whenever(mockRemoteEditor.putLong(any(), any())).thenReturn(mockRemoteEditor)
+        whenever(mockRemoteEditor.putString(any(), any())).thenReturn(mockRemoteEditor)
+        whenever(mockRemoteEditor.putBoolean(any(), any())).thenReturn(mockRemoteEditor)
+        whenever(mockRemoteEditor.putFloat(any(), any())).thenReturn(mockRemoteEditor)
+        whenever(mockRemoteEditor.putInt(any(), any())).thenReturn(mockRemoteEditor)
+        whenever(mockRemoteEditor.putStringSet(any(), any())).thenReturn(mockRemoteEditor)
+        whenever(mockRemoteEditor.remove(any())).thenReturn(mockRemoteEditor)
     }
 
     @After
     fun tearDown() {
-        mockedLog.close()
+        try {
+            setMockXposedService(null)
+        } finally {
+            mockedLog.close()
+        }
+    }
+
+    /**
+     * Injects a mock XposedService into the [App] companion (private setter) via
+     * reflection so remote-preferences paths can be exercised in JVM unit tests.
+     * The backing field is a static field on the outer App class.
+     */
+    private fun setMockXposedService(service: XposedService?) {
+        val field = App::class.java.getDeclaredField("mService")
+        field.isAccessible = true
+        field.set(null, service)
+    }
+
+    private fun stubBoundServiceWithRemotePrefs(): XposedService {
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(mockRemotePrefs)
+        whenever(mockRemotePrefs.edit()).thenReturn(mockRemoteEditor)
+        setMockXposedService(service)
+        return service
     }
 
     // =========================================================================
@@ -386,5 +425,186 @@ class DiagnosticsStoreTest {
 
         assertFalse(ok)
         verify(mockEditor, never()).apply()
+    }
+
+    @Test
+    fun `applyDiagnostics fails closed when no token provisioned yet`() {
+        // No token stubbed anywhere (fresh install): even benign, denylist-passing
+        // payloads must be rejected — no unauthenticated fallback exists.
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_VERIFY_DEVICE))
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn(null)
+
+        val ok = DiagnosticsStore.applyDiagnostics(
+            context = mockContext,
+            method = Constants.METHOD_RECORD_DIAGNOSTICS,
+            extras = extras,
+            callingUid = null,
+            callingPackages = null,
+            myUid = null,
+        )
+
+        assertFalse(ok)
+        verify(mockEditor, never()).apply()
+    }
+
+    @Test
+    fun `applyDiagnostics fails closed for CLEAR_VERIFY when no token provisioned yet`() {
+        val ok = DiagnosticsStore.applyDiagnostics(
+            context = mockContext,
+            method = Constants.METHOD_CLEAR_VERIFY,
+            extras = mock(),
+            callingUid = null,
+            callingPackages = null,
+            myUid = null,
+        )
+
+        assertFalse(ok)
+        verify(mockEditor, never()).remove(any())
+    }
+
+    @Test
+    fun `getStoredToken resolves remote prefs through PrefUtils when XposedService bound`() {
+        // With the service bound, PrefUtils.getPrefs prefers the remote store — the
+        // same canonical store hooked-process senders resolve the token from.
+        stubBoundServiceWithRemotePrefs()
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+        whenever(mockRemotePrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("remote-canonical-token")
+
+        assertEquals("remote-canonical-token", DiagnosticsStore.getStoredToken(mockContext))
+    }
+
+    @Test
+    fun `getStoredToken falls back to file prefs when no XposedService bound`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("file-token")
+
+        assertEquals("file-token", DiagnosticsStore.getStoredToken(mockContext))
+    }
+
+    @Test
+    fun `applyDiagnostics broadcast with valid token but denylisted reported package is rejected`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("valid-token-xyz")
+
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_VERIFY_PACKAGE))
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn("app.grapheneos.gmscompat")
+        whenever(extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn("app.grapheneos.gmscompat")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("valid-token-xyz")
+
+        val ok = DiagnosticsStore.applyDiagnostics(
+            context = mockContext,
+            method = Constants.METHOD_RECORD_VERIFY,
+            extras = extras,
+            callingUid = null,
+            callingPackages = null,
+            myUid = null,
+        )
+
+        assertFalse(ok)
+        verify(mockEditor, never()).apply()
+    }
+
+    @Test
+    fun `convergeBroadcastToken mirrors local file token into empty remote store`() {
+        stubBoundServiceWithRemotePrefs()
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("local-token")
+        whenever(mockRemotePrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+
+        DiagnosticsStore.convergeBroadcastToken(mockContext)
+
+        verify(mockRemoteEditor).putString(Constants.PREF_DIAG_BROADCAST_TOKEN, "local-token")
+        verify(mockRemoteEditor).commit()
+        verify(mockEditor, never()).commit()
+    }
+
+    @Test
+    fun `convergeBroadcastToken aligns divergent local file token to remote`() {
+        stubBoundServiceWithRemotePrefs()
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("stale-local")
+        whenever(mockRemotePrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("remote-canonical")
+
+        DiagnosticsStore.convergeBroadcastToken(mockContext)
+
+        verify(mockEditor).putString(Constants.PREF_DIAG_BROADCAST_TOKEN, "remote-canonical")
+        verify(mockEditor).commit()
+        verify(mockRemoteEditor, never()).commit()
+    }
+
+    @Test
+    fun `convergeBroadcastToken is a no-op when both stores already agree`() {
+        stubBoundServiceWithRemotePrefs()
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("same-token")
+        whenever(mockRemotePrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("same-token")
+
+        DiagnosticsStore.convergeBroadcastToken(mockContext)
+
+        verify(mockEditor, never()).commit()
+        verify(mockRemoteEditor, never()).commit()
+    }
+
+    @Test
+    fun `convergeBroadcastToken is a no-op without bound XposedService`() {
+        whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
+            .thenReturn(mockPrefs)
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("local-only")
+
+        DiagnosticsStore.convergeBroadcastToken(mockContext)
+
+        verify(mockEditor, never()).commit()
+    }
+
+    @Test
+    fun `getOrCreateToken returns existing token without regenerating`() {
+        whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
+            .thenReturn(mockPrefs)
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("existing-token")
+
+        assertEquals("existing-token", DiagnosticsStore.getOrCreateToken(mockContext))
+        verify(mockEditor, never()).putString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), any())
+        verify(mockEditor, never()).commit()
+    }
+
+    @Test
+    fun `getOrCreateToken generates a new token when none exists`() {
+        whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
+            .thenReturn(mockPrefs)
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+        whenever(mockEditor.commit()).thenReturn(true)
+
+        val token = DiagnosticsStore.getOrCreateToken(mockContext)
+
+        assertTrue(!token.isNullOrEmpty())
+        verify(mockEditor).putString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), eq(token))
+        verify(mockEditor).commit()
+    }
+
+    @Test
+    fun `getOrCreateToken still returns generated token when commit fails (receiver stays fail-closed)`() {
+        whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
+            .thenReturn(mockPrefs)
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+        whenever(mockEditor.commit()).thenReturn(false)
+
+        val token = DiagnosticsStore.getOrCreateToken(mockContext)
+
+        // Token is returned for immediate use, but because it was never persisted,
+        // receiver-side getStoredToken keeps returning null and broadcasts stay rejected.
+        assertTrue(!token.isNullOrEmpty())
+        verify(mockEditor).commit()
+    }
+
+    @Test
+    fun `getOrCreateToken returns null when preference access throws`() {
+        whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
+            .thenReturn(mockPrefs)
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+        whenever(mockEditor.commit()).thenThrow(IllegalStateException("disk full"))
+
+        assertNull(DiagnosticsStore.getOrCreateToken(mockContext))
     }
 }

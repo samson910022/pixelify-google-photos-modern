@@ -102,35 +102,36 @@ object DiagnosticsReporter {
 
     /**
      * Attempts to resolve the per-install broadcast token for authentication.
-     * Tries Xposed remote prefs first (LSPosed), then module package context, then local prefs.
+     *
+     * Only the Xposed remote-preferences store is consulted: this reporter runs inside
+     * a hooked target process, where the module's MODE_PRIVATE preference file is not
+     * readable cross-UID, and [PrefUtils.getPrefs] would resolve to the host application's
+     * own preferences instead of the module's. The module process keeps its local copy
+     * aligned with this store via [DiagnosticsStore.convergeBroadcastToken].
      */
-    private fun resolveBroadcastToken(ctx: Context): String? {
-        // 1. Via XposedModule instance (most reliable in hooked process)
-        try {
-            val module = PixelifyModule.instance
-            if (module != null) {
-                val prefs = module.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-                val token = prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
-                if (!token.isNullOrEmpty()) return token
-            }
-        } catch (_: Throwable) {
-        }
-        // 2. Via module package context (if file-based fallback is readable)
-        try {
-            val moduleCtx = ctx.createPackageContext(Constants.PACKAGE_NAME_MODULE, 0)
-            val prefs = moduleCtx.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE)
+    private fun resolveBroadcastToken(): String? {
+        return try {
+            val module = PixelifyModule.instance ?: return null
+            val prefs = module.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
             val token = prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
-            if (!token.isNullOrEmpty()) return token
-        } catch (_: Throwable) {
+            token?.takeIf { it.isNotEmpty() }
+        } catch (t: Throwable) {
+            Log.d(TAG, "Broadcast token unavailable: ${t.message}")
+            null
         }
-        // 3. Local prefs (module process itself)
-        try {
-            val prefs = PrefUtils.getPrefs(ctx)
-            val token = prefs?.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
-            if (!token.isNullOrEmpty()) return token
-        } catch (_: Throwable) {
-        }
-        return null
+    }
+
+    /**
+     * Sends [intent] with sender identity shared so a receiver on API 34+ can verify
+     * the caller via getSentFromUid()/getSentFromPackage(). Isolated in its own method,
+     * guarded by an SDK_INT >= 34 check at the call site, so newer-API references are
+     * never verified on older runtimes (no reflection needed).
+     */
+    @androidx.annotation.RequiresApi(34)
+    private fun sendBroadcastSharingIdentity(context: Context, intent: android.content.Intent) {
+        val options = android.app.BroadcastOptions.makeBasic()
+        options.setShareIdentityEnabled(true)
+        context.sendBroadcast(intent, null, options.toBundle())
     }
 
     private fun dispatch(explicitContext: Context?, method: String, extras: Bundle) {
@@ -174,60 +175,45 @@ object DiagnosticsReporter {
                             return@execute
                         }
 
-                        // Fallback to broadcast when provider did not succeed (null, exception, or success=false).
-                        // On explicit auth rejection (success=false) the broadcast will be re-validated via
-                        // token/UID and rejected again, so fallback is safe (just adds one Binder hop).
-                        val shouldFallback = !providerSucceeded
-
-                        if (shouldFallback) {
-                            try {
-                                val broadcastIntent = android.content.Intent(Constants.ACTION_RECORD_DIAGNOSTICS).apply {
-                                    setPackage(Constants.PACKAGE_NAME_MODULE)
-                                    component = android.content.ComponentName(
-                                        Constants.PACKAGE_NAME_MODULE,
-                                        DiagnosticsReceiver::class.java.name
-                                    )
-                                    putExtra(Constants.EXTRA_DIAGNOSTICS_METHOD, method)
-                                    putExtras(payload)
-                                    addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND)
-                                    // Attach per-install token if available (pre-34 auth fallback)
-                                    val token = resolveBroadcastToken(ctx)
-                                    if (!token.isNullOrEmpty()) {
-                                        putExtra(Constants.EXTRA_DIAGNOSTICS_TOKEN, token)
-                                    }
+                        // Fallback to broadcast when provider did not succeed (null, exception, or
+                        // success=false). On explicit auth rejection (success=false) the broadcast
+                        // will be re-validated via token/UID and rejected again, so fallback is safe
+                        // (just adds one Binder hop).
+                        try {
+                            val broadcastIntent = android.content.Intent(Constants.ACTION_RECORD_DIAGNOSTICS).apply {
+                                setPackage(Constants.PACKAGE_NAME_MODULE)
+                                component = android.content.ComponentName(
+                                    Constants.PACKAGE_NAME_MODULE,
+                                    DiagnosticsReceiver::class.java.name
+                                )
+                                putExtra(Constants.EXTRA_DIAGNOSTICS_METHOD, method)
+                                putExtras(payload)
+                                addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND)
+                                // Attach per-install token if available (pre-34 auth fallback)
+                                val token = resolveBroadcastToken()
+                                if (!token.isNullOrEmpty()) {
+                                    putExtra(Constants.EXTRA_DIAGNOSTICS_TOKEN, token)
                                 }
-                                // On API 34+, share sender identity so receiver can verify via getSentFromUid().
-                                // Use reflection for BroadcastOptions to avoid VerifyError on minSdk 26.
-                                if (Build.VERSION.SDK_INT >= 34) {
-                                    try {
-                                        val clazz = Class.forName("android.app.BroadcastOptions")
-                                        val makeBasic = clazz.getMethod("makeBasic")
-                                        val optsObj = makeBasic.invoke(null)
-                                        val setShare = clazz.getMethod("setShareIdentityEnabled", Boolean::class.javaPrimitiveType)
-                                        setShare.invoke(optsObj, true)
-                                        val toBundle = clazz.getMethod("toBundle")
-                                        val opts = toBundle.invoke(optsObj) as Bundle
-                                        try {
-                                            val m = ctx::class.java.getMethod(
-                                                "sendBroadcast",
-                                                android.content.Intent::class.java,
-                                                String::class.java,
-                                                android.os.Bundle::class.java
-                                            )
-                                            m.invoke(ctx, broadcastIntent, null, opts)
-                                        } catch (_: Throwable) {
-                                            ctx.sendBroadcast(broadcastIntent)
-                                        }
-                                    } catch (_: Throwable) {
-                                        ctx.sendBroadcast(broadcastIntent)
-                                    }
-                                } else {
+                            }
+                            // On API 34+, share sender identity so the receiver can verify
+                            // via getSentFromUid(). Direct API call in a dedicated helper
+                            // (see [sendBroadcastSharingIdentity]) instead of reflection.
+                            if (Build.VERSION.SDK_INT >= 34) {
+                                try {
+                                    sendBroadcastSharingIdentity(ctx, broadcastIntent)
+                                } catch (t: Throwable) {
+                                    Log.d(
+                                        TAG,
+                                        "Identity-shared broadcast failed; retrying without options: ${t.message}"
+                                    )
                                     ctx.sendBroadcast(broadcastIntent)
                                 }
-                                return@execute
-                            } catch (t: Throwable) {
-                                Log.d(TAG, "Explicit broadcast dispatch failed: ${t.message}")
+                            } else {
+                                ctx.sendBroadcast(broadcastIntent)
                             }
+                            return@execute
+                        } catch (t: Throwable) {
+                            Log.d(TAG, "Explicit broadcast dispatch failed: ${t.message}")
                         }
 
                         // Both channels failed — retry if attempts remain.

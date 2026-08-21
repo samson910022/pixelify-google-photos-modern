@@ -31,6 +31,7 @@ class DiagnosticsReceiverTest {
         mockedLog = Mockito.mockStatic(Log::class.java)
         mockedLog.`when`<Int> { Log.d(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>()) }.thenReturn(0)
+        mockedLog.`when`<Int> { Log.w(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.e(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.e(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
 
@@ -48,10 +49,19 @@ class DiagnosticsReceiverTest {
         whenever(mockEditor.remove(any())).thenReturn(mockEditor)
 
         receiver = DiagnosticsReceiver()
+        // Note: the API 34+ shareIdentity sender-verification branch (getSentFromUid /
+        // getSentFromPackage) is intentionally untested here — JVM unit tests run with
+        // SDK_INT=0 and this suite deliberately avoids Robolectric shadows.
     }
 
     @After
     fun tearDown() {
+        try {
+            val field = App::class.java.getDeclaredField("mService")
+            field.isAccessible = true
+            field.set(null, null)
+        } catch (_: Throwable) {
+        }
         mockedLog.close()
     }
 
@@ -84,6 +94,9 @@ class DiagnosticsReceiverTest {
 
     @Test
     fun `onReceive processes valid ACTION_RECORD_DIAGNOSTICS with RECORD_VERIFY`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("test-broadcast-token")
+
         val extras = mock<Bundle>()
         val keys = setOf(
             Constants.PREF_DIAG_VERIFY_AT,
@@ -101,6 +114,7 @@ class DiagnosticsReceiverTest {
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_NATIVE_READY)).thenReturn(true)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_SYSPROPS)).thenReturn(false)
         whenever(extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("test-broadcast-token")
 
         val intent = mock<Intent>()
         whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
@@ -120,10 +134,16 @@ class DiagnosticsReceiverTest {
 
     @Test
     fun `onReceive processes CLEAR_VERIFY method`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("test-broadcast-token")
+
+        val extras = mock<Bundle>()
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("test-broadcast-token")
+
         val intent = mock<Intent>()
         whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
         whenever(intent.getStringExtra(Constants.EXTRA_DIAGNOSTICS_METHOD)).thenReturn(Constants.METHOD_CLEAR_VERIFY)
-        whenever(intent.extras).thenReturn(mock())
+        whenever(intent.extras).thenReturn(extras)
 
         receiver.onReceive(mockContext, intent)
 
@@ -138,9 +158,11 @@ class DiagnosticsReceiverTest {
     }
 
     @Test
-    fun `onReceive rejects broadcast reporting denylisted package`() {
+    fun `onReceive rejects broadcast when no token provisioned yet (fail-closed)`() {
+        // No PREF_DIAG_BROADCAST_TOKEN stubbed — fresh install before provisioning.
         val extras = mock<Bundle>()
-        whenever(extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn("app.grapheneos.gmscompat")
+        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_VERIFY_DEVICE))
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
 
         val intent = mock<Intent>()
         whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
@@ -153,7 +175,29 @@ class DiagnosticsReceiverTest {
     }
 
     @Test
-    fun `onReceive strips EXTRA_DIAGNOSTICS_METHOD and token before persistence`() {
+    fun `onReceive rejects broadcast reporting denylisted package`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("test-broadcast-token")
+
+        val extras = mock<Bundle>()
+        whenever(extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn("app.grapheneos.gmscompat")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("test-broadcast-token")
+
+        val intent = mock<Intent>()
+        whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
+        whenever(intent.getStringExtra(Constants.EXTRA_DIAGNOSTICS_METHOD)).thenReturn(Constants.METHOD_RECORD_VERIFY)
+        whenever(intent.extras).thenReturn(extras)
+
+        receiver.onReceive(mockContext, intent)
+
+        verify(mockEditor, never()).apply()
+    }
+
+    @Test
+    fun `onReceive persists only allowlisted keys and never method or token plumbing`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("test-broadcast-token")
+
         val extras = mock<Bundle>()
         whenever(extras.keySet()).thenReturn(
             setOf(
@@ -166,8 +210,8 @@ class DiagnosticsReceiverTest {
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_AT)).thenReturn(123L)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
         whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_METHOD)).thenReturn(Constants.METHOD_RECORD_VERIFY)
-        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("fake-token")
-        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("fake-token")
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("test-broadcast-token")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("test-broadcast-token")
 
         val intent = mock<Intent>()
         whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
@@ -189,6 +233,9 @@ class DiagnosticsReceiverTest {
 
     @Test
     fun `onReceive with real Intent round-trip filters non-allowlisted keys`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("test-broadcast-token")
+
         val extras = mock<Bundle>()
         whenever(extras.keySet()).thenReturn(
             setOf(
@@ -198,6 +245,7 @@ class DiagnosticsReceiverTest {
         )
         whenever(extras.get(Constants.PREF_DIAG_MODULE_LOADED_AT)).thenReturn(999L)
         whenever(extras.get(Constants.PREF_DEVICE_TO_SPOOF)).thenReturn("HACKED_DEVICE")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("test-broadcast-token")
 
         val intent = mock<Intent>()
         whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)

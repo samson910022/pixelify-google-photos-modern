@@ -50,8 +50,9 @@ class DiagnosticsReceiver : BroadcastReceiver() {
                         callingPackages = arrayOf(sentPackage)
                     }
                 }
-            } catch (_: Throwable) {
+            } catch (t: Throwable) {
                 // Old platform or shareIdentity not enabled — fall through to token path.
+                Log.d(TAG, "Sender identity unavailable: ${t.message}")
             }
         }
 

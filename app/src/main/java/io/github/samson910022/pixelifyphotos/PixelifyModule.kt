@@ -10,6 +10,12 @@ class PixelifyModule : XposedModule() {
     companion object {
         const val TAG = "Pixelify"
 
+        /**
+         * Process-wide module reference. Assumes exactly one [PixelifyModule] instance
+         * per process (the libxposed framework instantiates one module instance per
+         * module per process); last-writer-wins assignment is safe under that contract
+         * and the reference lives for the process lifetime once assigned in init.
+         */
         @Volatile
         var instance: PixelifyModule? = null
             private set
@@ -28,7 +34,8 @@ class PixelifyModule : XposedModule() {
             if (prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null).isNullOrEmpty()) {
                 prefs.edit().putString(Constants.PREF_DIAG_BROADCAST_TOKEN, java.util.UUID.randomUUID().toString()).commit()
             }
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            Log.d(TAG, "Broadcast token provisioning skipped: ${t.message}")
         }
         DiagnosticsReporter.recordMilestone { bundle ->
             bundle.putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, System.currentTimeMillis())

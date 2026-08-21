@@ -65,11 +65,47 @@ object DiagnosticsStore {
         }
     }
 
+    /**
+     * Resolves the currently acceptable broadcast token from the canonical store.
+     * [PrefUtils.getPrefs] prefers LSPosed remote preferences once the Xposed
+     * service is bound in this process and falls back to the file-backed store
+     * otherwise, which matches exactly what hooked-process senders can resolve
+     * after [convergeBroadcastToken] has aligned both stores.
+     */
     fun getStoredToken(context: Context): String? {
         return try {
             PrefUtils.getPrefs(context)?.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
         } catch (_: Throwable) {
             null
+        }
+    }
+
+    /**
+     * Converges the per-install broadcast token across the local (file-backed) and
+     * remote preference stores so sender and receiver agree on a single canonical
+     * value regardless of which store was provisioned first. Remote prefs win:
+     * hooked-process senders can only resolve the token from that store.
+     * Called from [App.onServiceBind]; safe to call repeatedly.
+     */
+    fun convergeBroadcastToken(context: Context) {
+        try {
+            val service = App.mService ?: return
+            val remote = service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
+            // Deliberately target the file-backed store directly: once the service is
+            // bound, PrefUtils.getPrefs resolves to remote prefs, which would make a
+            // PrefUtils-based "local" view a no-op alias of [remote].
+            val fileStore = context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE)
+            val localToken = fileStore.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+            val remoteToken = remote.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+            when {
+                remoteToken.isNullOrEmpty() && !localToken.isNullOrEmpty() ->
+                    remote.edit().putString(Constants.PREF_DIAG_BROADCAST_TOKEN, localToken).commit()
+                !remoteToken.isNullOrEmpty() && remoteToken != localToken ->
+                    fileStore.edit().putString(Constants.PREF_DIAG_BROADCAST_TOKEN, remoteToken).commit()
+                else -> Unit
+            }
+        } catch (t: Throwable) {
+            Log.d(TAG, "Broadcast token convergence skipped: ${t.message}")
         }
     }
 
@@ -152,24 +188,36 @@ object DiagnosticsStore {
                 return false
             }
         } else {
-            // 2. Broadcast channel (no Binder UID) — require token or fail-closed denylist.
-            //    If a token has been provisioned in module prefs, the broadcast must present it.
+            // 2. Broadcast channel (no Binder UID) — require the per-install token, fail-closed
+            //    otherwise. There is deliberately NO unauthenticated fallback: the receiver
+            //    component is reachable from install time, so any window that accepts token-less
+            //    broadcasts would let arbitrary apps write diagnostic state. Provisioning happens
+            //    synchronously in App.onCreate (local prefs) and PixelifyModule.onModuleLoaded
+            //    (remote prefs); App.onServiceBind converges both stores via
+            //    [convergeBroadcastToken], so legitimate telemetry recovers automatically.
             val broadcastToken = extras?.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)
             val expectedToken = getStoredToken(context)
-            if (!expectedToken.isNullOrEmpty()) {
-                if (broadcastToken.isNullOrEmpty() || broadcastToken != expectedToken) {
-                    Log.w(TAG, "Rejecting diagnostic broadcast without valid token for method '$method'")
-                    return false
-                }
-            } else {
-                // No token provisioned yet (fresh install) — fallback to denylist check.
-                if (extras != null) {
-                    for (key in PACKAGE_NAME_KEYS) {
-                        val reportedPkg = extras.getString(key)
-                        if (!reportedPkg.isNullOrEmpty() && !ScopePolicy.shouldSpoof(reportedPkg)) {
-                            Log.w(TAG, "Rejecting diagnostic update with denylisted reported package '$reportedPkg'")
-                            return false
-                        }
+            if (expectedToken.isNullOrEmpty()) {
+                Log.w(TAG, "Rejecting diagnostic broadcast '$method': no token provisioned yet")
+                return false
+            }
+            if (broadcastToken.isNullOrEmpty() ||
+                !java.security.MessageDigest.isEqual(
+                    broadcastToken.toByteArray(),
+                    expectedToken.toByteArray()
+                )
+            ) {
+                Log.w(TAG, "Rejecting diagnostic broadcast without valid token for method '$method'")
+                return false
+            }
+            // Defense in depth: even with a valid token, refuse reported packages the
+            // scope policy would never spoof (keeps persisted state consistent with hooks).
+            if (extras != null) {
+                for (key in PACKAGE_NAME_KEYS) {
+                    val reportedPkg = extras.getString(key)
+                    if (!reportedPkg.isNullOrEmpty() && !ScopePolicy.shouldSpoof(reportedPkg)) {
+                        Log.w(TAG, "Rejecting diagnostic update with denylisted reported package '${reportedPkg.take(100)}'")
+                        return false
                     }
                 }
             }

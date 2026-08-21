@@ -23,6 +23,7 @@
 }
 
 # Keep diagnostics IPC components referenced via ::class.java.name and manifest.
+# DiagnosticsStore needs no keep rule: it is only referenced directly (no
+# reflection, no manifest entry), so R8 keeps it transitively where used.
 -keep class io.github.samson910022.pixelifyphotos.DiagnosticsReceiver { *; }
 -keep class io.github.samson910022.pixelifyphotos.DiagnosticsProvider { *; }
--keep class io.github.samson910022.pixelifyphotos.DiagnosticsStore { *; }
