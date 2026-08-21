@@ -4,21 +4,46 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
-import kotlin.concurrent.thread
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadFactory
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /**
  * Dispatches diagnostic milestones and device-spoof VERIFY telemetry from hooked
  * target processes (like Google Photos) back to the module manager application via
  * [DiagnosticsProvider].
  *
- * Runs asynchronously on a daemon background thread so that target application startup
- * and hook execution paths are never blocked. Fails closed and silently on any error.
+ * Runs asynchronously on a single-thread daemon executor with FIFO ordering so that
+ * target application startup and hook execution paths are never blocked and milestone
+ * updates never race. Fails closed and silently on any error.
  */
 object DiagnosticsReporter {
 
     private const val TAG = "Pixelify"
-    private val PROVIDER_URI: Uri by lazy {
-        Uri.parse("content://${Constants.DIAGNOSTICS_AUTHORITY}")
+    internal var testProviderUri: Uri? = null
+    private val PROVIDER_URI: Uri
+        get() = testProviderUri ?: runCatching {
+            Uri.parse("content://${Constants.DIAGNOSTICS_AUTHORITY}")
+        }.getOrNull() ?: Uri.EMPTY
+
+    private val executor: ExecutorService by lazy {
+        val factory = ThreadFactory { runnable ->
+            Thread(runnable, "pixelify-diag-dispatcher").apply {
+                isDaemon = true
+                priority = Thread.NORM_PRIORITY - 1
+            }
+        }
+        ThreadPoolExecutor(
+            1,
+            1,
+            0L,
+            TimeUnit.MILLISECONDS,
+            LinkedBlockingQueue(32),
+            factory,
+            ThreadPoolExecutor.DiscardOldestPolicy()
+        )
     }
 
     /**
@@ -75,26 +100,34 @@ object DiagnosticsReporter {
     }
 
     private fun dispatch(explicitContext: Context?, method: String, extras: Bundle) {
-        thread(name = "pixelify-diag-push", isDaemon = true) {
-            try {
-                // Short retry loop in case ContentResolver is not yet ready during early zygote/init
-                var attempts = 0
-                while (attempts < 3) {
-                    attempts++
-                    val ctx = resolveContext(explicitContext)
-                    if (ctx != null) {
-                        ctx.contentResolver.call(PROVIDER_URI, method, null, extras)
-                        return@thread
+        try {
+            executor.execute {
+                try {
+                    // During early process initialization (e.g. onModuleLoaded / onPackageLoaded),
+                    // ActivityThread.currentApplication() or ContentResolver may not be immediately
+                    // bound. We attempt up to 3 times with a 150ms sleep in background to allow
+                    // Context attachment without blocking main thread or causing ANRs.
+                    var attempts = 0
+                    while (attempts < 3) {
+                        attempts++
+                        val ctx = resolveContext(explicitContext)
+                        if (ctx != null) {
+                            ctx.contentResolver.call(PROVIDER_URI, method, null, extras)
+                            return@execute
+                        }
+                        try {
+                            Thread.sleep(150)
+                        } catch (_: InterruptedException) {
+                            Thread.currentThread().interrupt()
+                            return@execute
+                        }
                     }
-                    try {
-                        Thread.sleep(150)
-                    } catch (_: InterruptedException) {
-                        return@thread
-                    }
+                } catch (t: Throwable) {
+                    Log.d(TAG, "Diagnostics dispatch skipped or failed: ${t.message}")
                 }
-            } catch (t: Throwable) {
-                Log.d(TAG, "Diagnostics dispatch skipped or failed: ${t.message}")
             }
+        } catch (t: Throwable) {
+            Log.d(TAG, "Failed to schedule diagnostics dispatch: ${t.message}")
         }
     }
 }

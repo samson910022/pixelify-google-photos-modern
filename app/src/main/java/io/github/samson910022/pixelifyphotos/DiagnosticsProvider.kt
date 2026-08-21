@@ -2,9 +2,13 @@ package io.github.samson910022.pixelifyphotos
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
+import android.content.SharedPreferences
 import android.database.Cursor
 import android.net.Uri
+import android.os.Binder
 import android.os.Bundle
+import android.os.Process
 import android.util.Log
 
 /**
@@ -14,8 +18,8 @@ import android.util.Log
  *
  * Modern Xposed frameworks (LSPosed, Vector) make `XposedModule.getRemotePreferences`
  * read-only inside hooked target processes by specification. This provider acts as the
- * authoritative write pipeline, validating incoming keys against an immutable whitelist
- * before persisting them into the manager's preferences.
+ * authoritative write pipeline, validating incoming callers and keys against immutable
+ * security boundaries before persisting them into the manager's preferences.
  */
 class DiagnosticsProvider : ContentProvider() {
 
@@ -35,7 +39,91 @@ class DiagnosticsProvider : ContentProvider() {
             Constants.PREF_DIAG_VERIFY_NATIVE_READY,
             Constants.PREF_DIAG_VERIFY_SYSPROPS,
         )
+
+        private val PACKAGE_NAME_KEYS: Set<String> = setOf(
+            Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
+            Constants.PREF_DIAG_LAST_PACKAGE_READY,
+            Constants.PREF_DIAG_VERIFY_PACKAGE,
+        )
+
+        /**
+         * Validates whether the IPC caller is authorized to write diagnostic data.
+         * Pure logic to enable host JVM unit testing.
+         *
+         * @param callingUid The UID of the caller process from [Binder.getCallingUid].
+         * @param myUid The UID of this module process from [Process.myUid].
+         * @param callingPackages The package names owned by [callingUid].
+         * @param extras The bundle containing diagnostic data, inspected for package name spoofing.
+         */
+        fun isCallerAuthorized(
+            callingUid: Int,
+            myUid: Int,
+            callingPackages: Array<String>?,
+            extras: Bundle? = null,
+        ): Boolean {
+            // Module's own process / UID is always authorized
+            if (callingUid == myUid) return true
+
+            if (callingPackages.isNullOrEmpty()) return false
+
+            val callingPackageSet = callingPackages.toSet()
+
+            // Verify that at least one package belonging to the caller UID is allowed
+            val hasAllowedPackage = callingPackages.any { pkg ->
+                pkg == Constants.PACKAGE_NAME_MODULE || ScopePolicy.shouldSpoof(pkg)
+            }
+            if (!hasAllowedPackage) return false
+
+            // Anti-spoofing: if extras explicitly report a package name, verify it belongs
+            // to the caller UID and passes ScopePolicy
+            if (extras != null) {
+                for (key in PACKAGE_NAME_KEYS) {
+                    val reportedPkg = extras.getString(key)
+                    if (!reportedPkg.isNullOrEmpty()) {
+                        if (reportedPkg !in callingPackageSet || !ScopePolicy.shouldSpoof(reportedPkg)) {
+                            return false
+                        }
+                    }
+                }
+            }
+
+            return true
+        }
+
+        /**
+         * Writes supported bundle value types into the preferences editor.
+         * Handles Collections (Set, List, ArrayList, HashSet) alongside Arrays and primitives.
+         */
+        fun applyExtra(editor: SharedPreferences.Editor, key: String, value: Any?) {
+            when (value) {
+                is Long -> editor.putLong(key, value)
+                is Int -> editor.putInt(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Float -> editor.putFloat(key, value)
+                is String -> editor.putString(key, value)
+                is CharSequence -> editor.putString(key, value.toString())
+                is Array<*> -> {
+                    val stringSet = value.filterIsInstance<String>().toSet()
+                    editor.putStringSet(key, stringSet)
+                }
+                is Collection<*> -> {
+                    val stringSet = value.filterIsInstance<String>().toSet()
+                    editor.putStringSet(key, stringSet)
+                }
+                else -> {
+                    Log.w(TAG, "Unsupported preference value type for key '$key': ${value?.javaClass?.name}")
+                }
+            }
+        }
     }
+
+    internal var testContext: Context? = null
+    internal var testCallingUid: Int? = null
+    internal var testMyUid: Int? = null
+
+    private fun resolveContext(): Context? = testContext ?: context
+    private fun resolveCallingUid(): Int = testCallingUid ?: runCatching { Binder.getCallingUid() }.getOrDefault(0)
+    private fun resolveMyUid(): Int = testMyUid ?: runCatching { Process.myUid() }.getOrDefault(0)
 
     override fun onCreate(): Boolean = true
 
@@ -63,47 +151,28 @@ class DiagnosticsProvider : ContentProvider() {
     @Suppress("DEPRECATION")
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
         val result = Bundle()
-        val ctx = context ?: return result.apply { putBoolean("success", false) }
+        val ctx = resolveContext() ?: return result.apply { putBoolean("success", false) }
+
+        val callingUid = resolveCallingUid()
+        val myUid = resolveMyUid()
+        val callingPackages = runCatching { ctx.packageManager.getPackagesForUid(callingUid) }.getOrNull()
+
+        if (!isCallerAuthorized(callingUid, myUid, callingPackages, extras)) {
+            Log.w(TAG, "Rejecting unauthorized diagnostics IPC call '$method' from UID $callingUid")
+            return result.apply { putBoolean("success", false) }
+        }
 
         try {
             val prefs = PrefUtils.getPrefs(ctx) ?: return result.apply { putBoolean("success", false) }
             val editor = prefs.edit()
 
             when (method) {
-                Constants.METHOD_RECORD_DIAGNOSTICS -> {
-                    if (extras != null) {
-                        for (key in extras.keySet()) {
-                            if (key !in ALLOWED_DIAG_KEYS) continue
-                            when (val value = extras.get(key)) {
-                                is Long -> editor.putLong(key, value)
-                                is String -> editor.putString(key, value)
-                                is Boolean -> editor.putBoolean(key, value)
-                                is Int -> editor.putInt(key, value)
-                            }
-                        }
-                        editor.apply()
-                        result.putBoolean("success", true)
-                    }
-                }
-
+                Constants.METHOD_RECORD_DIAGNOSTICS,
                 Constants.METHOD_RECORD_VERIFY -> {
                     if (extras != null) {
                         for (key in extras.keySet()) {
                             if (key !in ALLOWED_DIAG_KEYS) continue
-                            when (val value = extras.get(key)) {
-                                is Long -> editor.putLong(key, value)
-                                is String -> editor.putString(key, value)
-                                is Boolean -> editor.putBoolean(key, value)
-                                is Int -> editor.putInt(key, value)
-                                is Array<*> -> {
-                                    val stringSet = value.filterIsInstance<String>().toSet()
-                                    editor.putStringSet(key, stringSet)
-                                }
-                                is ArrayList<*> -> {
-                                    val stringSet = value.filterIsInstance<String>().toSet()
-                                    editor.putStringSet(key, stringSet)
-                                }
-                            }
+                            applyExtra(editor, key, extras.get(key))
                         }
                         editor.apply()
                         result.putBoolean("success", true)

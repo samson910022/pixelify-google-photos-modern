@@ -57,6 +57,11 @@ class PixelifyModule : XposedModule() {
             Log.e(TAG, "Failed early DeviceSpoofer apply for ${params.packageName}", t)
         }
 
+        // On Android 10+ (API 29, Q), Google Photos and system libraries query PackageManager
+        // features during early static initializers and ContentProvider startups (prior to
+        // Application.onCreate). Hooking early via params.defaultClassLoader ensures feature
+        // capabilities like Unlimited Backup are spoofed before early caching takes place.
+        // On Android 9 and older, class resolution is deferred to onPackageReady.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 FeatureSpoofer.hook(this, params.defaultClassLoader)

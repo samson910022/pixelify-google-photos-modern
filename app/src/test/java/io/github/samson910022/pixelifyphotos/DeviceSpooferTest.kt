@@ -279,6 +279,20 @@ class DeviceSpooferTest {
     }
 
     @Test
+    fun `buildSystemPropertyOverrides respects explicit BOARD and HARDWARE properties`() {
+        val props = mapOf(
+            "DEVICE" to "marlin",
+            "BOARD" to "marlin_custom_board",
+            "HARDWARE" to "qcom_custom",
+            "MODEL" to "Pixel XL",
+        )
+        val overrides = invokeBuildSystemPropertyOverrides(props)
+        assertEquals("marlin_custom_board", overrides["ro.product.board"])
+        assertEquals("qcom_custom", overrides["ro.hardware"])
+        assertEquals("marlin_custom_board", overrides["ro.board.platform"])
+    }
+
+    @Test
     fun `setStaticField updates primitive long, boolean, float, and double via Unsafe`() {
         assertTrue(invokeSetStaticField(StaticFieldFixture::class.java, "mutableLong", 9876543210L))
         assertEquals(9876543210L, StaticFieldFixture.mutableLong)

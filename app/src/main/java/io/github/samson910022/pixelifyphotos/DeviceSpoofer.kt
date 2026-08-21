@@ -90,7 +90,7 @@ object DeviceSpoofer {
         val deviceEntries = DeviceProps.getDeviceProps(deviceName)
         if (deviceEntries == null || deviceName == "None" || deviceEntries.props.isEmpty()) {
             Log.d(TAG, "No device spoofing configured, skipping")
-            clearVerifyDiagnostics(prefs)
+            clearVerifyDiagnostics()
             return
         }
 
@@ -138,7 +138,7 @@ object DeviceSpoofer {
         // VERSION_* keys share names with Build fields; verify against Build.VERSION class via key set.
         verifyProps.putAll(versionProps)
         val failed = verifySpoof(verifyProps, verboseLog)
-        recordVerifyResult(prefs, deviceName, failed, packageName)
+        recordVerifyResult(deviceName, failed, packageName)
         if (failed.isNotEmpty()) {
             Log.e(
                 TAG,
@@ -190,7 +190,6 @@ object DeviceSpoofer {
      * the hook path.
      */
     private fun recordVerifyResult(
-        prefs: SharedPreferences?,
         deviceName: String,
         failed: List<String>,
         packageName: String?,
@@ -212,7 +211,7 @@ object DeviceSpoofer {
      * diagnostics screen never shows a stale "VERIFY passed" for a disabled
      * profile. Never throws.
      */
-    private fun clearVerifyDiagnostics(prefs: SharedPreferences?) {
+    private fun clearVerifyDiagnostics() {
         DiagnosticsReporter.clearVerify(context = currentApplication())
     }
 
