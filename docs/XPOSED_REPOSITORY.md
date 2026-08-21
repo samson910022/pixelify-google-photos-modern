@@ -34,8 +34,8 @@ Before submitting or updating that mirror:
    - **Website / homepage** = support URL (`https://github.com/samson910022/pixelify-google-photos-modern/issues`)
 5. Build with `verifiedRelease` and verify the stable signer fingerprint.
 6. Publish a GitHub Release with:
-    - **Tag**: `{versionCode}-{versionName}` (example: `8-1.3.0`)
-    - **Title**: version name (example: `1.3.0`)
+    - **Tag**: `{versionCode}-{versionName}` (example: `9-1.4.0`)
+    - **Title**: version name (example: `1.4.0`)
 
    - **Body**: changelog
    - **Asset**: signed APK (`content-type` must be an Android package archive)
@@ -51,7 +51,7 @@ The repository includes an automated workflow (`.github/workflows/sync-xposed-re
 3. GitHub Actions workflow triggers automatically on release publication:
    - Downloads the signed release APK from the release.
    - Verifies the APK certificate fingerprint matches the pinned release certificate.
-   - Formats the mirror tag as `{versionCode}-{versionName}` (e.g. `8-1.3.0`).
+   - Formats the mirror tag as `{versionCode}-{versionName}` (e.g. `9-1.4.0`).
    - Synchronizes metadata files from `distribution/xposed-repository/` to the mirror's `main` branch.
    - Creates the matching release and uploads the signed APK to `Xposed-Modules-Repo/io.github.samson910022.pixelifyphotos`.
 

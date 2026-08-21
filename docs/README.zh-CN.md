@@ -24,6 +24,8 @@ Pixelify Infinity 是一个独立维护的 Xposed 模块，可模拟部分 Googl
 - 覆盖 ROM 提供的 Pixel feature level。
 - 在高级设置中单独选择功能标志。
 - 导入、导出和分享模块配置。
+- 现代 Material 3 界面，支持动态取色与可选的经典主题。
+- 应用内「**诊断**」界面：无需 logcat 即可查看模块启用状态、Hook 里程碑与上次设备模拟 VERIFY 结果，并可复制脱敏报告（不含账户数据）用于问题反馈。
 
 ## 系统要求
 

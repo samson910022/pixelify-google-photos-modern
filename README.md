@@ -22,6 +22,8 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 - Override ROM-provided Pixel feature levels.
 - Select individual feature flags through an advanced configuration screen.
 - Import, export, and share module configuration.
+- Modern Material 3 interface with dynamic color and an optional classic theme.
+- In-app **Diagnostics** screen: module-active state, hook milestones, and the last device-spoof VERIFY result without logcat; copy a sanitized report (no account data) for issue reports.
 
 ## Requirements
 

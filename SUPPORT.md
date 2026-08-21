@@ -45,6 +45,8 @@ The module app has a **Diagnostics** screen (module app → Diagnostics) that sh
 
 **Copy diagnostics report** copies a sanitized report for pasting into an issue. The report includes the module scope list and device Build values, but no account data.
 
+Since 1.4.0, this telemetry is delivered even when Android 11+ package visibility (AppsFilter) blocks direct ContentProvider IPC: the hooked process falls back to an authenticated explicit broadcast (per-install token, fail-closed authorization). If the Diagnostics screen shows blank status on an older release, update to 1.4.0 or later before troubleshooting further.
+
 Interpretation: no hook milestones at all usually means the module never loaded into Google Photos (check LSPosed enable + scope, then reboot); "package loaded but never ready" points to a framework/API compatibility problem in the Xposed variant; a failed VERIFY means the module ran but could not write `Build` fields.
 
 ### Load / VERIFY signals

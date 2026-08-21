@@ -24,6 +24,8 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可模擬特定 Google Pixe
 - 覆寫 ROM 內建的 Pixel feature level。
 - 透過進階設定個別選擇功能旗標。
 - 匯入、匯出及分享模組設定。
+- 現代 Material 3 介面，支援動態色彩與可選的傳統主題。
+- App 內「**診斷**」畫面：無需 logcat 即可檢視模組啟用狀態、Hook 里程碑與上次裝置模擬 VERIFY 結果，並可複製已消毒的報告（不含帳戶資料）以回報問題。
 
 ## 系統需求
 
