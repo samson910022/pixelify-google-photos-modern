@@ -16,6 +16,10 @@
 - Bumped version to `1.4.0` (`versionCode 9`).
 - Safe type-casting in `FeatureSpoofer.filterAndAugmentFeatures` with explicit preservation of unnamed OpenGL ES version metadata (`reqGlEsVersion`).
 
+### Fixed
+
+- **Android 11+ diagnostics delivery**: Hooked-process status and VERIFY telemetry now reach the module UI even when Android 11+ package visibility (AppsFilter) blocks ContentProvider resolution, via an explicit-broadcast fallback authenticated by a per-install token with fail-closed authorization.
+
 ## [1.3.0] - 2026-08-19
 
 ### Added
