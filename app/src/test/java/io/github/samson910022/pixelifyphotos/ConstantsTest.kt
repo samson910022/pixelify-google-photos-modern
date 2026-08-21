@@ -129,4 +129,30 @@ class ConstantsTest {
         assertEquals("PREF_USE_CLASSIC_UI", Constants.PREF_USE_CLASSIC_UI)
         assertEquals("PREF_FIRST_RUN_COMPLETED", Constants.PREF_FIRST_RUN_COMPLETED)
     }
+
+    @Test
+    fun `diagnostics provider constants are non-empty and well-formed`() {
+        assertEquals("io.github.samson910022.pixelifyphotos.diagnostics", Constants.DIAGNOSTICS_AUTHORITY)
+        assertEquals("recordDiagnostics", Constants.METHOD_RECORD_DIAGNOSTICS)
+        assertEquals("recordVerify", Constants.METHOD_RECORD_VERIFY)
+        assertEquals("clearVerify", Constants.METHOD_CLEAR_VERIFY)
+    }
+
+    @Test
+    fun `DiagnosticsProvider ALLOWED_DIAG_KEYS matches expected diagnostic keys`() {
+        val expectedKeys = setOf(
+            Constants.PREF_DIAG_MODULE_LOADED_AT,
+            Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
+            Constants.PREF_DIAG_LAST_PACKAGE_READY,
+            Constants.PREF_DIAG_LAST_PACKAGE_READY_AT,
+            Constants.PREF_DIAG_VERIFY_AT,
+            Constants.PREF_DIAG_VERIFY_DEVICE,
+            Constants.PREF_DIAG_VERIFY_PACKAGE,
+            Constants.PREF_DIAG_VERIFY_OK,
+            Constants.PREF_DIAG_VERIFY_FAILED,
+            Constants.PREF_DIAG_VERIFY_NATIVE_READY,
+            Constants.PREF_DIAG_VERIFY_SYSPROPS,
+        )
+        assertEquals(expectedKeys, DiagnosticsProvider.ALLOWED_DIAG_KEYS)
+    }
 }

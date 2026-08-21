@@ -72,18 +72,25 @@ object FeatureSpoofer {
      */
     private var verboseLog = false
 
+    private val hookHasSystemFeatureString = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val hookHasSystemFeatureStringInt = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val hookGetSystemAvailableFeatures = java.util.concurrent.atomic.AtomicBoolean(false)
+
     // ──────────────────────────────────────────────────────────────────────────
     // Public API
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Called from [PixelifyModule.onPackageReady].
+     * Called from [PixelifyModule.onPackageLoaded] and [PixelifyModule.onPackageReady].
      *
      * Reads user preferences via [XposedModule.getRemotePreferences],
-     * resolves the feature flag lists, and registers interceptors on both
-     * [hasSystemFeature] overloads.
+     * resolves the feature flag lists, and registers interceptors on
+     * [hasSystemFeature] overloads and [getSystemAvailableFeatures].
      *
-     * @param module     The module instance used to register hooks and read prefs.
+     * Idempotent: each method hook is tracked independently with an [AtomicBoolean]
+     * so partial failures during one stage do not cause double-hooking on retries.
+     *
+     * @param module      The module instance used to register hooks and read prefs.
      * @param classLoader The class loader of the target package (Google Photos).
      */
     fun hook(module: XposedModule, classLoader: ClassLoader) {
@@ -94,21 +101,44 @@ object FeatureSpoofer {
             val clazz = classLoader.loadClass(CLASS_APPLICATION_MANAGER)
 
             // hasSystemFeature(String) – the most commonly called signature
-            val methodString = clazz.getDeclaredMethod(
-                "hasSystemFeature", String::class.java
-            )
-            module.hook(methodString).intercept { chain -> decideSpoof(chain) }
+            if (!hookHasSystemFeatureString.get()) {
+                try {
+                    val methodString = clazz.getDeclaredMethod("hasSystemFeature", String::class.java)
+                    module.hook(methodString).intercept { chain -> decideSpoof(chain) }
+                    hookHasSystemFeatureString.set(true)
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Failed to hook hasSystemFeature(String)", t)
+                }
+            }
 
             // hasSystemFeature(String, int) – less common but also present in
             // the Android API; hook it for completeness
-            val methodStringInt = clazz.getDeclaredMethod(
-                "hasSystemFeature", String::class.java, Int::class.javaPrimitiveType
-            )
-            module.hook(methodStringInt).intercept { chain -> decideSpoof(chain) }
+            if (!hookHasSystemFeatureStringInt.get()) {
+                try {
+                    val methodStringInt = clazz.getDeclaredMethod(
+                        "hasSystemFeature", String::class.java, Int::class.javaPrimitiveType
+                    )
+                    module.hook(methodStringInt).intercept { chain -> decideSpoof(chain) }
+                    hookHasSystemFeatureStringInt.set(true)
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Failed to hook hasSystemFeature(String, int)", t)
+                }
+            }
 
-            Log.d(TAG, "FeatureSpoofer hooks registered successfully")
+            // getSystemAvailableFeatures() – queries the full list of features
+            if (!hookGetSystemAvailableFeatures.get()) {
+                try {
+                    val methodFeatures = clazz.getDeclaredMethod("getSystemAvailableFeatures")
+                    module.hook(methodFeatures).intercept { chain -> decideFeatures(chain) }
+                    hookGetSystemAvailableFeatures.set(true)
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Failed to hook getSystemAvailableFeatures", t)
+                }
+            }
+
+            Log.d(TAG, "FeatureSpoofer hooks evaluation complete")
         } catch (t: Throwable) {
-            Log.e(TAG, "Failed to register FeatureSpoofer hooks", t)
+            Log.e(TAG, "Failed to initialize or resolve classes for FeatureSpoofer", t)
         }
     }
 
@@ -117,27 +147,15 @@ object FeatureSpoofer {
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
-     * Reads all relevant preferences and builds the [finalFeaturesToSpoof] and
-     * [featuresNotToSpoof] lists.
-     *
-     * The preference [Constants.PREF_SPOOF_FEATURES_LIST] stores a
-     * [Set] of display names (e.g. `"Pixel 2020"`, `"Pixel 2019"`).
-     * These are resolved against [DeviceProps.allFeatures] to obtain the
-     * actual feature-flag strings that are fed to the interceptor.
+     * Reads all relevant preferences and delegates to [initFromValues].
      */
     private fun initFromPrefs(prefs: SharedPreferences) {
-        verboseLog = prefs.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS, false)
-
-        overrideCustomROMLevels = prefs.getBoolean(
-            Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS, true
-        )
-
+        val verbose = prefs.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS, false)
+        val overrideROM = prefs.getBoolean(Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS, true)
         val deviceName = prefs.getString(
             Constants.PREF_DEVICE_TO_SPOOF,
             DeviceProps.defaultDeviceName,
         ) ?: DeviceProps.defaultDeviceName
-
-        // --- Resolve the feature flag list from user selection ---
 
         val defaultNames = DeviceProps.defaultFeatures
             .map { it.displayName }
@@ -146,6 +164,25 @@ object FeatureSpoofer {
         val selectedNames = prefs.getStringSet(
             Constants.PREF_SPOOF_FEATURES_LIST, defaultNames
         ) ?: defaultNames
+
+        initFromValues(deviceName, selectedNames, overrideROM, verbose)
+    }
+
+    /**
+     * Testable initialization function accepting resolved values.
+     */
+    internal fun initFromValues(
+        deviceName: String,
+        selectedNames: Set<String>,
+        overrideROM: Boolean,
+        verbose: Boolean = false,
+    ) {
+        verboseLog = verbose
+        overrideCustomROMLevels = overrideROM
+
+        val defaultNames = DeviceProps.defaultFeatures
+            .map { it.displayName }
+            .toSet()
 
         // Device "None" or empty feature list: behave like module-off for features
         // (no force TRUE, no force FALSE). Do not treat empty as "hide all Pixel flags",
@@ -172,7 +209,6 @@ object FeatureSpoofer {
         finalFeaturesToSpoof = eligibleFeatures.flatMap { it.featureFlags }.toSet()
 
         // --- Build the "not-to-spoof" list ---
-
         val allFlags = DeviceProps.allFeatures.flatMap { it.featureFlags }
         featuresNotToSpoof = allFlags.filter { it !in finalFeaturesToSpoof }.toSet()
 
@@ -187,18 +223,26 @@ object FeatureSpoofer {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // Interceptor
+    // Interceptor & Decision Logic
     // ──────────────────────────────────────────────────────────────────────────
 
     /**
+     * Decides whether a given feature should be spoofed to true, false, or passed through.
+     * Pure logic method for direct unit test execution.
+     *
+     * @return `true` if spoofed as present, `false` if hidden, or `null` for pass-through.
+     */
+    internal fun decideSpoofForFeature(feature: String): Boolean? {
+        if (!initialized || passThroughAll) return null
+        return when {
+            feature in finalFeaturesToSpoof -> true
+            overrideCustomROMLevels && feature in featuresNotToSpoof -> false
+            else -> null
+        }
+    }
+
+    /**
      * Core decision logic shared by both [hasSystemFeature] overloads.
-     *
-     * Because [XposedInterface.Hooker] is a SAM interface, we can pass a
-     * lambda directly to [XposedInterface.HookBuilder.intercept]. This
-     * function is called from that lambda.
-     *
-     * @return `true` / `false` to short-circuit, or [XposedInterface.Chain.proceed]
-     *         to fall through to the original implementation.
      */
     private fun decideSpoof(chain: XposedInterface.Chain): Any? {
         if (!initialized || passThroughAll) {
@@ -207,24 +251,89 @@ object FeatureSpoofer {
 
         val feature = chain.getArg(0) as? String ?: return chain.proceed()
 
-        return when {
-            // 1. Feature should be reported as present
-            feature in finalFeaturesToSpoof -> {
+        return when (val decision = decideSpoofForFeature(feature)) {
+            true -> {
                 if (verboseLog) Log.d(TAG, "TRUE - $feature")
                 true
             }
-
-            // 2. Feature should be hidden (override ROM feature levels)
-            overrideCustomROMLevels && feature in featuresNotToSpoof -> {
+            false -> {
                 if (verboseLog) Log.d(TAG, "FALSE  - $feature")
                 false
             }
-
-            // 3. Pass through unchanged
-            else -> {
+            null -> {
                 if (verboseLog) Log.d(TAG, "NO_CHANGE - $feature")
                 chain.proceed()
             }
         }
+    }
+
+    /**
+     * Interceptor logic for [android.content.pm.PackageManager.getSystemAvailableFeatures].
+     *
+     * Filters out hidden features and appends spoofed Pixel features to the returned array.
+     */
+    internal fun filterAndAugmentFeatures(originalRaw: Any?): Array<android.content.pm.FeatureInfo>? {
+        if (!initialized || passThroughAll) return null
+        val original = (originalRaw as? Array<*>)?.filterIsInstance<android.content.pm.FeatureInfo>()
+            ?: return null
+
+        val resultList = mutableListOf<android.content.pm.FeatureInfo>()
+        val seenNames = mutableSetOf<String>()
+
+        for (info in original) {
+            val name = info.name
+            // FeatureInfo with null name represents OpenGL ES version metadata (reqGlEsVersion)
+            // and must always be preserved.
+            if (name == null) {
+                resultList.add(info)
+                continue
+            }
+            if (overrideCustomROMLevels && name in featuresNotToSpoof) {
+                if (verboseLog) Log.d(TAG, "getSystemAvailableFeatures: HIDE - $name")
+                continue
+            }
+            resultList.add(info)
+            seenNames.add(name)
+        }
+
+        for (feature in finalFeaturesToSpoof) {
+            if (feature !in seenNames) {
+                if (verboseLog) Log.d(TAG, "getSystemAvailableFeatures: ADD - $feature")
+                val newInfo = android.content.pm.FeatureInfo().apply {
+                    this.name = feature
+                }
+                resultList.add(newInfo)
+                seenNames.add(feature)
+            }
+        }
+
+        return resultList.toTypedArray()
+    }
+
+    /**
+     * Interceptor for [android.content.pm.PackageManager.getSystemAvailableFeatures].
+     */
+    private fun decideFeatures(chain: XposedInterface.Chain): Any? {
+        if (!initialized || passThroughAll) {
+            return chain.proceed()
+        }
+
+        val originalRaw = chain.proceed()
+        return filterAndAugmentFeatures(originalRaw) ?: originalRaw
+    }
+
+    /**
+     * Resets internal state and atomic hook registration flags for testing.
+     */
+    internal fun resetForTesting() {
+        initialized = false
+        passThroughAll = false
+        finalFeaturesToSpoof = emptySet()
+        featuresNotToSpoof = emptySet()
+        overrideCustomROMLevels = false
+        verboseLog = false
+        hookHasSystemFeatureString.set(false)
+        hookHasSystemFeatureStringInt.set(false)
+        hookGetSystemAvailableFeatures.set(false)
     }
 }

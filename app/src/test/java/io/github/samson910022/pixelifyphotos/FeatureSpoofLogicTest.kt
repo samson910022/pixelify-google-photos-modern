@@ -1,366 +1,219 @@
 package io.github.samson910022.pixelifyphotos
 
+import android.content.pm.FeatureInfo
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 /**
- * Unit tests for the spoofing decision logic used by [FeatureSpoofer].
+ * Unit tests for the spoofing decision logic inside [FeatureSpoofer].
  *
- * Since [FeatureSpoofer] is a Kotlin object with private state and requires
- * Android SharedPreferences + XposedModule to initialize, we test the
- * *logic pattern* directly here. This is the recommended approach:
- *
- * 1. Extract the pure decision logic into a testable function/class.
- * 2. Verify all decision branches with concrete inputs.
- *
- * These tests validate the correctness of the spoofing rules:
- * - Feature in finalFeaturesToSpoof → TRUE
- * - Feature in featuresNotToSpoof AND overrideCustomROMLevels → FALSE
- * - Otherwise → pass-through (null means "don't intercept")
+ * Tests the real internal methods of [FeatureSpoofer]:
+ * - [FeatureSpoofer.initFromValues]
+ * - [FeatureSpoofer.decideSpoofForFeature]
+ * - [FeatureSpoofer.filterAndAugmentFeatures]
+ * - [FeatureSpoofer.resetForTesting]
  */
 class FeatureSpoofLogicTest {
 
-    // =========================================================================
-    // Helper: pure-function recreation of FeatureSpoofer.decideSpoof logic
-    // =========================================================================
-
-    /**
-     * Represents the possible outcomes of the spoofing decision.
-     */
-    enum class SpoofDecision {
-        /** Return true — feature is reported as present. */
-        TRUE,
-        /** Return false — feature is reported as absent. */
-        FALSE,
-        /** Pass through to original implementation. */
-        PASS_THROUGH,
+    @Before
+    fun setUp() {
+        FeatureSpoofer.resetForTesting()
     }
 
-    /**
-     * Pure-function version of FeatureSpoofer.decideSpoof logic.
-     * This mirrors the exact branching in FeatureSpoofer lines 177-201.
-     */
-    private fun decideSpoof(
-        feature: String?,
-        initialized: Boolean,
-        finalFeaturesToSpoof: Set<String>,
-        featuresNotToSpoof: Set<String>,
-        overrideCustomROMLevels: Boolean,
-        passThroughAll: Boolean = false,
-    ): SpoofDecision {
-        if (!initialized || passThroughAll || feature == null) return SpoofDecision.PASS_THROUGH
-
-        return when {
-            feature in finalFeaturesToSpoof -> SpoofDecision.TRUE
-            overrideCustomROMLevels && feature in featuresNotToSpoof -> SpoofDecision.FALSE
-            else -> SpoofDecision.PASS_THROUGH
-        }
-    }
-
-    /**
-     * Pure-function version of FeatureSpoofer.initFromPrefs logic.
-     * Reconstructs the feature lists from selected display names.
-     */
-    /**
-     * @return Triple(spoof, notToSpoof, passThroughAll)
-     */
-    private fun buildFeatureLists(
-        selectedNames: Set<String>?,
-        overrideCustomROMLevels: Boolean,
-        deviceName: String = DeviceProps.defaultDeviceName,
-    ): Triple<Set<String>, Set<String>, Boolean> {
-        val defaultNames = DeviceProps.defaultFeatures
-            .map { it.displayName }
-            .toSet()
-
-        val effectiveSelected = selectedNames ?: defaultNames
-
-        if (deviceName == "None" || effectiveSelected.isEmpty()) {
-            return Triple(emptySet(), emptySet(), true)
-        }
-
-        val eligibleFeatures = when {
-            effectiveSelected == defaultNames -> DeviceProps.defaultFeatures
-            else -> DeviceProps.allFeatures.filter { it.displayName in effectiveSelected }
-        }
-
-        val finalFeaturesToSpoof = eligibleFeatures.flatMap { it.featureFlags }.toSet()
-        val allFlags = DeviceProps.allFeatures.flatMap { it.featureFlags }.toSet()
-        val featuresNotToSpoof = allFlags - finalFeaturesToSpoof
-
-        return Triple(finalFeaturesToSpoof, featuresNotToSpoof, false)
+    @After
+    fun tearDown() {
+        FeatureSpoofer.resetForTesting()
     }
 
     // =========================================================================
-    // decideSpoof: TRUE path
+    // decideSpoofForFeature: TRUE path
     // =========================================================================
 
     @Test
-    fun `decideSpoof returns TRUE when feature is in finalFeaturesToSpoof`() {
-        val spoof = setOf("com.google.android.feature.PIXEL_2020_EXPERIENCE")
-        assertEquals(
-            SpoofDecision.TRUE,
-            decideSpoof(
-                feature = "com.google.android.feature.PIXEL_2020_EXPERIENCE",
-                initialized = true,
-                finalFeaturesToSpoof = spoof,
-                featuresNotToSpoof = emptySet(),
-                overrideCustomROMLevels = false,
-            )
+    fun `decideSpoofForFeature returns TRUE when feature is configured for spoofing`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = setOf("Pixel 2020"),
+            overrideROM = true,
         )
+
+        assertEquals(true, FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_2020_EXPERIENCE"))
     }
 
     @Test
-    fun `decideSpoof returns TRUE for all default feature flags`() {
-        val (spoof, _, passThrough) = buildFeatureLists(null, true)
-        spoof.forEach { flag ->
+    fun `decideSpoofForFeature returns TRUE for all default feature flags`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = DeviceProps.defaultFeatures.map { it.displayName }.toSet(),
+            overrideROM = true,
+        )
+
+        val defaultFlags = DeviceProps.defaultFeatures.flatMap { it.featureFlags }.toSet()
+        defaultFlags.forEach { flag ->
             assertEquals(
                 "Flag '$flag' should be spoofed as TRUE",
-                SpoofDecision.TRUE,
-                decideSpoof(flag, true, spoof, emptySet(), false)
+                true,
+                FeatureSpoofer.decideSpoofForFeature(flag)
             )
         }
     }
 
     // =========================================================================
-    // decideSpoof: FALSE path
+    // decideSpoofForFeature: FALSE path
     // =========================================================================
 
     @Test
-    fun `decideSpoof returns FALSE when feature is in featuresNotToSpoof and override enabled`() {
-        val notToSpoof = setOf("com.google.android.feature.PIXEL_2024_EXPERIENCE")
+    fun `decideSpoofForFeature returns FALSE when feature is above level and override is enabled`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = setOf("Pixel 2016"),
+            overrideROM = true,
+        )
+
         assertEquals(
-            SpoofDecision.FALSE,
-            decideSpoof(
-                feature = "com.google.android.feature.PIXEL_2024_EXPERIENCE",
-                initialized = true,
-                finalFeaturesToSpoof = emptySet(),
-                featuresNotToSpoof = notToSpoof,
-                overrideCustomROMLevels = true,
-            )
+            false,
+            FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_2024_EXPERIENCE")
         )
     }
 
     @Test
-    fun `decideSpoof returns PASS_THROUGH when override is disabled even if in featuresNotToSpoof`() {
-        val notToSpoof = setOf("com.google.android.feature.PIXEL_2024_EXPERIENCE")
-        assertEquals(
-            SpoofDecision.PASS_THROUGH,
-            decideSpoof(
-                feature = "com.google.android.feature.PIXEL_2024_EXPERIENCE",
-                initialized = true,
-                finalFeaturesToSpoof = emptySet(),
-                featuresNotToSpoof = notToSpoof,
-                overrideCustomROMLevels = false,
-            )
+    fun `decideSpoofForFeature returns null when override is disabled even if feature is above level`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = setOf("Pixel 2016"),
+            overrideROM = false,
+        )
+
+        assertNull(
+            FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_2024_EXPERIENCE")
         )
     }
 
     // =========================================================================
-    // decideSpoof: PASS_THROUGH path
+    // decideSpoofForFeature: PASS_THROUGH (null) path
     // =========================================================================
 
     @Test
-    fun `decideSpoof returns PASS_THROUGH when not initialized`() {
-        assertEquals(
-            SpoofDecision.PASS_THROUGH,
-            decideSpoof(
-                feature = "com.google.android.feature.PIXEL_2020_EXPERIENCE",
-                initialized = false,
-                finalFeaturesToSpoof = setOf("com.google.android.feature.PIXEL_2020_EXPERIENCE"),
-                featuresNotToSpoof = emptySet(),
-                overrideCustomROMLevels = true,
-            )
+    fun `decideSpoofForFeature returns null when uninitialized`() {
+        assertNull(
+            FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_2020_EXPERIENCE")
         )
     }
 
     @Test
-    fun `decideSpoof returns PASS_THROUGH for null feature`() {
-        assertEquals(
-            SpoofDecision.PASS_THROUGH,
-            decideSpoof(
-                feature = null,
-                initialized = true,
-                finalFeaturesToSpoof = setOf("com.google.android.feature.PIXEL_2020_EXPERIENCE"),
-                featuresNotToSpoof = emptySet(),
-                overrideCustomROMLevels = true,
-            )
+    fun `decideSpoofForFeature returns null for unknown feature not in any Pixel profile`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = setOf("Pixel 2016"),
+            overrideROM = true,
+        )
+
+        assertNull(
+            FeatureSpoofer.decideSpoofForFeature("com.samsung.feature.SAMSUNG_EXPERIENCE")
         )
     }
 
     @Test
-    fun `decideSpoof returns PASS_THROUGH for unknown feature not in any list`() {
-        assertEquals(
-            SpoofDecision.PASS_THROUGH,
-            decideSpoof(
-                feature = "com.samsung.feature.SAMSUNG_EXPERIENCE",
-                initialized = true,
-                finalFeaturesToSpoof = setOf("com.google.android.feature.PIXEL_2020_EXPERIENCE"),
-                featuresNotToSpoof = setOf("com.google.android.feature.PIXEL_2024_EXPERIENCE"),
-                overrideCustomROMLevels = true,
-            )
-        )
-    }
-
-    // =========================================================================
-    // buildFeatureLists: Default selection
-    // =========================================================================
-
-    @Test
-    fun `buildFeatureLists with null selection uses default features`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(null, true)
-        assertFalse(passThrough)
-        // Default device is Pixel XL → feature level Pixel 2016 only
-        assertTrue("Should have spoof flags", spoof.isNotEmpty())
-        // Pixel 2016 has 5 flags
-        assertEquals(5, spoof.size)
-        assertEquals(
-            DeviceProps.defaultFeatures.flatMap { it.featureFlags }.toSet(),
-            spoof,
-        )
-        assertTrue(notToSpoof.isNotEmpty())
-    }
-
-    @Test
-    fun `buildFeatureLists with default names matches defaultFeatures`() {
-        val defaultNames = DeviceProps.defaultFeatures.map { it.displayName }.toSet()
-        val (spoof, _, passThrough) = buildFeatureLists(defaultNames, true)
-        assertFalse(passThrough)
-        val expectedFlags = DeviceProps.defaultFeatures.flatMap { it.featureFlags }.toSet()
-        assertEquals(expectedFlags, spoof)
-    }
-
-    // =========================================================================
-    // buildFeatureLists: Empty selection
-    // =========================================================================
-
-    @Test
-    fun `buildFeatureLists with empty set enables full pass-through`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(emptySet(), true)
-        assertTrue(passThrough)
-        assertTrue("Should have no spoof flags", spoof.isEmpty())
-        assertTrue("Should not force FALSE flags in pass-through mode", notToSpoof.isEmpty())
-    }
-
-    @Test
-    fun `buildFeatureLists with device None enables full pass-through`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(
-            selectedNames = DeviceProps.defaultFeatures.map { it.displayName }.toSet(),
-            overrideCustomROMLevels = true,
+    fun `decideSpoofForFeature returns null when passThroughAll is enabled with device None`() {
+        FeatureSpoofer.initFromValues(
             deviceName = "None",
+            selectedNames = setOf("Pixel 2016"),
+            overrideROM = true,
         )
-        assertTrue(passThrough)
-        assertTrue(spoof.isEmpty())
-        assertTrue(notToSpoof.isEmpty())
+
+        assertNull(
+            FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_EXPERIENCE")
+        )
     }
 
     @Test
-    fun `decideSpoof returns PASS_THROUGH when passThroughAll is true`() {
-        assertEquals(
-            SpoofDecision.PASS_THROUGH,
-            decideSpoof(
-                feature = "com.google.android.feature.PIXEL_2020_EXPERIENCE",
-                initialized = true,
-                finalFeaturesToSpoof = setOf("com.google.android.feature.PIXEL_2020_EXPERIENCE"),
-                featuresNotToSpoof = emptySet(),
-                overrideCustomROMLevels = true,
-                passThroughAll = true,
-            )
+    fun `decideSpoofForFeature returns null when passThroughAll is enabled with empty selection`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = emptySet(),
+            overrideROM = true,
+        )
+
+        assertNull(
+            FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_EXPERIENCE")
         )
     }
 
     // =========================================================================
-    // buildFeatureLists: Custom selection
+    // Multi-level combinations
     // =========================================================================
 
     @Test
-    fun `buildFeatureLists with single feature level returns only that level's flags`() {
-        val (spoof, _, passThrough) = buildFeatureLists(setOf("Pixel 2017"), true)
-        assertFalse(passThrough)
-        assertEquals(2, spoof.size)
-        assertTrue(spoof.contains("com.google.android.feature.PIXEL_2017_EXPERIENCE"))
-        assertTrue(spoof.contains("com.google.android.apps.photos.PIXEL_2017_PRELOAD"))
-    }
-
-    @Test
-    fun `buildFeatureLists with non-contiguous levels unions their flags`() {
-        val (spoof, _, passThrough) = buildFeatureLists(setOf("Pixel 2016", "Pixel 2024"), true)
-        assertFalse(passThrough)
-        // Pixel 2016 has 5 flags, Pixel 2024 has 2 flags = 7 total
-        assertEquals(7, spoof.size)
-    }
-
-    @Test
-    fun `buildFeatureLists spoof and notToSpoof are disjoint`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(setOf("Pixel 2020"), true)
-        assertFalse(passThrough)
-        assertTrue(
-            "Spoof and notToSpoof should be disjoint",
-            spoof.intersect(notToSpoof).isEmpty()
+    fun `initFromValues with non-contiguous levels spoofs flags from both levels`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = setOf("Pixel 2016", "Pixel 2024"),
+            overrideROM = true,
         )
-    }
 
-    @Test
-    fun `buildFeatureLists union of spoof and notToSpoof equals all flags`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(setOf("Pixel 2019"), true)
-        assertFalse(passThrough)
-        val allFlags = DeviceProps.allFeatures.flatMap { it.featureFlags }.toSet()
-        assertEquals(allFlags, spoof + notToSpoof)
-    }
-
-    @Test
-    fun `buildFeatureLists with nonexistent level produces empty spoof`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(setOf("Pixel 9999"), true)
-        assertFalse(passThrough)
-        assertTrue(spoof.isEmpty())
-        val allFlags = DeviceProps.allFeatures.flatMap { it.featureFlags }.toSet()
-        assertEquals(allFlags, notToSpoof)
+        assertEquals(true, FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_EXPERIENCE"))
+        assertEquals(true, FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_2024_EXPERIENCE"))
+        assertEquals(false, FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_2020_EXPERIENCE"))
     }
 
     // =========================================================================
-    // Integration: full decision flow
+    // filterAndAugmentFeatures (getSystemAvailableFeatures interceptor)
     // =========================================================================
 
     @Test
-    fun `full flow - default selection spoofs Pixel 2016 only, hides later`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(null, true)
-        assertFalse(passThrough)
-
-        // A Pixel 2016 / XL experience flag should be spoofed as TRUE
-        assertEquals(
-            SpoofDecision.TRUE,
-            decideSpoof("com.google.android.feature.PIXEL_EXPERIENCE", true, spoof, notToSpoof, true, passThrough)
+    fun `filterAndAugmentFeatures modifies feature array correctly`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = setOf("Pixel 2016"),
+            overrideROM = true,
         )
 
-        // A Pixel 2020 flag is above default and should be spoofed as FALSE (hidden)
-        assertEquals(
-            SpoofDecision.FALSE,
-            decideSpoof("com.google.android.feature.PIXEL_2020_EXPERIENCE", true, spoof, notToSpoof, true, passThrough)
-        )
+        val orig1 = FeatureInfo().apply { name = "android.hardware.camera" }
+        val orig2 = FeatureInfo().apply { name = "com.google.android.feature.PIXEL_2024_EXPERIENCE" } // should be removed
+        val orig3 = FeatureInfo().apply { name = "android.hardware.wifi" }
+        val origGlEs = FeatureInfo() // null name = OpenGL ES version
 
-        // A Pixel 2024 flag should be spoofed as FALSE (hidden)
-        assertEquals(
-            SpoofDecision.FALSE,
-            decideSpoof("com.google.android.feature.PIXEL_2024_EXPERIENCE", true, spoof, notToSpoof, true, passThrough)
-        )
+        val result = FeatureSpoofer.filterAndAugmentFeatures(arrayOf(orig1, orig2, orig3, origGlEs))
+        assertNotNull(result)
 
-        // A completely unknown flag should pass through
-        assertEquals(
-            SpoofDecision.PASS_THROUGH,
-            decideSpoof("com.samsung.feature.SOMETHING", true, spoof, notToSpoof, true, passThrough)
-        )
+        val resultNames = result!!.map { it.name }
+        assertTrue("Camera should remain", resultNames.contains("android.hardware.camera"))
+        assertTrue("WiFi should remain", resultNames.contains("android.hardware.wifi"))
+        assertTrue("OpenGL ES feature with null name must be preserved", resultNames.contains(null))
+        assertFalse("ROM 2024 feature must be filtered out", resultNames.contains("com.google.android.feature.PIXEL_2024_EXPERIENCE"))
+        assertTrue("Pixel experience feature must be added", resultNames.contains("com.google.android.feature.PIXEL_EXPERIENCE"))
+        assertTrue("Pixel 2016 preload feature must be added", resultNames.contains("com.google.android.apps.photos.PIXEL_2016_PRELOAD"))
     }
 
     @Test
-    fun `full flow - Pixel 9 selection spoofs all 12 levels`() {
-        val (spoof, notToSpoof, passThrough) = buildFeatureLists(
-            DeviceProps.allFeatures.map { it.displayName }.toSet(),
-            true
+    fun `filterAndAugmentFeatures preserves array in passThroughAll or uninitialized`() {
+        val orig1 = FeatureInfo().apply { name = "android.hardware.camera" }
+
+        val uninit = FeatureSpoofer.filterAndAugmentFeatures(arrayOf(orig1))
+        assertNull(uninit)
+
+        FeatureSpoofer.initFromValues("None", setOf("Pixel 2016"), true)
+        val passThrough = FeatureSpoofer.filterAndAugmentFeatures(arrayOf(orig1))
+        assertNull(passThrough)
+    }
+
+    @Test
+    fun `filterAndAugmentFeatures does not duplicate already present features`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel XL",
+            selectedNames = setOf("Pixel 2016"),
+            overrideROM = true,
         )
-        assertFalse(passThrough)
-        // All known flags should be spoofed
-        val allFlags = DeviceProps.allFeatures.flatMap { it.featureFlags }.toSet()
-        assertEquals(allFlags, spoof)
-        assertTrue("NotToSpoof should be empty when all levels selected", notToSpoof.isEmpty())
+
+        val orig1 = FeatureInfo().apply { name = "com.google.android.feature.PIXEL_EXPERIENCE" }
+        val orig2 = FeatureInfo().apply { name = "android.hardware.camera" }
+
+        val result = FeatureSpoofer.filterAndAugmentFeatures(arrayOf(orig1, orig2))
+        assertNotNull(result)
+
+        val count = result!!.count { it.name == "com.google.android.feature.PIXEL_EXPERIENCE" }
+        assertEquals(1, count)
     }
 }

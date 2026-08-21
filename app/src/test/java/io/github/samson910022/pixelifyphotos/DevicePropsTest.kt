@@ -139,8 +139,33 @@ class DevicePropsTest {
         assertEquals("google", device.props["BRAND"])
         assertEquals("Google", device.props["MANUFACTURER"])
         assertEquals("redfin", device.props["PRODUCT"])
-        assertEquals("Pixel 5", device.props["MODEL"])
         assertTrue(device.props["FINGERPRINT"]!!.contains("redfin"))
+        assertEquals("redfin", device.props["BOARD"])
+        assertEquals("redfin", device.props["HARDWARE"])
+        assertEquals("SP1A.211105.003", device.props["ID"])
+        assertEquals("7757856", device.props["INCREMENTAL"])
+        assertEquals("2021-11-05", device.props["SECURITY_PATCH"])
+        assertEquals("user", device.props["TYPE"])
+        assertEquals("release-keys", device.props["TAGS"])
+    }
+
+    @Test
+    fun `getDeviceProps returns correct entry for Pixel XL with enriched fields`() {
+        val device = DeviceProps.getDeviceProps("Pixel XL")
+        assertNotNull(device)
+        assertEquals("Pixel XL", device!!.deviceName)
+        assertEquals("marlin", device.props["DEVICE"])
+        assertEquals("google", device.props["BRAND"])
+        assertEquals("Google", device.props["MANUFACTURER"])
+        assertEquals("marlin", device.props["PRODUCT"])
+        assertEquals("Pixel XL", device.props["MODEL"])
+        assertEquals("marlin", device.props["BOARD"])
+        assertEquals("marlin", device.props["HARDWARE"])
+        assertEquals("QP1A.191005.007.A3", device.props["ID"])
+        assertEquals("5972272", device.props["INCREMENTAL"])
+        assertEquals("2019-12-05", device.props["SECURITY_PATCH"])
+        assertEquals("user", device.props["TYPE"])
+        assertEquals("release-keys", device.props["TAGS"])
     }
 
     @Test
