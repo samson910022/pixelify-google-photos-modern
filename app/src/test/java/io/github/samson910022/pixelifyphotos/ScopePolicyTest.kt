@@ -43,6 +43,9 @@ class ScopePolicyTest {
             "com.google.android.dialer",
             "com.android.launcher3",
             "com.google.android.apps.nexuslauncher",
+            "app.grapheneos.gmscompat",
+            "app.grapheneos.gmscompat.lib",
+            "app.grapheneos.gmscompat.config",
         )
         assertEquals(expected, ScopePolicy.DENYLIST)
         expected.forEach { pkg ->
