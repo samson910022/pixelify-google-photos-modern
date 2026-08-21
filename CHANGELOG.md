@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] - 2026-08-21
+
+### Added
+
+- **ContentProvider Diagnostics IPC Telemetry**: Reliable cross-process diagnostic communication between hooked processes (Google Photos) and the module settings UI via `DiagnosticsProvider`, resolving blank status display across modern Xposed/LSPosed environments.
+- **Fail-Closed IPC Access Control & Anti-Spoofing**: Enforced caller UID validation, restricted telemetry updates to authorized scope packages passing `ScopePolicy`, and verified reported package ownership against calling UID.
+- **Dedicated Telemetry Dispatcher**: Bounded single-thread daemon background executor (`ThreadPoolExecutor` with `DiscardOldestPolicy`) for non-blocking diagnostic reporting without main-thread stalls or ANR risks.
+- **GrapheneOS Compatibility Isolation**: Soft-denylisted Sandboxed Google Play compatibility packages (`app.grapheneos.gmscompat*`) in `ScopePolicy` to ensure process isolation.
+- **Per-Method Hook Idempotency**: Independent atomic hook registration tracking in `FeatureSpoofer` preventing duplicate method hooks upon retry.
+- **Enriched Device & System Property Overrides**: Comprehensive `ro.*` property coverage across system, vendor, odm, and system_ext partitions, and support for Android 17 (SDK 37) diagnostics.
+
+### Changed
+
+- Bumped version to `1.4.0` (`versionCode 9`).
+- Safe type-casting in `FeatureSpoofer.filterAndAugmentFeatures` with explicit preservation of unnamed OpenGL ES version metadata (`reqGlEsVersion`).
+
 ## [1.3.0] - 2026-08-19
 
 ### Added

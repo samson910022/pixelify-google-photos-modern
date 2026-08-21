@@ -19,8 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_ID = "io.github.samson910022.pixelifyphotos"
 ENTRY_POINT = f"{APP_ID}.PixelifyModule"
 SCOPE = "com.google.android.apps.photos"
-VERSION_CODE = 8
-VERSION_NAME = "1.3.0"
+VERSION_CODE = 9
+VERSION_NAME = "1.4.0"
 CERT_SHA256 = "37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
 PUBLIC_CERT = Path("certificates/pixelifyphotos-release-cert.pem")
 

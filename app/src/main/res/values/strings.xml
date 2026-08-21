@@ -17,7 +17,7 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.3.0</string>
+    <string name="version_head">Version 1.4.0</string>
     <string name="version_desc">New in-app Diagnostics screen that surfaces hook milestones, the last device-spoof VERIFY result, and real vs spoof-target Build values with a copyable report for issue reports; documented tested Google Photos / Android version matrix.</string>
     <string name="changelog">Change log</string>
 
