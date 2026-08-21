@@ -185,9 +185,9 @@ object DeviceSpoofer {
     }
 
     /**
-     * Persist the last VERIFY outcome into the shared remote preferences so the
-     * module UI can surface it without logcat. Never throws — diagnostics must
-     * not break the hook path.
+     * Persist the last VERIFY outcome via [DiagnosticsReporter] so the module UI
+     * can surface it without logcat. Never throws — diagnostics must not break
+     * the hook path.
      */
     private fun recordVerifyResult(
         prefs: SharedPreferences?,
@@ -195,22 +195,16 @@ object DeviceSpoofer {
         failed: List<String>,
         packageName: String?,
     ) {
-        if (prefs == null) return
-        try {
-            val resolvedPackage = packageName
-                ?: runCatching { currentApplication()?.packageName }.getOrNull()
-            prefs.edit()
-                .putLong(Constants.PREF_DIAG_VERIFY_AT, System.currentTimeMillis())
-                .putString(Constants.PREF_DIAG_VERIFY_DEVICE, deviceName)
-                .putString(Constants.PREF_DIAG_VERIFY_PACKAGE, resolvedPackage)
-                .putBoolean(Constants.PREF_DIAG_VERIFY_OK, failed.isEmpty())
-                .putStringSet(Constants.PREF_DIAG_VERIFY_FAILED, failed.toSet())
-                .putBoolean(Constants.PREF_DIAG_VERIFY_NATIVE_READY, nativeReady)
-                .putBoolean(Constants.PREF_DIAG_VERIFY_SYSPROPS, systemPropertiesHooked.get())
-                .apply()
-        } catch (t: Throwable) {
-            Log.w(TAG, "Failed to record VERIFY diagnostics", t)
-        }
+        val resolvedPackage = packageName
+            ?: runCatching { currentApplication()?.packageName }.getOrNull()
+        DiagnosticsReporter.recordVerify(
+            context = currentApplication(),
+            deviceName = deviceName,
+            failed = failed,
+            packageName = resolvedPackage,
+            nativeReady = nativeReady,
+            syspropsHooked = systemPropertiesHooked.get(),
+        )
     }
 
     /**
@@ -219,20 +213,7 @@ object DeviceSpoofer {
      * profile. Never throws.
      */
     private fun clearVerifyDiagnostics(prefs: SharedPreferences?) {
-        if (prefs == null) return
-        try {
-            prefs.edit()
-                .remove(Constants.PREF_DIAG_VERIFY_AT)
-                .remove(Constants.PREF_DIAG_VERIFY_DEVICE)
-                .remove(Constants.PREF_DIAG_VERIFY_PACKAGE)
-                .remove(Constants.PREF_DIAG_VERIFY_OK)
-                .remove(Constants.PREF_DIAG_VERIFY_FAILED)
-                .remove(Constants.PREF_DIAG_VERIFY_NATIVE_READY)
-                .remove(Constants.PREF_DIAG_VERIFY_SYSPROPS)
-                .apply()
-        } catch (t: Throwable) {
-            Log.w(TAG, "Failed to clear VERIFY diagnostics", t)
-        }
+        DiagnosticsReporter.clearVerify(context = currentApplication())
     }
 
     private fun targetClassForField(fieldName: String): Class<*> =
@@ -529,7 +510,24 @@ object DeviceSpoofer {
         putKey("ro.product.odm.model", props["MODEL"])
         putKey("ro.product.odm.name", props["PRODUCT"])
         putKey("ro.product.odm.manufacturer", props["MANUFACTURER"])
+        putKey("ro.product.board", props["BOARD"] ?: props["DEVICE"])
+        putKey("ro.hardware", props["HARDWARE"] ?: props["DEVICE"])
+        putKey("ro.board.platform", props["BOARD"] ?: props["DEVICE"])
+        putKey("ro.product.system_ext.brand", props["BRAND"])
+        putKey("ro.product.system_ext.device", props["DEVICE"])
+        putKey("ro.product.system_ext.model", props["MODEL"])
+        putKey("ro.product.system_ext.name", props["PRODUCT"])
+        putKey("ro.product.system_ext.manufacturer", props["MANUFACTURER"])
+        putKey("ro.system_ext.build.fingerprint", props["FINGERPRINT"])
+        putKey("ro.product.product.brand", props["BRAND"])
+        putKey("ro.product.product.device", props["DEVICE"])
+        putKey("ro.product.product.model", props["MODEL"])
+        putKey("ro.product.product.name", props["PRODUCT"])
+        putKey("ro.product.product.manufacturer", props["MANUFACTURER"])
+        putKey("ro.product.build.fingerprint", props["FINGERPRINT"])
         putKey("ro.build.id", props["ID"])
+        putKey("ro.build.type", props["TYPE"])
+        putKey("ro.build.tags", props["TAGS"])
         putKey("ro.build.version.incremental", props["INCREMENTAL"])
         putKey("ro.build.version.security_patch", props["SECURITY_PATCH"])
         return out

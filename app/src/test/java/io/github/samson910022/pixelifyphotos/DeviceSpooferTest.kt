@@ -269,6 +269,13 @@ class DeviceSpooferTest {
         assertEquals("google/husky/husky:14/UD1A.230803.022/10666019:user/release-keys", overrides["ro.build.fingerprint"])
         assertEquals("husky", overrides["ro.product.vendor.device"])
         assertEquals("Pixel 8 Pro", overrides["ro.product.vendor.model"])
+        assertEquals("husky", overrides["ro.product.board"])
+        assertEquals("husky", overrides["ro.hardware"])
+        assertEquals("husky", overrides["ro.board.platform"])
+        assertEquals("Pixel 8 Pro", overrides["ro.product.system_ext.model"])
+        assertEquals("Pixel 8 Pro", overrides["ro.product.product.model"])
+        assertEquals("google/husky/husky:14/UD1A.230803.022/10666019:user/release-keys", overrides["ro.system_ext.build.fingerprint"])
+        assertEquals("google/husky/husky:14/UD1A.230803.022/10666019:user/release-keys", overrides["ro.product.build.fingerprint"])
     }
 
     @Test

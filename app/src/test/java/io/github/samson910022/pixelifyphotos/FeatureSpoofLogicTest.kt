@@ -363,4 +363,117 @@ class FeatureSpoofLogicTest {
         assertEquals(allFlags, spoof)
         assertTrue("NotToSpoof should be empty when all levels selected", notToSpoof.isEmpty())
     }
+
+    // =========================================================================
+    // getSystemAvailableFeatures decision logic tests
+    // =========================================================================
+
+    private fun decideAvailableFeatures(
+        originalFeatures: List<String>,
+        initialized: Boolean,
+        finalFeaturesToSpoof: Set<String>,
+        featuresNotToSpoof: Set<String>,
+        overrideCustomROMLevels: Boolean,
+        passThroughAll: Boolean = false,
+    ): List<String> {
+        if (!initialized || passThroughAll) return originalFeatures
+
+        val result = mutableListOf<String>()
+        val seen = mutableSetOf<String>()
+
+        for (feature in originalFeatures) {
+            if (overrideCustomROMLevels && feature in featuresNotToSpoof) {
+                continue
+            }
+            result.add(feature)
+            seen.add(feature)
+        }
+
+        for (feature in finalFeaturesToSpoof) {
+            if (feature !in seen) {
+                result.add(feature)
+                seen.add(feature)
+            }
+        }
+
+        return result
+    }
+
+    @Test
+    fun `decideAvailableFeatures removes ROM feature levels and injects target Pixel features`() {
+        val (spoof, notToSpoof, passThrough) = buildFeatureLists(null, true)
+        val original = listOf(
+            "android.hardware.camera",
+            "com.google.android.feature.PIXEL_2024_EXPERIENCE", // Should be removed
+            "android.hardware.wifi",
+        )
+
+        val modified = decideAvailableFeatures(
+            originalFeatures = original,
+            initialized = true,
+            finalFeaturesToSpoof = spoof,
+            featuresNotToSpoof = notToSpoof,
+            overrideCustomROMLevels = true,
+            passThroughAll = passThrough,
+        )
+
+        assertTrue(modified.contains("android.hardware.camera"))
+        assertTrue(modified.contains("android.hardware.wifi"))
+        assertFalse(modified.contains("com.google.android.feature.PIXEL_2024_EXPERIENCE"))
+        assertTrue(modified.contains("com.google.android.feature.PIXEL_EXPERIENCE"))
+        assertTrue(modified.contains("com.google.android.apps.photos.PIXEL_2016_PRELOAD"))
+    }
+
+    @Test
+    fun `decideAvailableFeatures preserves list unchanged in passThroughAll or uninitialized`() {
+        val original = listOf("feature.a", "feature.b")
+        val uninit = decideAvailableFeatures(original, false, setOf("feature.c"), emptySet(), true)
+        assertEquals(original, uninit)
+
+        val passThrough = decideAvailableFeatures(original, true, setOf("feature.c"), emptySet(), true, passThroughAll = true)
+        assertEquals(original, passThrough)
+    }
+
+    @Test
+    fun `decideAvailableFeatures preserves ROM features when override is disabled`() {
+        val (spoof, notToSpoof, passThrough) = buildFeatureLists(null, false)
+        val original = listOf(
+            "com.google.android.feature.PIXEL_2024_EXPERIENCE",
+            "android.hardware.bluetooth"
+        )
+
+        val modified = decideAvailableFeatures(
+            originalFeatures = original,
+            initialized = true,
+            finalFeaturesToSpoof = spoof,
+            featuresNotToSpoof = notToSpoof,
+            overrideCustomROMLevels = false,
+            passThroughAll = passThrough,
+        )
+
+        assertTrue("ROM feature should be preserved when override is disabled", modified.contains("com.google.android.feature.PIXEL_2024_EXPERIENCE"))
+        assertTrue(modified.contains("android.hardware.bluetooth"))
+        assertTrue(modified.contains("com.google.android.feature.PIXEL_EXPERIENCE"))
+    }
+
+    @Test
+    fun `decideAvailableFeatures does not duplicate already present features`() {
+        val spoof = setOf("com.google.android.feature.PIXEL_EXPERIENCE")
+        val original = listOf(
+            "com.google.android.feature.PIXEL_EXPERIENCE",
+            "android.hardware.camera"
+        )
+
+        val modified = decideAvailableFeatures(
+            originalFeatures = original,
+            initialized = true,
+            finalFeaturesToSpoof = spoof,
+            featuresNotToSpoof = emptySet(),
+            overrideCustomROMLevels = true,
+            passThroughAll = false,
+        )
+
+        assertEquals(2, modified.size)
+        assertEquals(1, modified.count { it == "com.google.android.feature.PIXEL_EXPERIENCE" })
+    }
 }
