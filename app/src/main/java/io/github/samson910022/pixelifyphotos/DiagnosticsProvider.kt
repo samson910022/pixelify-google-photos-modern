@@ -3,7 +3,6 @@ package io.github.samson910022.pixelifyphotos
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
-import android.content.SharedPreferences
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
@@ -21,22 +20,6 @@ import android.os.Process
  * security boundaries before persisting them into the manager's preferences.
  */
 class DiagnosticsProvider : ContentProvider() {
-
-    companion object {
-        val ALLOWED_DIAG_KEYS: Set<String>
-            get() = DiagnosticsStore.ALLOWED_DIAG_KEYS
-
-        fun isCallerAuthorized(
-            callingUid: Int,
-            myUid: Int,
-            callingPackages: Array<String>?,
-            extras: Bundle? = null,
-        ): Boolean = DiagnosticsStore.isCallerAuthorized(callingUid, myUid, callingPackages, extras)
-
-        fun applyExtra(editor: SharedPreferences.Editor, key: String, value: Any?) {
-            DiagnosticsStore.applyExtra(editor, key, value)
-        }
-    }
 
     internal var testContext: Context? = null
     internal var testCallingUid: Int? = null

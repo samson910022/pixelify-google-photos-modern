@@ -18,6 +18,11 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
             .build()
         DynamicColors.applyToActivitiesIfAvailable(this, options)
         XposedServiceHelper.registerListener(this)
+        // Ensure per-install broadcast token is provisioned for diagnostics fallback auth.
+        try {
+            DiagnosticsStore.getOrCreateToken(this)
+        } catch (_: Throwable) {
+        }
     }
 
     override fun onServiceBind(service: XposedService) {

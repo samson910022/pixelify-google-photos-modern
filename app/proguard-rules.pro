@@ -21,3 +21,8 @@
     native <methods>;
     *;
 }
+
+# Keep diagnostics IPC components referenced via ::class.java.name and manifest.
+-keep class io.github.samson910022.pixelifyphotos.DiagnosticsReceiver { *; }
+-keep class io.github.samson910022.pixelifyphotos.DiagnosticsProvider { *; }
+-keep class io.github.samson910022.pixelifyphotos.DiagnosticsStore { *; }

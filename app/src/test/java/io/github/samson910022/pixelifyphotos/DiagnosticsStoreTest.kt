@@ -281,4 +281,110 @@ class DiagnosticsStoreTest {
         verify(mockEditor).putString(Constants.PREF_DIAG_VERIFY_DEVICE, "Pixel 8 Pro")
         verify(mockEditor, never()).putString(eq(Constants.PREF_DEVICE_TO_SPOOF), any())
     }
+
+    @Test
+    fun `applyDiagnostics filters method and token plumbing keys via allowlist`() {
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(
+            setOf(
+                Constants.PREF_DIAG_VERIFY_AT,
+                Constants.PREF_DIAG_VERIFY_DEVICE,
+                Constants.EXTRA_DIAGNOSTICS_METHOD,
+                Constants.EXTRA_DIAGNOSTICS_TOKEN
+            )
+        )
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_AT)).thenReturn(123L)
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_METHOD)).thenReturn(Constants.METHOD_RECORD_VERIFY)
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("secret-token")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("secret-token")
+
+        val ok = DiagnosticsStore.applyDiagnostics(
+            context = mockContext,
+            method = Constants.METHOD_RECORD_VERIFY,
+            extras = extras,
+            callingUid = 10001,
+            callingPackages = arrayOf(Constants.PACKAGE_NAME_MODULE),
+            myUid = 10001,
+        )
+
+        assertTrue(ok)
+        verify(mockEditor).putLong(Constants.PREF_DIAG_VERIFY_AT, 123L)
+        verify(mockEditor).putString(Constants.PREF_DIAG_VERIFY_DEVICE, "Pixel XL")
+        verify(mockEditor, never()).putString(eq(Constants.EXTRA_DIAGNOSTICS_METHOD), any())
+        verify(mockEditor, never()).putString(eq(Constants.EXTRA_DIAGNOSTICS_TOKEN), any())
+        verify(mockEditor, never()).putString(eq("method"), any())
+        verify(mockEditor, never()).putString(eq("token"), any())
+    }
+
+    @Test
+    fun `applyDiagnostics broadcast without token is rejected when token provisioned`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("expected-token-123")
+
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_VERIFY_DEVICE))
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn(null)
+        whenever(extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn(null)
+
+        val ok = DiagnosticsStore.applyDiagnostics(
+            context = mockContext,
+            method = Constants.METHOD_RECORD_VERIFY,
+            extras = extras,
+            // Broadcast path: no UID
+            callingUid = null,
+            callingPackages = null,
+            myUid = null,
+        )
+
+        assertFalse(ok)
+        verify(mockEditor, never()).apply()
+    }
+
+    @Test
+    fun `applyDiagnostics broadcast with valid token is accepted`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("valid-token-xyz")
+
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_VERIFY_DEVICE))
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("valid-token-xyz")
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn(null)
+        whenever(extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn(null)
+
+        val ok = DiagnosticsStore.applyDiagnostics(
+            context = mockContext,
+            method = Constants.METHOD_RECORD_VERIFY,
+            extras = extras,
+            callingUid = null,
+            callingPackages = null,
+            myUid = null,
+        )
+
+        assertTrue(ok)
+        verify(mockEditor).putString(Constants.PREF_DIAG_VERIFY_DEVICE, "Pixel XL")
+        verify(mockEditor).apply()
+    }
+
+    @Test
+    fun `applyDiagnostics broadcast with invalid token is rejected`() {
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("expected-token-123")
+
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_VERIFY_DEVICE))
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("wrong-token-999")
+
+        val ok = DiagnosticsStore.applyDiagnostics(
+            context = mockContext,
+            method = Constants.METHOD_RECORD_VERIFY,
+            extras = extras,
+            callingUid = null,
+            callingPackages = null,
+            myUid = null,
+        )
+
+        assertFalse(ok)
+        verify(mockEditor, never()).apply()
+    }
 }

@@ -50,4 +50,8 @@ object Constants {
 
     const val ACTION_RECORD_DIAGNOSTICS = "io.github.samson910022.pixelifyphotos.RECORD_DIAGNOSTICS"
     const val EXTRA_DIAGNOSTICS_METHOD = "method"
+    const val EXTRA_DIAGNOSTICS_TOKEN = "token"
+
+    // Per-install random token for broadcast fallback authentication (not in ALLOWED_DIAG_KEYS).
+    const val PREF_DIAG_BROADCAST_TOKEN = "PREF_DIAG_BROADCAST_TOKEN"
 }

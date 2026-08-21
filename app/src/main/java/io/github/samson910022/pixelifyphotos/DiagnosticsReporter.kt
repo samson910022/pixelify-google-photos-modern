@@ -2,6 +2,7 @@ package io.github.samson910022.pixelifyphotos
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import java.util.concurrent.ExecutorService
@@ -99,8 +100,43 @@ object DiagnosticsReporter {
         dispatch(context, Constants.METHOD_CLEAR_VERIFY, Bundle())
     }
 
+    /**
+     * Attempts to resolve the per-install broadcast token for authentication.
+     * Tries Xposed remote prefs first (LSPosed), then module package context, then local prefs.
+     */
+    private fun resolveBroadcastToken(ctx: Context): String? {
+        // 1. Via XposedModule instance (most reliable in hooked process)
+        try {
+            val module = PixelifyModule.instance
+            if (module != null) {
+                val prefs = module.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
+                val token = prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+                if (!token.isNullOrEmpty()) return token
+            }
+        } catch (_: Throwable) {
+        }
+        // 2. Via module package context (if file-based fallback is readable)
+        try {
+            val moduleCtx = ctx.createPackageContext(Constants.PACKAGE_NAME_MODULE, 0)
+            val prefs = moduleCtx.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE)
+            val token = prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+            if (!token.isNullOrEmpty()) return token
+        } catch (_: Throwable) {
+        }
+        // 3. Local prefs (module process itself)
+        try {
+            val prefs = PrefUtils.getPrefs(ctx)
+            val token = prefs?.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+            if (!token.isNullOrEmpty()) return token
+        } catch (_: Throwable) {
+        }
+        return null
+    }
+
     private fun dispatch(explicitContext: Context?, method: String, extras: Bundle) {
         try {
+            // Defensive copy: caller may mutate Bundle after dispatch is queued.
+            val payload = Bundle(extras)
             executor.execute {
                 try {
                     // During early process initialization (e.g. onModuleLoaded / onPackageLoaded),
@@ -111,42 +147,91 @@ object DiagnosticsReporter {
                     while (attempts < 3) {
                         attempts++
                         val ctx = resolveContext(explicitContext)
-                        if (ctx != null) {
-                            var providerSucceeded = false
-                            // 1. Channel 1 (Primary - ContentProvider IPC)
+                        if (ctx == null) {
+                            if (attempts >= 3) return@execute
                             try {
-                                val result = ctx.contentResolver.call(PROVIDER_URI, method, null, extras)
-                                if (result != null && result.getBoolean("success", true)) {
-                                    providerSucceeded = true
-                                }
-                            } catch (t: Throwable) {
-                                Log.d(TAG, "ContentProvider call failed; trying broadcast fallback: ${t.message}")
-                            }
-
-                            if (providerSucceeded) {
+                                Thread.sleep(150)
+                            } catch (_: InterruptedException) {
+                                Thread.currentThread().interrupt()
                                 return@execute
                             }
+                            continue
+                        }
 
-                            // 2. Channel 2 (Fallback - Explicit Broadcast exempt from Android 11+ AppsFilter)
+                        var providerSucceeded = false
+                        // 1. Channel 1 (Primary - ContentProvider IPC)
+                        try {
+                            val result = ctx.contentResolver.call(PROVIDER_URI, method, null, payload)
+                            // Fail-closed: missing "success" key defaults to false.
+                            if (result != null && result.getBoolean("success", false)) {
+                                providerSucceeded = true
+                            }
+                        } catch (t: Throwable) {
+                            Log.d(TAG, "ContentProvider call failed; trying broadcast fallback: ${t.message}")
+                        }
+
+                        if (providerSucceeded) {
+                            return@execute
+                        }
+
+                        // Fallback to broadcast when provider did not succeed (null, exception, or success=false).
+                        // On explicit auth rejection (success=false) the broadcast will be re-validated via
+                        // token/UID and rejected again, so fallback is safe (just adds one Binder hop).
+                        val shouldFallback = !providerSucceeded
+
+                        if (shouldFallback) {
                             try {
                                 val broadcastIntent = android.content.Intent(Constants.ACTION_RECORD_DIAGNOSTICS).apply {
                                     setPackage(Constants.PACKAGE_NAME_MODULE)
                                     component = android.content.ComponentName(
                                         Constants.PACKAGE_NAME_MODULE,
-                                        "io.github.samson910022.pixelifyphotos.DiagnosticsReceiver"
+                                        DiagnosticsReceiver::class.java.name
                                     )
                                     putExtra(Constants.EXTRA_DIAGNOSTICS_METHOD, method)
-                                    putExtras(extras)
+                                    putExtras(payload)
                                     addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND)
+                                    // Attach per-install token if available (pre-34 auth fallback)
+                                    val token = resolveBroadcastToken(ctx)
+                                    if (!token.isNullOrEmpty()) {
+                                        putExtra(Constants.EXTRA_DIAGNOSTICS_TOKEN, token)
+                                    }
                                 }
-                                ctx.sendBroadcast(broadcastIntent)
+                                // On API 34+, share sender identity so receiver can verify via getSentFromUid().
+                                // Use reflection for BroadcastOptions to avoid VerifyError on minSdk 26.
+                                if (Build.VERSION.SDK_INT >= 34) {
+                                    try {
+                                        val clazz = Class.forName("android.app.BroadcastOptions")
+                                        val makeBasic = clazz.getMethod("makeBasic")
+                                        val optsObj = makeBasic.invoke(null)
+                                        val setShare = clazz.getMethod("setShareIdentityEnabled", Boolean::class.javaPrimitiveType)
+                                        setShare.invoke(optsObj, true)
+                                        val toBundle = clazz.getMethod("toBundle")
+                                        val opts = toBundle.invoke(optsObj) as Bundle
+                                        try {
+                                            val m = ctx::class.java.getMethod(
+                                                "sendBroadcast",
+                                                android.content.Intent::class.java,
+                                                String::class.java,
+                                                android.os.Bundle::class.java
+                                            )
+                                            m.invoke(ctx, broadcastIntent, null, opts)
+                                        } catch (_: Throwable) {
+                                            ctx.sendBroadcast(broadcastIntent)
+                                        }
+                                    } catch (_: Throwable) {
+                                        ctx.sendBroadcast(broadcastIntent)
+                                    }
+                                } else {
+                                    ctx.sendBroadcast(broadcastIntent)
+                                }
                                 return@execute
                             } catch (t: Throwable) {
                                 Log.d(TAG, "Explicit broadcast dispatch failed: ${t.message}")
                             }
-
-                            return@execute
                         }
+
+                        // Both channels failed — retry if attempts remain.
+                        if (attempts >= 3) return@execute
                         try {
                             Thread.sleep(150)
                         } catch (_: InterruptedException) {

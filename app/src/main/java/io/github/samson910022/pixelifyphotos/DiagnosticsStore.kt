@@ -30,13 +30,13 @@ object DiagnosticsStore {
         Constants.PREF_DIAG_VERIFY_SYSPROPS,
     )
 
-    val PACKAGE_NAME_KEYS: Set<String> = setOf(
+    internal val PACKAGE_NAME_KEYS: Set<String> = setOf(
         Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
         Constants.PREF_DIAG_LAST_PACKAGE_READY,
         Constants.PREF_DIAG_VERIFY_PACKAGE,
     )
 
-    val VERIFY_KEYS_TO_CLEAR: Set<String> = setOf(
+    internal val VERIFY_KEYS_TO_CLEAR: Set<String> = setOf(
         Constants.PREF_DIAG_VERIFY_AT,
         Constants.PREF_DIAG_VERIFY_DEVICE,
         Constants.PREF_DIAG_VERIFY_PACKAGE,
@@ -45,6 +45,33 @@ object DiagnosticsStore {
         Constants.PREF_DIAG_VERIFY_NATIVE_READY,
         Constants.PREF_DIAG_VERIFY_SYSPROPS,
     )
+
+    /**
+     * Per-install random token for broadcast authentication.
+     * Stored under [Constants.PREF_DIAG_BROADCAST_TOKEN] (never in [ALLOWED_DIAG_KEYS]).
+     * Generated lazily in the module process.
+     */
+    fun getOrCreateToken(context: Context): String? {
+        val prefs = PrefUtils.getPrefs(context) ?: return null
+        val existing = prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+        if (!existing.isNullOrEmpty()) return existing
+        val generated = java.util.UUID.randomUUID().toString()
+        return try {
+            // Use commit() for cross-process atomicity (apply() is async).
+            val ok = prefs.edit().putString(Constants.PREF_DIAG_BROADCAST_TOKEN, generated).commit()
+            if (ok) generated else existing ?: generated
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    fun getStoredToken(context: Context): String? {
+        return try {
+            PrefUtils.getPrefs(context)?.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+        } catch (_: Throwable) {
+            null
+        }
+    }
 
     /**
      * Checks if a Binder caller is authorized to invoke diagnostics IPC.
@@ -118,20 +145,31 @@ object DiagnosticsStore {
     ): Boolean {
         if (method == null) return false
 
-        // 1. Caller authorization when Binder UID is provided (ContentProvider IPC)
+        // 1. Caller authorization when Binder UID is provided (ContentProvider IPC or API 34+ broadcast with shareIdentity)
         if (callingUid != null && myUid != null) {
             if (!isCallerAuthorized(callingUid, myUid, callingPackages, extras)) {
                 Log.w(TAG, "Rejecting unauthorized diagnostics IPC call '$method' from UID $callingUid")
                 return false
             }
         } else {
-            // 2. Anti-spoofing package validation when UID is absent (Broadcast channel)
-            if (extras != null) {
-                for (key in PACKAGE_NAME_KEYS) {
-                    val reportedPkg = extras.getString(key)
-                    if (!reportedPkg.isNullOrEmpty() && !ScopePolicy.shouldSpoof(reportedPkg)) {
-                        Log.w(TAG, "Rejecting diagnostic update with denylisted reported package '$reportedPkg'")
-                        return false
+            // 2. Broadcast channel (no Binder UID) — require token or fail-closed denylist.
+            //    If a token has been provisioned in module prefs, the broadcast must present it.
+            val broadcastToken = extras?.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)
+            val expectedToken = getStoredToken(context)
+            if (!expectedToken.isNullOrEmpty()) {
+                if (broadcastToken.isNullOrEmpty() || broadcastToken != expectedToken) {
+                    Log.w(TAG, "Rejecting diagnostic broadcast without valid token for method '$method'")
+                    return false
+                }
+            } else {
+                // No token provisioned yet (fresh install) — fallback to denylist check.
+                if (extras != null) {
+                    for (key in PACKAGE_NAME_KEYS) {
+                        val reportedPkg = extras.getString(key)
+                        if (!reportedPkg.isNullOrEmpty() && !ScopePolicy.shouldSpoof(reportedPkg)) {
+                            Log.w(TAG, "Rejecting diagnostic update with denylisted reported package '$reportedPkg'")
+                            return false
+                        }
                     }
                 }
             }

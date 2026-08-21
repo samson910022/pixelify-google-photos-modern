@@ -9,10 +9,27 @@ class PixelifyModule : XposedModule() {
 
     companion object {
         const val TAG = "Pixelify"
+
+        @Volatile
+        var instance: PixelifyModule? = null
+            private set
+    }
+
+    init {
+        instance = this
     }
 
     override fun onModuleLoaded(params: XposedModuleInterface.ModuleLoadedParam) {
         Log.d(TAG, "Pixelify Infinity module loaded (libxposed Modern API)")
+        // Provision broadcast token early so hooked processes can authenticate fallback broadcasts.
+        // Use commit() and single-owner pattern to avoid cross-process UUID races (App.onCreate also provisions).
+        try {
+            val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
+            if (prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null).isNullOrEmpty()) {
+                prefs.edit().putString(Constants.PREF_DIAG_BROADCAST_TOKEN, java.util.UUID.randomUUID().toString()).commit()
+            }
+        } catch (_: Throwable) {
+        }
         DiagnosticsReporter.recordMilestone { bundle ->
             bundle.putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, System.currentTimeMillis())
         }

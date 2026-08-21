@@ -151,4 +151,63 @@ class DiagnosticsReceiverTest {
 
         verify(mockEditor, never()).apply()
     }
+
+    @Test
+    fun `onReceive strips EXTRA_DIAGNOSTICS_METHOD and token before persistence`() {
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(
+            setOf(
+                Constants.PREF_DIAG_VERIFY_AT,
+                Constants.PREF_DIAG_VERIFY_DEVICE,
+                Constants.EXTRA_DIAGNOSTICS_METHOD,
+                Constants.EXTRA_DIAGNOSTICS_TOKEN
+            )
+        )
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_AT)).thenReturn(123L)
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel XL")
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_METHOD)).thenReturn(Constants.METHOD_RECORD_VERIFY)
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("fake-token")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("fake-token")
+
+        val intent = mock<Intent>()
+        whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
+        whenever(intent.getStringExtra(Constants.EXTRA_DIAGNOSTICS_METHOD)).thenReturn(Constants.METHOD_RECORD_VERIFY)
+        whenever(intent.extras).thenReturn(extras)
+
+        receiver.onReceive(mockContext, intent)
+
+        // Allowed key persisted
+        verify(mockEditor).putLong(Constants.PREF_DIAG_VERIFY_AT, 123L)
+        verify(mockEditor).putString(Constants.PREF_DIAG_VERIFY_DEVICE, "Pixel XL")
+        // Plumbing keys must never be persisted
+        verify(mockEditor, never()).putString(eq(Constants.EXTRA_DIAGNOSTICS_METHOD), any())
+        verify(mockEditor, never()).putString(eq(Constants.EXTRA_DIAGNOSTICS_TOKEN), any())
+        verify(mockEditor, never()).putString(eq("method"), any())
+        verify(mockEditor, never()).putString(eq("token"), any())
+        verify(mockEditor).apply()
+    }
+
+    @Test
+    fun `onReceive with real Intent round-trip filters non-allowlisted keys`() {
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(
+            setOf(
+                Constants.PREF_DIAG_MODULE_LOADED_AT,
+                Constants.PREF_DEVICE_TO_SPOOF
+            )
+        )
+        whenever(extras.get(Constants.PREF_DIAG_MODULE_LOADED_AT)).thenReturn(999L)
+        whenever(extras.get(Constants.PREF_DEVICE_TO_SPOOF)).thenReturn("HACKED_DEVICE")
+
+        val intent = mock<Intent>()
+        whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
+        whenever(intent.getStringExtra(Constants.EXTRA_DIAGNOSTICS_METHOD)).thenReturn(Constants.METHOD_RECORD_DIAGNOSTICS)
+        whenever(intent.extras).thenReturn(extras)
+
+        receiver.onReceive(mockContext, intent)
+
+        verify(mockEditor).putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, 999L)
+        verify(mockEditor, never()).putString(eq(Constants.PREF_DEVICE_TO_SPOOF), any())
+        verify(mockEditor).apply()
+    }
 }
