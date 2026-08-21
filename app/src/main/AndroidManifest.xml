@@ -46,6 +46,14 @@
             android:name=".DiagnosticsProvider"
             android:exported="true" />
 
+        <receiver
+            android:name=".DiagnosticsReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.github.samson910022.pixelifyphotos.RECORD_DIAGNOSTICS" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

@@ -112,7 +112,39 @@ object DiagnosticsReporter {
                         attempts++
                         val ctx = resolveContext(explicitContext)
                         if (ctx != null) {
-                            ctx.contentResolver.call(PROVIDER_URI, method, null, extras)
+                            var providerSucceeded = false
+                            // 1. Channel 1 (Primary - ContentProvider IPC)
+                            try {
+                                val result = ctx.contentResolver.call(PROVIDER_URI, method, null, extras)
+                                if (result != null && result.getBoolean("success", true)) {
+                                    providerSucceeded = true
+                                }
+                            } catch (t: Throwable) {
+                                Log.d(TAG, "ContentProvider call failed; trying broadcast fallback: ${t.message}")
+                            }
+
+                            if (providerSucceeded) {
+                                return@execute
+                            }
+
+                            // 2. Channel 2 (Fallback - Explicit Broadcast exempt from Android 11+ AppsFilter)
+                            try {
+                                val broadcastIntent = android.content.Intent(Constants.ACTION_RECORD_DIAGNOSTICS).apply {
+                                    setPackage(Constants.PACKAGE_NAME_MODULE)
+                                    component = android.content.ComponentName(
+                                        Constants.PACKAGE_NAME_MODULE,
+                                        "io.github.samson910022.pixelifyphotos.DiagnosticsReceiver"
+                                    )
+                                    putExtra(Constants.EXTRA_DIAGNOSTICS_METHOD, method)
+                                    putExtras(extras)
+                                    addFlags(android.content.Intent.FLAG_RECEIVER_FOREGROUND)
+                                }
+                                ctx.sendBroadcast(broadcastIntent)
+                                return@execute
+                            } catch (t: Throwable) {
+                                Log.d(TAG, "Explicit broadcast dispatch failed: ${t.message}")
+                            }
+
                             return@execute
                         }
                         try {

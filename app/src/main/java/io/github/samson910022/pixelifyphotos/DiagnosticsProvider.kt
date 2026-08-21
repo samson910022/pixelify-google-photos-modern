@@ -9,7 +9,6 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import android.os.Process
-import android.util.Log
 
 /**
  * Lightweight [ContentProvider] that allows hooked target processes (e.g. Google Photos)
@@ -24,96 +23,18 @@ import android.util.Log
 class DiagnosticsProvider : ContentProvider() {
 
     companion object {
-        private const val TAG = "PixelifyDiagProvider"
+        val ALLOWED_DIAG_KEYS: Set<String>
+            get() = DiagnosticsStore.ALLOWED_DIAG_KEYS
 
-        val ALLOWED_DIAG_KEYS: Set<String> = setOf(
-            Constants.PREF_DIAG_MODULE_LOADED_AT,
-            Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
-            Constants.PREF_DIAG_LAST_PACKAGE_READY,
-            Constants.PREF_DIAG_LAST_PACKAGE_READY_AT,
-            Constants.PREF_DIAG_VERIFY_AT,
-            Constants.PREF_DIAG_VERIFY_DEVICE,
-            Constants.PREF_DIAG_VERIFY_PACKAGE,
-            Constants.PREF_DIAG_VERIFY_OK,
-            Constants.PREF_DIAG_VERIFY_FAILED,
-            Constants.PREF_DIAG_VERIFY_NATIVE_READY,
-            Constants.PREF_DIAG_VERIFY_SYSPROPS,
-        )
-
-        private val PACKAGE_NAME_KEYS: Set<String> = setOf(
-            Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
-            Constants.PREF_DIAG_LAST_PACKAGE_READY,
-            Constants.PREF_DIAG_VERIFY_PACKAGE,
-        )
-
-        /**
-         * Validates whether the IPC caller is authorized to write diagnostic data.
-         * Pure logic to enable host JVM unit testing.
-         *
-         * @param callingUid The UID of the caller process from [Binder.getCallingUid].
-         * @param myUid The UID of this module process from [Process.myUid].
-         * @param callingPackages The package names owned by [callingUid].
-         * @param extras The bundle containing diagnostic data, inspected for package name spoofing.
-         */
         fun isCallerAuthorized(
             callingUid: Int,
             myUid: Int,
             callingPackages: Array<String>?,
             extras: Bundle? = null,
-        ): Boolean {
-            // Module's own process / UID is always authorized
-            if (callingUid == myUid) return true
+        ): Boolean = DiagnosticsStore.isCallerAuthorized(callingUid, myUid, callingPackages, extras)
 
-            if (callingPackages.isNullOrEmpty()) return false
-
-            val callingPackageSet = callingPackages.toSet()
-
-            // Verify that at least one package belonging to the caller UID is allowed
-            val hasAllowedPackage = callingPackages.any { pkg ->
-                pkg == Constants.PACKAGE_NAME_MODULE || ScopePolicy.shouldSpoof(pkg)
-            }
-            if (!hasAllowedPackage) return false
-
-            // Anti-spoofing: if extras explicitly report a package name, verify it belongs
-            // to the caller UID and passes ScopePolicy
-            if (extras != null) {
-                for (key in PACKAGE_NAME_KEYS) {
-                    val reportedPkg = extras.getString(key)
-                    if (!reportedPkg.isNullOrEmpty()) {
-                        if (reportedPkg !in callingPackageSet || !ScopePolicy.shouldSpoof(reportedPkg)) {
-                            return false
-                        }
-                    }
-                }
-            }
-
-            return true
-        }
-
-        /**
-         * Writes supported bundle value types into the preferences editor.
-         * Handles Collections (Set, List, ArrayList, HashSet) alongside Arrays and primitives.
-         */
         fun applyExtra(editor: SharedPreferences.Editor, key: String, value: Any?) {
-            when (value) {
-                is Long -> editor.putLong(key, value)
-                is Int -> editor.putInt(key, value)
-                is Boolean -> editor.putBoolean(key, value)
-                is Float -> editor.putFloat(key, value)
-                is String -> editor.putString(key, value)
-                is CharSequence -> editor.putString(key, value.toString())
-                is Array<*> -> {
-                    val stringSet = value.filterIsInstance<String>().toSet()
-                    editor.putStringSet(key, stringSet)
-                }
-                is Collection<*> -> {
-                    val stringSet = value.filterIsInstance<String>().toSet()
-                    editor.putStringSet(key, stringSet)
-                }
-                else -> {
-                    Log.w(TAG, "Unsupported preference value type for key '$key': ${value?.javaClass?.name}")
-                }
-            }
+            DiagnosticsStore.applyExtra(editor, key, value)
         }
     }
 
@@ -157,49 +78,15 @@ class DiagnosticsProvider : ContentProvider() {
         val myUid = resolveMyUid()
         val callingPackages = runCatching { ctx.packageManager.getPackagesForUid(callingUid) }.getOrNull()
 
-        if (!isCallerAuthorized(callingUid, myUid, callingPackages, extras)) {
-            Log.w(TAG, "Rejecting unauthorized diagnostics IPC call '$method' from UID $callingUid")
-            return result.apply { putBoolean("success", false) }
-        }
+        val success = DiagnosticsStore.applyDiagnostics(
+            context = ctx,
+            method = method,
+            extras = extras,
+            callingUid = callingUid,
+            callingPackages = callingPackages,
+            myUid = myUid,
+        )
 
-        try {
-            val prefs = PrefUtils.getPrefs(ctx) ?: return result.apply { putBoolean("success", false) }
-            val editor = prefs.edit()
-
-            when (method) {
-                Constants.METHOD_RECORD_DIAGNOSTICS,
-                Constants.METHOD_RECORD_VERIFY -> {
-                    if (extras != null) {
-                        for (key in extras.keySet()) {
-                            if (key !in ALLOWED_DIAG_KEYS) continue
-                            applyExtra(editor, key, extras.get(key))
-                        }
-                        editor.apply()
-                        result.putBoolean("success", true)
-                    }
-                }
-
-                Constants.METHOD_CLEAR_VERIFY -> {
-                    editor.remove(Constants.PREF_DIAG_VERIFY_AT)
-                        .remove(Constants.PREF_DIAG_VERIFY_DEVICE)
-                        .remove(Constants.PREF_DIAG_VERIFY_PACKAGE)
-                        .remove(Constants.PREF_DIAG_VERIFY_OK)
-                        .remove(Constants.PREF_DIAG_VERIFY_FAILED)
-                        .remove(Constants.PREF_DIAG_VERIFY_NATIVE_READY)
-                        .remove(Constants.PREF_DIAG_VERIFY_SYSPROPS)
-                        .apply()
-                    result.putBoolean("success", true)
-                }
-
-                else -> {
-                    result.putBoolean("success", false)
-                }
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "Failed handling diagnostics IPC call: $method", t)
-            result.putBoolean("success", false)
-        }
-
-        return result
+        return result.apply { putBoolean("success", success) }
     }
 }

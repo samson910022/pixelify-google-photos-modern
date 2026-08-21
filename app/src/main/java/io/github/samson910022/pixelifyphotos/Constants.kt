@@ -47,4 +47,7 @@ object Constants {
     const val METHOD_RECORD_DIAGNOSTICS = "recordDiagnostics"
     const val METHOD_RECORD_VERIFY = "recordVerify"
     const val METHOD_CLEAR_VERIFY = "clearVerify"
+
+    const val ACTION_RECORD_DIAGNOSTICS = "io.github.samson910022.pixelifyphotos.RECORD_DIAGNOSTICS"
+    const val EXTRA_DIAGNOSTICS_METHOD = "method"
 }
