@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import android.os.Process
+import androidx.annotation.VisibleForTesting
 
 /**
  * Lightweight [ContentProvider] that allows hooked target processes (e.g. Google Photos)
@@ -18,6 +19,9 @@ import android.os.Process
  * read-only inside hooked target processes by specification. This provider acts as the
  * authoritative write pipeline, validating incoming callers and keys against immutable
  * security boundaries before persisting them into the manager's preferences.
+ *
+ * The class is open solely so host-side unit tests can override [createResultBundle];
+ * do not subclass it outside tests.
  */
 open class DiagnosticsProvider : ContentProvider() {
 
@@ -31,6 +35,7 @@ open class DiagnosticsProvider : ContentProvider() {
      * override this to supply an observable bundle instead of instrumenting every
      * Bundle construction.
      */
+    @VisibleForTesting
     internal open fun createResultBundle(): Bundle = Bundle()
 
     private fun resolveContext(): Context? = testContext ?: context

@@ -123,6 +123,11 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
     override fun onDestroy() {
         serviceBoundCallback?.let { App.removeOnServiceBoundListener(it) }
         serviceBoundCallback = null
+        // Benign race window: a Binder thread may publish a fresh runnable reference
+        // just after the read below, so removeCallbacks can miss that newest
+        // reference. Safe because onDestroy runs on main — the racing callback
+        // posts onto this same looper, so the runnable dispatches only after
+        // onDestroy returns and self-suppresses via its lifecycle guards.
         postedBindRender?.let { mainHandler.removeCallbacks(it) }
         postedBindRender = null
         super.onDestroy()

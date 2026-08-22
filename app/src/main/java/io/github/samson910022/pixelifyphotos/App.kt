@@ -54,6 +54,19 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         }
     }
 
+    /**
+     * Clears the bound service. Deliberately leaves [serviceBoundListeners]
+     * untouched: that registry only holds one-shot callbacks queued while unbound,
+     * so any entry present when death lands has not yet observed its bind event
+     * and must stay pending until the next [onServiceBind] following an LSPosed
+     * restart — that rebind wait is exactly what the unit tests pin down.
+     * Touching them now would be wrong either way — invoking would fire against
+     * an unbound service and hand consumers a spurious bound verdict, while
+     * clearing without notifying would silently strand their callers until
+     * process death. Registrations racing with this method are safe because
+     * [addOnServiceBoundListener] re-checks [mService] under this same lock and
+     * queues rather than invokes once [mService] reads null.
+     */
     override fun onServiceDied(service: XposedService) {
         synchronized(serviceStateLock) {
             App.mService = null
@@ -73,7 +86,7 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         // lock to keep callbacks free of lock-ordering constraints. A plain list is
         // sufficient: every read and write already holds the lock.
         private val serviceStateLock = Any()
-        private val serviceBoundListeners = ArrayList<() -> Unit>()
+        private val serviceBoundListeners: MutableList<() -> Unit> = ArrayList()
 
         /**
          * Registers a one-shot callback notified exactly once when the Xposed service

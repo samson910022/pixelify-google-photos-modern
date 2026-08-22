@@ -15,7 +15,11 @@ package io.github.samson910022.pixelifyphotos
  * Threading contract: all internal state mutates only on the main looper —
  * [dispatchToMain], [scheduleGraceTimeout], and [cancelGraceTimeout] must all
  * target the main looper, and [start]/[dispose] must run there too (unit tests
- * may inject synchronous fakes). [start] and [dispose] must come from the same
+ * may inject synchronous fakes). Consequently [attemptResolve], including its
+ * [isHostDisposed] evaluation inside the lock, always runs on the production
+ * main thread, where host liveness checks such as `Activity.isFinishing`
+ * and `isDestroyed` are valid; binder-thread events reach it only marshaled
+ * through [dispatchToMain]. [start] and [dispose] must come from the same
  * thread — a cross-thread pair could strand one registration. Pure Kotlin by
  * design — no Android imports — so the gate logic is unit-testable without
  * Robolectric.

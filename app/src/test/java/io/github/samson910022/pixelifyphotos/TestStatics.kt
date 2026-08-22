@@ -15,7 +15,7 @@ import java.lang.reflect.Modifier
  * --no-daemon test JVMs make this a non-issue today, but if a delegation test
  * ever passes vacuously against the real singleton, suspect folding first.
  */
-@Suppress("DEPRECATION") // defensive: Unsafe memory-access APIs are forRemoval from JDK 24
+@Suppress("DEPRECATION") // defensive: Unsafe memory-access APIs are terminally deprecated since JDK 23 (JEP 471)
 internal object TestStatics {
 
     /** Resolved reflectively because sun.* is absent from the android.jar compile classpath. */
