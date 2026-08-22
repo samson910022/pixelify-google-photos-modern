@@ -27,7 +27,7 @@ import java.util.zip.ZipFile
  *
  * Write strategies (success = post-write readback match):
  * 1. Clear reflected `final` + [Field.set]
- * 2. Multi-variant Unsafe static put (`putObject` / `putReference` / volatile,
+ * 2. Multi-variant Unsafe static put (`putObject` plus its volatile form,
  *    `staticFieldBase` and declaring-class bases)
  * 3. JNI fallback (`libpixelify_build`): `SetStatic*Field` + readback
  *    (no ArtField memory patching — unsafe on modern ART layouts)
@@ -858,8 +858,6 @@ object DeviceSpoofer {
             val staticFieldOffset: Method,
             val putObject: Method?,
             val putObjectVolatile: Method?,
-            val putReference: Method?,
-            val putReferenceVolatile: Method?,
             val putInt: Method?,
             val putIntVolatile: Method?,
             val putLong: Method?,
@@ -909,8 +907,6 @@ object DeviceSpoofer {
                     staticFieldOffset = staticFieldOffset,
                     putObject = methodOrNull("putObject", obj, l, obj),
                     putObjectVolatile = methodOrNull("putObjectVolatile", obj, l, obj),
-                    putReference = methodOrNull("putReference", obj, l, obj),
-                    putReferenceVolatile = methodOrNull("putReferenceVolatile", obj, l, obj),
                     putInt = methodOrNull("putInt", obj, l, i),
                     putIntVolatile = methodOrNull("putIntVolatile", obj, l, i),
                     putLong = methodOrNull("putLong", obj, l, l),
@@ -996,9 +992,11 @@ object DeviceSpoofer {
                 java.lang.Byte.TYPE -> attempts += "putByte" to h.putByte
                 Character.TYPE -> attempts += "putChar" to h.putChar
                 else -> {
-                    attempts += "putReferenceVolatile" to h.putReferenceVolatile
+                    // No putReference probes by design: sun.misc.Unsafe has never
+                    // exposed such methods; only the jdk.internal.misc fallback has
+                    // them, alongside equivalent putObject/putObjectVolatile, so
+                    // these two probes suffice either way.
                     attempts += "putObjectVolatile" to h.putObjectVolatile
-                    attempts += "putReference" to h.putReference
                     attempts += "putObject" to h.putObject
                 }
             }
