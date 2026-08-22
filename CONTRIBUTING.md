@@ -62,6 +62,8 @@ Outputs are written below `app/build/outputs/` and are ignored by Git.
 
 Host-side unit tests assume **JDK 17**. `app/src/test/.../TestStatics.kt` writes static fields reflectively: plain `Field.set` for non-final companion vars (with fail-fast finality/readback checks), and sun.misc.Unsafe for static-final Kotlin object singletons, which JDK 9+ forbids through `Field.set`. CI pins Temurin 17; if you raise the test toolchain, revisit that helper first.
 
+The build adds the required JPMS opens (`--add-opens java.base/java.lang.reflect=ALL-UNNAMED`, plus defensive `sun.misc` opens — see `app/build.gradle.kts`) to every `Test` task, so local runs and CI need no manual JVM flags.
+
 ## Source layout
 
 - `app/src/main/java/io/github/samson910022/pixelifyphotos/` — application and module code

@@ -170,6 +170,20 @@ base {
     archivesName.set("PixelifyInfinity-$appVersionName")
 }
 
+// Unit tests reach into java.lang.reflect.Field internals (TestStatics, DeviceSpoofer
+// final-field clearing). Open those modules on every Test worker so the reflective
+// path stays reproducible even under stricter JPMS setups. The java.base/sun.misc
+// entry is a defensive no-op (sun.misc actually lives in jdk.unsupported, which is
+// exported and opened unconditionally); the JVM logs a harmless "not in java.base"
+// warning for it.
+tasks.withType<Test>().configureEach {
+    jvmArgs(
+        "--add-opens", "java.base/java.lang.reflect=ALL-UNNAMED",
+        "--add-opens", "jdk.unsupported/sun.misc=ALL-UNNAMED",
+        "--add-opens", "java.base/sun.misc=ALL-UNNAMED",
+    )
+}
+
 val expectedReleaseCertificateSha256 =
     "37186E5C2694E553E5FAB1F7787C04DBCD4384AB84963E60BE9C3CCB6BA907B1"
 
