@@ -17,8 +17,8 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.4.0</string>
-    <string name="version_desc">New in-app Diagnostics screen that surfaces hook milestones, the last device-spoof VERIFY result, and real vs spoof-target Build values with a copyable report for issue reports; documented tested Google Photos / Android version matrix.</string>
+    <string name="version_head">Version 1.4.1</string>
+    <string name="version_desc">Resolved cold-start race where module status was falsely reported as inactive, cleaned up dead Unsafe reflection probes, and hardened cross-thread concurrency contracts.</string>
     <string name="changelog">Change log</string>
 
     <!-- Configuration import/export -->

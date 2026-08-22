@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.1] - 2026-08-23
+
+### Fixed
+
+- **Cold-Start Module Detection Race**: Resolved an asynchronous race condition on cold launches where `ActivityMain` checked for the LSPosed service binder before binder delivery completed, which falsely displayed a "module not enabled" dialog. Introduced `ModuleStateResolver` with a 3-second grace window, an atomic listener registry in `App`, and `BindRenderCoordinator` to eliminate false negatives.
+- **Dead Unsafe Reflection Probes**: Removed non-resolvable `putReference` and `putReferenceVolatile` probes from `DeviceSpoofer.UnsafeStatic` reference-store attempts, standardizing on canonical `putObjectVolatile -> putObject` operations.
+
+### Changed
+
+- Bumped version to `1.4.1` (`versionCode 10`).
+- Documented cross-thread concurrency contracts across `App`, `ModuleStateResolver`, and `DiagnosticsActivity`.
+- Added `@VisibleForTesting` test seam annotation to `DiagnosticsProvider.createResultBundle` and expanded unit test coverage across cold-start lifecycle and diagnostics.
+
 ## [1.4.0] - 2026-08-21
 
 ### Added

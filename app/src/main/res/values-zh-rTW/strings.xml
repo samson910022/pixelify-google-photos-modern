@@ -17,8 +17,8 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.4.0</string>
-    <string name="version_desc">新增 App 內「診斷」畫面（顯示 Hook 里程碑、上次裝置模擬 VERIFY 結果、實際與模擬目標 Build 欄位，並可複製報告方便回報問題）；文件新增已測試的 Google 相簿／Android 版本矩陣。</string>
+    <string name="version_head">版本 1.4.1</string>
+    <string name="version_desc">修復冷啟動時因競爭條件導致誤判模組未啟用的問題、清理無效的 Unsafe 反射探測，並強化跨執行緒併發契約與測試覆蓋。</string>
     <string name="changelog">變更記錄</string>
 
     <!-- 設定匯入／匯出 -->
