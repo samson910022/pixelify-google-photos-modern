@@ -50,8 +50,20 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** Deduplicates renders when the bind event races the resume transaction. */
+    private val renderCoordinator = BindRenderCoordinator()
+
     /** Pending bind callback awaiting removal, or null when not registered. */
     private var serviceBoundCallback: (() -> Unit)? = null
+
+    /**
+     * The single posted bind-render runnable, tracked for targeted cancellation.
+     * Written from the Binder thread and read/cleared on main; normal visibility
+     * is mediated by the Handler message queue. A stale read racing onDestroy is
+     * benign: removeCallbacks would be skipped, and the runnable self-suppresses
+     * via its own lifecycle guards.
+     */
+    private var postedBindRender: Runnable? = null
 
     private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
@@ -90,11 +102,16 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         // registration is needed.
         if (App.mService == null) {
             val onBound: () -> Unit = {
-                mainHandler.post {
-                    if (!isFinishing && !isDestroyed && App.mService != null) {
+                val posted = Runnable {
+                    postedBindRender = null
+                    if (!isFinishing && !isDestroyed && App.mService != null &&
+                        !renderCoordinator.skipPostedRender(serviceNowBound = true)
+                    ) {
                         render()
                     }
                 }
+                postedBindRender = posted
+                mainHandler.post(posted)
             }
             serviceBoundCallback = onBound
             App.addOnServiceBoundListener(onBound)
@@ -104,7 +121,8 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
     override fun onDestroy() {
         serviceBoundCallback?.let { App.removeOnServiceBoundListener(it) }
         serviceBoundCallback = null
-        mainHandler.removeCallbacksAndMessages(null)
+        postedBindRender?.let { mainHandler.removeCallbacks(it) }
+        postedBindRender = null
         super.onDestroy()
     }
 
@@ -166,6 +184,11 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         DiagnosticsCollector.compareProps(snapshot.target, snapshot.real).forEach { check ->
             container?.addView(buildFieldRow(check))
         }
+
+        // Record what THIS render displayed, not a fresh re-read: the bind event may
+        // land mid-render, and recording a newer value would wrongly suppress the
+        // posted unbound→bound refresh.
+        renderCoordinator.onRendered(snapshot.moduleActive)
     }
 
     private fun collectSnapshot(): Snapshot {

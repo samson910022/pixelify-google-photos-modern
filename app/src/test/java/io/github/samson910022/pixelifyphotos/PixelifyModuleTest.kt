@@ -61,9 +61,7 @@ class PixelifyModuleTest {
         try {
             // The module constructor publishes itself into the companion singleton;
             // clear it so later suites never observe a stale framework-attached module.
-            val field = PixelifyModule::class.java.getDeclaredField("instance")
-            field.isAccessible = true
-            field.set(null, null)
+            TestStatics.setStaticField(PixelifyModule::class.java, "instance", null)
         } finally {
             mockedLog.close()
         }

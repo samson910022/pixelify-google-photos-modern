@@ -58,6 +58,10 @@ Unsigned release artifacts are sufficient for ordinary pull requests. Permanent 
 
 Outputs are written below `app/build/outputs/` and are ignored by Git.
 
+### Test infrastructure notes
+
+Host-side unit tests assume **JDK 17**. `app/src/test/.../TestStatics.kt` writes static fields reflectively: plain `Field.set` for non-final companion vars (with fail-fast finality/readback checks), and sun.misc.Unsafe for static-final Kotlin object singletons, which JDK 9+ forbids through `Field.set`. CI pins Temurin 17; if you raise the test toolchain, revisit that helper first.
+
 ## Source layout
 
 - `app/src/main/java/io/github/samson910022/pixelifyphotos/` — application and module code

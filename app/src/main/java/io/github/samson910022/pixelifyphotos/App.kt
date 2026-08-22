@@ -5,7 +5,6 @@ import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.DynamicColorsOptions
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
-import java.util.concurrent.CopyOnWriteArrayList
 
 class App : Application(), XposedServiceHelper.OnServiceListener {
 
@@ -63,9 +62,10 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         // The LSPosed service binder arrives asynchronously (inbound provider IPC on a
         // Binder thread), so registration and bind events can race. All state below is
         // guarded by [serviceStateLock]; listeners are drained and invoked outside the
-        // lock to keep callbacks free of lock-ordering constraints.
+        // lock to keep callbacks free of lock-ordering constraints. A plain list is
+        // sufficient: every read and write already holds the lock.
         private val serviceStateLock = Any()
-        private val serviceBoundListeners = CopyOnWriteArrayList<() -> Unit>()
+        private val serviceBoundListeners = ArrayList<() -> Unit>()
 
         /**
          * Registers a one-shot callback notified exactly once when the Xposed service
@@ -99,6 +99,16 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         fun removeOnServiceBoundListener(listener: () -> Unit) {
             synchronized(serviceStateLock) {
                 serviceBoundListeners.remove(listener)
+            }
+        }
+
+        /**
+         * Clears pending service-bound callbacks; test isolation only, no
+         * production callers.
+         */
+        internal fun clearServiceBoundListeners() {
+            synchronized(serviceStateLock) {
+                serviceBoundListeners.clear()
             }
         }
     }

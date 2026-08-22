@@ -62,7 +62,9 @@ class ActivityMain : AppCompatActivity() {
          * Grace window for the asynchronous LSPosed service binder delivery. On cold
          * start the binder routinely arrives after activity creation, so an immediate
          * "module not enabled" verdict would be a false negative; only report the
-         * module as disabled once this window elapses without a bind event.
+         * module as disabled once this window elapses without a bind event. The
+         * 3000 ms value is an empirical choice sized against observed cold-start
+         * binder latency headroom, not derived from any platform contract.
          */
         private const val SERVICE_BIND_GRACE_TIMEOUT_MS = 3_000L
     }
@@ -73,11 +75,25 @@ class ActivityMain : AppCompatActivity() {
 
     private var isClassicUi: Boolean = false
 
-    /** Guards one-shot resolution of the enabled/disabled verdict on the main thread. */
-    private var moduleStateResolved: Boolean = false
+    /** Active cold-start gate, or null when the enabled fast path skipped waiting. */
+    private var moduleStateResolver: ModuleStateResolver? = null
 
-    /** Pending bind callback awaiting removal, or null when no wait is in progress. */
-    private var pendingServiceBoundCallback: (() -> Unit)? = null
+    /**
+     * Cold-start race guard: the LSPosed service binder is delivered asynchronously
+     * after process start, so [isModuleEnabled] can legitimately be false while this
+     * activity is being created even though the module IS enabled in LSPosed. The
+     * resolver owns listener registration, targeted grace-timeout cancellation, and
+     * exactly-once verdict delivery; see [ModuleStateResolver].
+     */
+    private fun createModuleStateResolver(): ModuleStateResolver = ModuleStateResolver(
+        addServiceBoundListener = App::addOnServiceBoundListener,
+        removeServiceBoundListener = App::removeOnServiceBoundListener,
+        dispatchToMain = { mainHandler.post(it) },
+        scheduleGraceTimeout = { mainHandler.postDelayed(it, SERVICE_BIND_GRACE_TIMEOUT_MS) },
+        cancelGraceTimeout = { mainHandler.removeCallbacks(it) },
+        isHostDisposed = { isFinishing || isDestroyed },
+        onResolved = ::onModuleStateResolved,
+    )
 
     /**
      * Get preferences via XposedService remote preferences when available,
@@ -171,52 +187,22 @@ class ActivityMain : AppCompatActivity() {
         }
 
         if (!isModuleEnabled()) {
-            awaitServiceBindThenResolve()
+            moduleStateResolver = createModuleStateResolver().also { it.start() }
             return
         }
-        moduleStateResolved = true
         initializeUi(pref)
     }
 
     /**
-     * Cold-start race guard: the LSPosed service binder is delivered asynchronously
-     * after process start, so [isModuleEnabled] can legitimately be false while this
-     * activity is being created even though the module IS enabled in LSPosed. Wait a
-     * short grace window for [App.onServiceBind] before concluding the module is
-     * disabled; on bind, initialize the UI instead of showing the blocking dialog.
+     * Delivers the resolved verdict: bind within the grace window initializes the
+     * full UI; expiry keeps the original blocking "module not enabled" dialog.
      */
-    private fun awaitServiceBindThenResolve() {
-        val timeout = Runnable {
-            clearPendingServiceBoundCallback()
-            resolveOnce { showModuleNotEnabledDialog() }
+    private fun onModuleStateResolved(enabled: Boolean) {
+        if (enabled) {
+            initializeUi(getPrefs())
+        } else {
+            showModuleNotEnabledDialog()
         }
-        // Invoked on a Binder thread by App.onServiceBind; marshal UI work to main.
-        val onBound: () -> Unit = {
-            mainHandler.post {
-                mainHandler.removeCallbacks(timeout)
-                clearPendingServiceBoundCallback()
-                resolveOnce { initializeUi(getPrefs()) }
-            }
-        }
-        pendingServiceBoundCallback = onBound
-        // May fire synchronously if the service bound between our check and here.
-        App.addOnServiceBoundListener(onBound)
-        mainHandler.postDelayed(timeout, SERVICE_BIND_GRACE_TIMEOUT_MS)
-    }
-
-    private fun clearPendingServiceBoundCallback() {
-        pendingServiceBoundCallback?.let { App.removeOnServiceBoundListener(it) }
-        pendingServiceBoundCallback = null
-    }
-
-    /**
-     * Runs [resolve] at most once per activity instance. All callers execute on the
-     * main thread (Handler callbacks), so the flag needs no synchronization.
-     */
-    private fun resolveOnce(resolve: () -> Unit) {
-        if (moduleStateResolved || isFinishing || isDestroyed) return
-        moduleStateResolved = true
-        resolve()
     }
 
     /**
@@ -754,8 +740,12 @@ class ActivityMain : AppCompatActivity() {
      * down the background update executor.
      */
     override fun onDestroy() {
-        mainHandler.removeCallbacksAndMessages(null)
-        clearPendingServiceBoundCallback()
+        // Targeted teardown: the resolver owns the only runnables this activity
+        // posts (grace timeout + marshaled bind resolution). dispose() cancels the
+        // timeout token and unregisters its listener by identity; an already
+        // dispatched resolution post self-suppresses via the disposed flag. Null
+        // when the enabled fast path never started a wait.
+        moduleStateResolver?.dispose()
         updateExecutor.shutdownNow()
         super.onDestroy()
     }

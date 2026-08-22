@@ -25,9 +25,6 @@ class DiagnosticsProviderTest {
     private lateinit var mockEditor: SharedPreferences.Editor
     private lateinit var provider: DiagnosticsProvider
 
-    /** Original DiagnosticsStore.INSTANCE captured before any swap for restoration. */
-    private var originalStoreInstance: Any? = null
-
     @Before
     fun setUp() {
         mockedLog = Mockito.mockStatic(Log::class.java)
@@ -37,9 +34,7 @@ class DiagnosticsProviderTest {
 
         // Hermeticity: never inherit a bound service left by another suite in this JVM,
         // otherwise PrefUtils would route to remote prefs and bypass the file-store mocks.
-        val serviceField = App::class.java.getDeclaredField("mService")
-        serviceField.isAccessible = true
-        serviceField.set(null, null)
+        TestStatics.setStaticField(App::class.java, "mService", null)
 
         mockContext = mock()
         mockPrefs = mock()
@@ -74,57 +69,23 @@ class DiagnosticsProviderTest {
         }
     }
 
-    /**
-     * JDK 17 forbids reflective writes to static final fields via [java.lang.reflect.Field.set],
-     * so the Kotlin object's INSTANCE backing field is swapped through sun.misc.Unsafe instead
-     * (resolved reflectively because sun.* is absent from the android.jar compile classpath).
-     * Known limitation: HotSpot may in theory constant-fold trusted-final static reads and
-     * bypass the swap; short-lived test JVMs make this a non-issue here, but if delegation
-     * tests ever pass vacuously against the real store, suspect folding first.
-     */
-    private val unsafe: Any by lazy {
-        val theUnsafe = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe")
-        theUnsafe.isAccessible = true
-        theUnsafe.get(null)!!
-    }
-
-    /** Reflection bridge over [sun.misc.Unsafe] static-field writes. */
-    private fun putStaticObject(field: java.lang.reflect.Field, value: Any?) {
-        val unsafeClass = unsafe.javaClass
-        val base = unsafeClass.getMethod("staticFieldBase", java.lang.reflect.Field::class.java)
-            .invoke(unsafe, field)
-        val offset = unsafeClass.getMethod("staticFieldOffset", java.lang.reflect.Field::class.java)
-            .invoke(unsafe, field) as Long
-        unsafeClass.getMethod(
-            "putObject",
-            Any::class.java,
-            Long::class.javaPrimitiveType,
-            Any::class.java,
-        ).invoke(unsafe, base, offset, value)
-    }
+    /** Active singleton swap; closed (restored) in [tearDown], close-once semantics. */
+    private var storeSwap: TestStatics.SwapHandle? = null
 
     /**
      * Swaps the singleton backing field of the Kotlin [DiagnosticsStore] object with a
      * mock so provider→store delegation can be verified argument-by-argument. The
-     * original instance is captured once and restored in [tearDown].
+     * original instance is restored via the handle in [tearDown].
      */
     private fun swapStoreInstanceWithMock(): DiagnosticsStore {
-        val field = DiagnosticsStore::class.java.getDeclaredField("INSTANCE")
-        field.isAccessible = true
-        if (originalStoreInstance == null) {
-            originalStoreInstance = field.get(null)
-        }
         val storeMock: DiagnosticsStore = mock()
-        putStaticObject(field, storeMock)
+        storeSwap = TestStatics.swapObjectInstance(DiagnosticsStore::class.java, "INSTANCE", storeMock)
         return storeMock
     }
 
     private fun restoreStoreInstance() {
-        if (originalStoreInstance == null) return
-        val field = DiagnosticsStore::class.java.getDeclaredField("INSTANCE")
-        field.isAccessible = true
-        putStaticObject(field, originalStoreInstance)
-        originalStoreInstance = null
+        storeSwap?.close()
+        storeSwap = null
     }
 
     /**

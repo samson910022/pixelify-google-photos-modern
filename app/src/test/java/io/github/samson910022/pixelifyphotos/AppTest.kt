@@ -27,6 +27,11 @@ import org.mockito.kotlin.spy
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.util.UUID
+import java.util.concurrent.Callable
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicIntegerArray
 
 class AppTest {
 
@@ -64,31 +69,21 @@ class AppTest {
     }
 
     /**
-     * Injects a mock XposedService into the [App] companion (private setter) via
-     * reflection so bind-state paths can be exercised in JVM unit tests.
+     * Injects a mock XposedService into the [App] companion so bind-state paths can
+     * be exercised in JVM unit tests. The fail-fast helper verifies the field is
+     * still a non-final static and that the write landed.
      */
     private fun setMockXposedService(service: XposedService?) {
-        val field = App::class.java.getDeclaredField("mService")
-        field.isAccessible = true
-        field.set(null, service)
+        TestStatics.setStaticField(App::class.java, "mService", service)
     }
 
-    /** Drains any listeners left registered by a test to avoid cross-test leakage. */
+    /** Clears pending listeners via the production test seam. */
     private fun clearListeners() {
-        val field = App::class.java.getDeclaredField("serviceBoundListeners")
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val listeners = field.get(null) as MutableList<*>
-        listeners.clear()
+        App.clearServiceBoundListeners()
     }
 
-    private fun currentListenerCount(): Int {
-        val field = App::class.java.getDeclaredField("serviceBoundListeners")
-        field.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val listeners = field.get(null) as MutableList<*>
-        return listeners.size
-    }
+    private fun currentListenerCount(): Int =
+        TestStatics.getStaticField<MutableList<*>>(App::class.java, "serviceBoundListeners").size
 
     // =========================================================================
     // 1. Registration before the service binds
@@ -353,5 +348,51 @@ class AppTest {
         // The logged swallow proves convergence actually ran and hit its guarded
         // failure path, rather than the wiring being skipped entirely.
         mockedLog.verify { Log.d(any(), any()) }
+    }
+
+    // =========================================================================
+    // 7. Concurrency: registration racing the bind event
+    // =========================================================================
+
+    @Test
+    fun `concurrent registrations racing bind invoke every listener exactly once`() {
+        val threads = 8
+        val perThread = 64
+        val total = threads * perThread
+        val go = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(threads + 1)
+        try {
+            val counts = AtomicIntegerArray(total)
+            val registrationFutures = (0 until total).map { index ->
+                pool.submit(
+                    Callable {
+                        go.await()
+                        App.addOnServiceBoundListener { counts.incrementAndGet(index) }
+                    },
+                )
+            }
+            val binderFuture = pool.submit(
+                Callable {
+                    go.await()
+                    app.onServiceBind(mock<XposedService>())
+                },
+            )
+
+            go.countDown()
+            registrationFutures.forEach { it.get(30, TimeUnit.SECONDS) }
+            binderFuture.get(30, TimeUnit.SECONDS)
+
+            // Invariants that must hold under every interleaving: registrations
+            // landing before the drain are invoked from it, registrations after it
+            // take the synchronous fast path — either way exactly once each, with
+            // no listener left stranded in the registry.
+            assertEquals(total, (0 until total).sumOf { counts.get(it) })
+            assertEquals(0, currentListenerCount())
+        } finally {
+            pool.shutdownNow()
+            // Bounded wait so tearDown's registry/mService resets cannot race live
+            // workers if an assertion above failed while tasks were still running.
+            check(pool.awaitTermination(5, TimeUnit.SECONDS)) { "stress pool did not terminate" }
+        }
     }
 }

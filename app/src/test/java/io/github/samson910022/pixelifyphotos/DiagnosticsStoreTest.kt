@@ -76,14 +76,11 @@ class DiagnosticsStoreTest {
     }
 
     /**
-     * Injects a mock XposedService into the [App] companion (private setter) via
-     * reflection so remote-preferences paths can be exercised in JVM unit tests.
-     * The backing field is a static field on the outer App class.
+     * Injects a mock XposedService into the [App] companion so remote-preferences
+     * paths can be exercised in JVM unit tests.
      */
     private fun setMockXposedService(service: XposedService?) {
-        val field = App::class.java.getDeclaredField("mService")
-        field.isAccessible = true
-        field.set(null, service)
+        TestStatics.setStaticField(App::class.java, "mService", service)
     }
 
     private fun stubBoundServiceWithRemotePrefs(): XposedService {
