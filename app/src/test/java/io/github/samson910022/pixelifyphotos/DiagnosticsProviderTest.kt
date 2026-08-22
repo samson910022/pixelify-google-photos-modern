@@ -51,7 +51,7 @@ class DiagnosticsProviderTest {
         whenever(mockEditor.putStringSet(any(), any())).thenReturn(mockEditor)
         whenever(mockEditor.remove(any())).thenReturn(mockEditor)
 
-        provider = DiagnosticsProvider()
+        provider = observingProvider()
         provider.testContext = mockContext
         provider.testCallingUid = 10000
         provider.testMyUid = 10000
@@ -89,19 +89,16 @@ class DiagnosticsProviderTest {
     }
 
     /**
-     * Runs [block] while intercepting every Bundle constructed inside it. Under JVM unit
-     * tests android.jar's Bundle is a stub (putBoolean is a no-op and getBoolean always
-     * returns false), so the provider's result-bundle flag can only be verified against a
-     * mocked construction. Returns the single constructed result bundle.
+     * Provider whose [DiagnosticsProvider.createResultBundle] yields a Mockito mock.
+     * Under JVM unit tests android.jar's Bundle is a stub (putBoolean is a no-op and
+     * getBoolean always returns false), so result-bundle flags are verified against
+     * this mock. The provider returns exactly the bundle it created, so tests can
+     * verify directly on the [DiagnosticsProvider.call] return value.
      */
-    private fun captureResultBundleFrom(block: () -> Bundle?): Bundle {
-        var captured: Bundle? = null
-        Mockito.mockConstruction(Bundle::class.java).use { construction ->
-            block()
-            captured = construction.constructed().single()
+    private fun observingProvider(): DiagnosticsProvider =
+        object : DiagnosticsProvider() {
+            override fun createResultBundle(): Bundle = mock()
         }
-        return captured!!
-    }
 
     @Test
     fun `ALLOWED_DIAG_KEYS only contains PREF_DIAG keys`() {
@@ -287,9 +284,7 @@ class DiagnosticsProviderTest {
         whenever(extras.get(Constants.PREF_DIAG_LAST_PACKAGE_LOADED)).thenReturn("com.google.android.apps.photos")
         whenever(extras.get(Constants.PREF_DIAG_LAST_PACKAGE_READY_AT)).thenReturn(1700000005000L)
 
-        val result = captureResultBundleFrom {
-            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
-        }
+        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)!!
 
         verify(result).putBoolean("success", true)
         verify(mockEditor).putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, 1700000000000L)
@@ -319,9 +314,7 @@ class DiagnosticsProviderTest {
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_NATIVE_READY)).thenReturn(true)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_SYSPROPS)).thenReturn(true)
 
-        val result = captureResultBundleFrom {
-            provider.call(Constants.METHOD_RECORD_VERIFY, null, extras)
-        }
+        val result = provider.call(Constants.METHOD_RECORD_VERIFY, null, extras)!!
 
         verify(result).putBoolean("success", true)
         verify(mockEditor).putLong(Constants.PREF_DIAG_VERIFY_AT, 1700000010000L)
@@ -335,9 +328,7 @@ class DiagnosticsProviderTest {
 
     @Test
     fun `call CLEAR_VERIFY removes all verify preference keys`() {
-        val result = captureResultBundleFrom {
-            provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)
-        }
+        val result = provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)!!
 
         verify(result).putBoolean("success", true)
         verify(mockEditor).remove(Constants.PREF_DIAG_VERIFY_AT)
@@ -377,9 +368,7 @@ class DiagnosticsProviderTest {
 
     @Test
     fun `call returns success false on unknown method without modifying preferences`() {
-        val result = captureResultBundleFrom {
-            provider.call("UNSUPPORTED_METHOD_XYZ", null, mock<Bundle>())
-        }
+        val result = provider.call("UNSUPPORTED_METHOD_XYZ", null, mock<Bundle>())!!
 
         verify(result).putBoolean("success", false)
         verifyNoInteractions(mockEditor)
@@ -387,14 +376,34 @@ class DiagnosticsProviderTest {
 
     @Test
     fun `call returns success false when context is null`() {
-        val unattachedProvider = DiagnosticsProvider()
+        val unattachedProvider = observingProvider()
 
-        val result = captureResultBundleFrom {
-            unattachedProvider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, null)
-        }
+        val result = unattachedProvider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, null)!!
 
         verify(result).putBoolean("success", false)
         verifyNoInteractions(mockEditor)
+    }
+
+    @Test
+    fun `call returns exactly the bundle produced by createResultBundle`() {
+        val marker = mock<Bundle>()
+        val providerWithMarker = object : DiagnosticsProvider() {
+            override fun createResultBundle(): Bundle = marker
+        }
+        providerWithMarker.testContext = mockContext
+
+        assertSame(marker, providerWithMarker.call(Constants.METHOD_CLEAR_VERIFY, null, null))
+    }
+
+    @Test
+    fun `unattached call returns the seam bundle on the early-return path`() {
+        val marker = mock<Bundle>()
+        val providerWithMarker = object : DiagnosticsProvider() {
+            override fun createResultBundle(): Bundle = marker
+        }
+
+        assertSame(marker, providerWithMarker.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, null))
+        verify(marker).putBoolean("success", false)
     }
 
     // =========================================================================
@@ -414,9 +423,7 @@ class DiagnosticsProviderTest {
         provider.testMyUid = 10000
 
         val extras = mock<Bundle>()
-        val result = captureResultBundleFrom {
-            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
-        }
+        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)!!
 
         verify(result).putBoolean("success", true)
         verify(storeMock).applyDiagnostics(
@@ -435,9 +442,7 @@ class DiagnosticsProviderTest {
         whenever(storeMock.applyDiagnostics(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
             .thenReturn(false)
 
-        val result = captureResultBundleFrom {
-            provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)
-        }
+        val result = provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)!!
 
         verify(result).putBoolean("success", false)
         verify(storeMock).applyDiagnostics(
@@ -453,11 +458,9 @@ class DiagnosticsProviderTest {
     @Test
     fun `call does not delegate to applyDiagnostics when context is unresolvable`() {
         val storeMock = swapStoreInstanceWithMock()
-        val unattachedProvider = DiagnosticsProvider()
+        val unattachedProvider = observingProvider()
 
-        val result = captureResultBundleFrom {
-            unattachedProvider.call(Constants.METHOD_RECORD_VERIFY, null, null)
-        }
+        val result = unattachedProvider.call(Constants.METHOD_RECORD_VERIFY, null, null)!!
 
         verify(result).putBoolean("success", false)
         verifyNoInteractions(storeMock)
@@ -480,9 +483,7 @@ class DiagnosticsProviderTest {
         whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_MODULE_LOADED_AT))
         whenever(extras.get(Constants.PREF_DIAG_MODULE_LOADED_AT)).thenReturn(1700000000000L)
 
-        val result = captureResultBundleFrom {
-            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
-        }
+        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)!!
 
         verify(result).putBoolean("success", true)
         verify(mockEditor).putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, 1700000000000L)
@@ -497,9 +498,7 @@ class DiagnosticsProviderTest {
         provider.testCallingUid = 10999
         provider.testMyUid = 10000
 
-        val result = captureResultBundleFrom {
-            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, mock<Bundle>())
-        }
+        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, mock<Bundle>())!!
 
         verify(result).putBoolean("success", false)
         verifyNoInteractions(mockEditor)

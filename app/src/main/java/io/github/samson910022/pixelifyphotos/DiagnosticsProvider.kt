@@ -19,11 +19,19 @@ import android.os.Process
  * authoritative write pipeline, validating incoming callers and keys against immutable
  * security boundaries before persisting them into the manager's preferences.
  */
-class DiagnosticsProvider : ContentProvider() {
+open class DiagnosticsProvider : ContentProvider() {
 
     internal var testContext: Context? = null
     internal var testCallingUid: Int? = null
     internal var testMyUid: Int? = null
+
+    /**
+     * Test seam for the [call] result bundle: host-side unit tests run against the
+     * stub android.jar, whose Bundle is inert (putBoolean is a no-op), so tests
+     * override this to supply an observable bundle instead of instrumenting every
+     * Bundle construction.
+     */
+    internal open fun createResultBundle(): Bundle = Bundle()
 
     private fun resolveContext(): Context? = testContext ?: context
     private fun resolveCallingUid(): Int = testCallingUid ?: runCatching { Binder.getCallingUid() }.getOrDefault(0)
@@ -54,7 +62,7 @@ class DiagnosticsProvider : ContentProvider() {
 
     @Suppress("DEPRECATION")
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
-        val result = Bundle()
+        val result = createResultBundle()
         val ctx = resolveContext() ?: return result.apply { putBoolean("success", false) }
 
         val callingUid = resolveCallingUid()
