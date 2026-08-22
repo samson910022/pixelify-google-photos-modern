@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import android.os.Process
+import androidx.annotation.VisibleForTesting
 
 /**
  * Lightweight [ContentProvider] that allows hooked target processes (e.g. Google Photos)
@@ -18,12 +19,24 @@ import android.os.Process
  * read-only inside hooked target processes by specification. This provider acts as the
  * authoritative write pipeline, validating incoming callers and keys against immutable
  * security boundaries before persisting them into the manager's preferences.
+ *
+ * The class is open solely so host-side unit tests can override [createResultBundle];
+ * do not subclass it outside tests.
  */
-class DiagnosticsProvider : ContentProvider() {
+open class DiagnosticsProvider : ContentProvider() {
 
     internal var testContext: Context? = null
     internal var testCallingUid: Int? = null
     internal var testMyUid: Int? = null
+
+    /**
+     * Test seam for the [call] result bundle: host-side unit tests run against the
+     * stub android.jar, whose Bundle is inert (putBoolean is a no-op), so tests
+     * override this to supply an observable bundle instead of instrumenting every
+     * Bundle construction.
+     */
+    @VisibleForTesting
+    internal open fun createResultBundle(): Bundle = Bundle()
 
     private fun resolveContext(): Context? = testContext ?: context
     private fun resolveCallingUid(): Int = testCallingUid ?: runCatching { Binder.getCallingUid() }.getOrDefault(0)
@@ -54,7 +67,7 @@ class DiagnosticsProvider : ContentProvider() {
 
     @Suppress("DEPRECATION")
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
-        val result = Bundle()
+        val result = createResultBundle()
         val ctx = resolveContext() ?: return result.apply { putBoolean("success", false) }
 
         val callingUid = resolveCallingUid()

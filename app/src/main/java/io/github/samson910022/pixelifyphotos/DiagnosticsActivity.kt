@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
@@ -46,6 +48,25 @@ import io.github.samson910022.pixelifyphotos.DiagnosticsCollector.MilestoneSigna
  */
 class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** Deduplicates renders when the bind event races the resume transaction. */
+    private val renderCoordinator = BindRenderCoordinator()
+
+    /** Pending bind callback awaiting removal, or null when not registered. */
+    private var serviceBoundCallback: (() -> Unit)? = null
+
+    /**
+     * The single posted bind-render runnable, tracked for targeted cancellation.
+     * Written from the Binder thread — or synchronously on main when a bind race
+     * fires the callback inline — and read/cleared on main; [Volatile] makes that
+     * cross-thread visibility explicit instead of relying on the Handler message
+     * queue. A stale read racing onDestroy remains benign: removeCallbacks would
+     * be skipped, and the runnable self-suppresses via its own lifecycle guards.
+     */
+    @Volatile
+    private var postedBindRender: Runnable? = null
+
     private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
     /** Everything the screen renders, collected once per refresh. */
@@ -77,6 +98,39 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         findViewById<MaterialButton>(R.id.diagnostics_copy_report)?.setOnClickListener {
             copyReport()
         }
+        // The Xposed service binder may arrive after this screen renders on cold start;
+        // re-render once it binds so the active/scope status cannot stay stale. When the
+        // service is already bound, onResume() has just rendered fresh state and no
+        // registration is needed.
+        if (App.mService == null) {
+            val onBound: () -> Unit = {
+                val posted = Runnable {
+                    postedBindRender = null
+                    if (!isFinishing && !isDestroyed && App.mService != null &&
+                        !renderCoordinator.skipPostedRender(serviceNowBound = true)
+                    ) {
+                        render()
+                    }
+                }
+                postedBindRender = posted
+                mainHandler.post(posted)
+            }
+            serviceBoundCallback = onBound
+            App.addOnServiceBoundListener(onBound)
+        }
+    }
+
+    override fun onDestroy() {
+        serviceBoundCallback?.let { App.removeOnServiceBoundListener(it) }
+        serviceBoundCallback = null
+        // Benign race window: a Binder thread may publish a fresh runnable reference
+        // just after the read below, so removeCallbacks can miss that newest
+        // reference. Safe because onDestroy runs on main — the racing callback
+        // posts onto this same looper, so the runnable dispatches only after
+        // onDestroy returns and self-suppresses via its lifecycle guards.
+        postedBindRender?.let { mainHandler.removeCallbacks(it) }
+        postedBindRender = null
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -137,6 +191,11 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         DiagnosticsCollector.compareProps(snapshot.target, snapshot.real).forEach { check ->
             container?.addView(buildFieldRow(check))
         }
+
+        // Record what THIS render displayed, not a fresh re-read: the bind event may
+        // land mid-render, and recording a newer value would wrongly suppress the
+        // posted unbound→bound refresh.
+        renderCoordinator.onRendered(snapshot.moduleActive)
     }
 
     private fun collectSnapshot(): Snapshot {

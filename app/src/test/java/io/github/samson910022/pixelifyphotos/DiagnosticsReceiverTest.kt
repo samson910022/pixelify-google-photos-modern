@@ -56,12 +56,8 @@ class DiagnosticsReceiverTest {
 
     @After
     fun tearDown() {
-        try {
-            val field = App::class.java.getDeclaredField("mService")
-            field.isAccessible = true
-            field.set(null, null)
-        } catch (_: Throwable) {
-        }
+        // Fail-fast reset: a silent swallow here could mask cross-suite pollution.
+        TestStatics.setStaticField(App::class.java, "mService", null)
         mockedLog.close()
     }
 

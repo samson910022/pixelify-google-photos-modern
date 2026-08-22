@@ -58,6 +58,12 @@ Unsigned release artifacts are sufficient for ordinary pull requests. Permanent 
 
 Outputs are written below `app/build/outputs/` and are ignored by Git.
 
+### Test infrastructure notes
+
+Host-side unit tests assume **JDK 17**. `app/src/test/.../TestStatics.kt` writes static fields reflectively: plain `Field.set` for non-final companion vars (with fail-fast finality/readback checks), and sun.misc.Unsafe for static-final Kotlin object singletons, which JDK 9+ forbids through `Field.set`. CI pins Temurin 17; if you raise the test toolchain, revisit that helper first. The Unsafe memory-access methods it reflects on are terminally deprecated as of JDK 23 (JEP 471) and trigger default runtime warnings from JDK 24 (JEP 498); once they are removed in a future release, the reflective `getMethod("putObject", ...)` lookup will fail outright, and the supported replacements (`VarHandle`, the Foreign Function & Memory API) require a redesign rather than a drop-in rename.
+
+The build adds the required JPMS opens (`--add-opens java.base/java.lang.reflect=ALL-UNNAMED`, plus defensive `sun.misc` opens — see `app/build.gradle.kts`) to every `Test` task, so local runs and CI need no manual JVM flags.
+
 ## Source layout
 
 - `app/src/main/java/io/github/samson910022/pixelifyphotos/` — application and module code
