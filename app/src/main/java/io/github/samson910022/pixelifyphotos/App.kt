@@ -1,6 +1,7 @@
 package io.github.samson910022.pixelifyphotos
 
 import android.app.Application
+import androidx.annotation.VisibleForTesting
 import com.google.android.material.color.DynamicColors
 import com.google.android.material.color.DynamicColorsOptions
 import io.github.libxposed.service.XposedService
@@ -32,7 +33,14 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         }
         // Align local and remote copies of the per-install broadcast token now that
         // remote preferences are reachable, so hooked-process senders and this
-        // process validate against the same canonical value.
+        // process validate against the same canonical value. This runs a synchronous
+        // convergence over the service binder BEFORE any listener fires (binder-backed
+        // reads, plus commit() writes only when the stores diverge). It is normally
+        // milliseconds — well inside the 3 s cold-start grace window
+        // (SERVICE_BIND_GRACE_TIMEOUT_MS) — so draining listeners after convergence is
+        // deliberate ordering, not an accident; only an anomalously slow LSPosed
+        // provider could push past the window, and ModuleStateResolver's host-disposed
+        // suppression already tolerates late bind events.
         try {
             DiagnosticsStore.convergeBroadcastToken(this)
         } catch (t: Throwable) {
@@ -106,6 +114,7 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
          * Clears pending service-bound callbacks; test isolation only, no
          * production callers.
          */
+        @VisibleForTesting
         internal fun clearServiceBoundListeners() {
             synchronized(serviceStateLock) {
                 serviceBoundListeners.clear()

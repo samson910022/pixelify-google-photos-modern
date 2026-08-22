@@ -2,6 +2,7 @@ package io.github.samson910022.pixelifyphotos
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -117,6 +118,28 @@ class ModuleStateResolverTest {
         assertEquals(listOf(true), resolutions)
     }
 
+    @Test
+    fun `second start is ignored and leaves exactly one registration and one armed timeout`() {
+        val resolver = newResolver()
+        resolver.start()
+        eventLog.clear()
+        val firstListener = registeredListener
+        val firstTimeout = scheduledTimeout
+
+        resolver.start()
+
+        // No duplicate side effects: same single listener and timeout token remain.
+        assertEquals(emptyList<String>(), eventLog)
+        assertEquals(firstListener, registeredListener)
+        assertEquals(firstTimeout, scheduledTimeout)
+
+        // The wait still resolves exactly once through the original wiring.
+        fireBindEvent()
+        runDispatchedResolution()
+        scheduledTimeout!!.run()
+        assertEquals(listOf(true), resolutions)
+    }
+
     // =========================================================================
     // Disposal and host guards
     // =========================================================================
@@ -132,6 +155,20 @@ class ModuleStateResolverTest {
         runDispatchedResolution()
         scheduledTimeout!!.run()
 
+        assertEquals(emptyList<Boolean>(), resolutions)
+    }
+
+    @Test
+    fun `start after dispose is a no-op without registering or arming`() {
+        val resolver = newResolver()
+        resolver.dispose()
+        eventLog.clear()
+
+        resolver.start()
+
+        assertEquals(emptyList<String>(), eventLog)
+        assertNull(registeredListener)
+        assertNull(scheduledTimeout)
         assertEquals(emptyList<Boolean>(), resolutions)
     }
 

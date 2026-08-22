@@ -12,10 +12,10 @@ package io.github.samson910022.pixelifyphotos
  * reports the host gone at execution time; listener and timeout cleanup run even
  * on suppressed paths so nothing outlives the host.
  *
- * Threading contract: all internal state mutates only on the thread that executes
- * the runnables passed to [dispatchToMain] / [scheduleGraceTimeout] plus the
- * caller of [dispose]; wire all three onto the main looper (unit tests may inject
- * synchronous fakes). In particular [start] and [dispose] must come from the same
+ * Threading contract: all internal state mutates only on the main looper —
+ * [dispatchToMain], [scheduleGraceTimeout], and [cancelGraceTimeout] must all
+ * target the main looper, and [start]/[dispose] must run there too (unit tests
+ * may inject synchronous fakes). [start] and [dispose] must come from the same
  * thread — a cross-thread pair could strand one registration. Pure Kotlin by
  * design — no Android imports — so the gate logic is unit-testable without
  * Robolectric.
@@ -31,6 +31,7 @@ internal class ModuleStateResolver(
 ) {
 
     private val lock = Any()
+    private var started = false
     private var consumed = false
     private var disposed = false
 
@@ -57,11 +58,14 @@ internal class ModuleStateResolver(
     /**
      * Registers the bind callback and arms the grace timeout. Registration happens
      * before arming so a synchronous fire during registration can never race an
-     * unarmed timeout token.
+     * unarmed timeout token. Idempotent like [dispose]: repeat calls and calls
+     * after [dispose] are silent no-ops, so a future double-start lifecycle path
+     * can never double-register or crash the host.
      */
     fun start() {
         synchronized(lock) {
-            check(!disposed) { "ModuleStateResolver already disposed" }
+            if (started || disposed) return
+            started = true
         }
         addServiceBoundListener(serviceBoundListener)
         scheduleGraceTimeout(graceTimeoutToken)

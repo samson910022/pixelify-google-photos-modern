@@ -58,11 +58,13 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
 
     /**
      * The single posted bind-render runnable, tracked for targeted cancellation.
-     * Written from the Binder thread and read/cleared on main; normal visibility
-     * is mediated by the Handler message queue. A stale read racing onDestroy is
-     * benign: removeCallbacks would be skipped, and the runnable self-suppresses
-     * via its own lifecycle guards.
+     * Written from the Binder thread — or synchronously on main when a bind race
+     * fires the callback inline — and read/cleared on main; [Volatile] makes that
+     * cross-thread visibility explicit instead of relying on the Handler message
+     * queue. A stale read racing onDestroy remains benign: removeCallbacks would
+     * be skipped, and the runnable self-suppresses via its own lifecycle guards.
      */
+    @Volatile
     private var postedBindRender: Runnable? = null
 
     private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
