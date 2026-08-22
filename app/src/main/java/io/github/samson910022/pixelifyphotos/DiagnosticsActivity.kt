@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
@@ -46,6 +48,11 @@ import io.github.samson910022.pixelifyphotos.DiagnosticsCollector.MilestoneSigna
  */
 class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** Pending bind callback awaiting removal, or null when not registered. */
+    private var serviceBoundCallback: (() -> Unit)? = null
+
     private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
     /** Everything the screen renders, collected once per refresh. */
@@ -77,6 +84,28 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         findViewById<MaterialButton>(R.id.diagnostics_copy_report)?.setOnClickListener {
             copyReport()
         }
+        // The Xposed service binder may arrive after this screen renders on cold start;
+        // re-render once it binds so the active/scope status cannot stay stale. When the
+        // service is already bound, onResume() has just rendered fresh state and no
+        // registration is needed.
+        if (App.mService == null) {
+            val onBound: () -> Unit = {
+                mainHandler.post {
+                    if (!isFinishing && !isDestroyed && App.mService != null) {
+                        render()
+                    }
+                }
+            }
+            serviceBoundCallback = onBound
+            App.addOnServiceBoundListener(onBound)
+        }
+    }
+
+    override fun onDestroy() {
+        serviceBoundCallback?.let { App.removeOnServiceBoundListener(it) }
+        serviceBoundCallback = null
+        mainHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 
     override fun onResume() {

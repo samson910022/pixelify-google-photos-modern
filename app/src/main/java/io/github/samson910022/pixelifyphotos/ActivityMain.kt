@@ -6,6 +6,8 @@ import android.content.SharedPreferences
 import android.graphics.Paint
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Html
 import android.util.Log
 import android.view.Menu
@@ -55,12 +57,27 @@ class ActivityMain : AppCompatActivity() {
     companion object {
         private const val TAG = "Pixelify"
         private const val MAX_UPDATE_INFO_BYTES = 64 * 1024
+
+        /**
+         * Grace window for the asynchronous LSPosed service binder delivery. On cold
+         * start the binder routinely arrives after activity creation, so an immediate
+         * "module not enabled" verdict would be a false negative; only report the
+         * module as disabled once this window elapses without a bind event.
+         */
+        private const val SERVICE_BIND_GRACE_TIMEOUT_MS = 3_000L
     }
 
     private val updateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val utils by lazy { Utils() }
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private var isClassicUi: Boolean = false
+
+    /** Guards one-shot resolution of the enabled/disabled verdict on the main thread. */
+    private var moduleStateResolved: Boolean = false
+
+    /** Pending bind callback awaiting removal, or null when no wait is in progress. */
+    private var pendingServiceBoundCallback: (() -> Unit)? = null
 
     /**
      * Get preferences via XposedService remote preferences when available,
@@ -154,14 +171,73 @@ class ActivityMain : AppCompatActivity() {
         }
 
         if (!isModuleEnabled()) {
-            MaterialAlertDialogBuilder(this)
-                .setMessage(R.string.module_not_enabled)
-                .setPositiveButton(R.string.close) { _, _ -> finish() }
-                .setCancelable(false)
-                .show()
+            awaitServiceBindThenResolve()
             return
         }
+        moduleStateResolved = true
+        initializeUi(pref)
+    }
 
+    /**
+     * Cold-start race guard: the LSPosed service binder is delivered asynchronously
+     * after process start, so [isModuleEnabled] can legitimately be false while this
+     * activity is being created even though the module IS enabled in LSPosed. Wait a
+     * short grace window for [App.onServiceBind] before concluding the module is
+     * disabled; on bind, initialize the UI instead of showing the blocking dialog.
+     */
+    private fun awaitServiceBindThenResolve() {
+        val timeout = Runnable {
+            clearPendingServiceBoundCallback()
+            resolveOnce { showModuleNotEnabledDialog() }
+        }
+        // Invoked on a Binder thread by App.onServiceBind; marshal UI work to main.
+        val onBound: () -> Unit = {
+            mainHandler.post {
+                mainHandler.removeCallbacks(timeout)
+                clearPendingServiceBoundCallback()
+                resolveOnce { initializeUi(getPrefs()) }
+            }
+        }
+        pendingServiceBoundCallback = onBound
+        // May fire synchronously if the service bound between our check and here.
+        App.addOnServiceBoundListener(onBound)
+        mainHandler.postDelayed(timeout, SERVICE_BIND_GRACE_TIMEOUT_MS)
+    }
+
+    private fun clearPendingServiceBoundCallback() {
+        pendingServiceBoundCallback?.let { App.removeOnServiceBoundListener(it) }
+        pendingServiceBoundCallback = null
+    }
+
+    /**
+     * Runs [resolve] at most once per activity instance. All callers execute on the
+     * main thread (Handler callbacks), so the flag needs no synchronization.
+     */
+    private fun resolveOnce(resolve: () -> Unit) {
+        if (moduleStateResolved || isFinishing || isDestroyed) return
+        moduleStateResolved = true
+        resolve()
+    }
+
+    /**
+     * Display the non-dismissable "module not enabled" dialog shown only after the
+     * bind grace window expires without service delivery.
+     */
+    private fun showModuleNotEnabledDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setMessage(R.string.module_not_enabled)
+            .setPositiveButton(R.string.close) { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
+    }
+
+    /**
+     * Perform full UI initialization once the module state has been positively
+     * resolved as enabled.
+     *
+     * @param pref SharedPreferences instance containing user settings.
+     */
+    private fun initializeUi(pref: SharedPreferences?) {
         if (isClassicUi) {
             setupClassicUi(pref)
         } else {
@@ -674,9 +750,12 @@ class ActivityMain : AppCompatActivity() {
     }
 
     /**
-     * Activity destroy lifecycle callback. Shuts down background update executor.
+     * Activity destroy lifecycle callback. Cancels pending bind resolution and shuts
+     * down the background update executor.
      */
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
+        clearPendingServiceBoundCallback()
         updateExecutor.shutdownNow()
         super.onDestroy()
     }

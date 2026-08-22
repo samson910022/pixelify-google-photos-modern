@@ -88,3 +88,6 @@ __pycache__/
 
 # Machine-local JDK/SDK paths for scripts/with-android-env.sh
 scripts/env.local.sh
+
+# Kotlin build tool working directory
+.kotlin/

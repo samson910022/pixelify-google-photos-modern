@@ -1,8 +1,8 @@
 package io.github.samson910022.pixelifyphotos
 
-import android.content.ContentProvider
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import org.junit.After
@@ -25,12 +25,21 @@ class DiagnosticsProviderTest {
     private lateinit var mockEditor: SharedPreferences.Editor
     private lateinit var provider: DiagnosticsProvider
 
+    /** Original DiagnosticsStore.INSTANCE captured before any swap for restoration. */
+    private var originalStoreInstance: Any? = null
+
     @Before
     fun setUp() {
         mockedLog = Mockito.mockStatic(Log::class.java)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.d(any<String>(), any<String>()) }.thenReturn(0)
+
+        // Hermeticity: never inherit a bound service left by another suite in this JVM,
+        // otherwise PrefUtils would route to remote prefs and bypass the file-store mocks.
+        val serviceField = App::class.java.getDeclaredField("mService")
+        serviceField.isAccessible = true
+        serviceField.set(null, null)
 
         mockContext = mock()
         mockPrefs = mock()
@@ -55,7 +64,82 @@ class DiagnosticsProviderTest {
 
     @After
     fun tearDown() {
-        mockedLog.close()
+        try {
+            restoreStoreInstance()
+            provider.testContext = null
+            provider.testCallingUid = null
+            provider.testMyUid = null
+        } finally {
+            mockedLog.close()
+        }
+    }
+
+    /**
+     * JDK 17 forbids reflective writes to static final fields via [java.lang.reflect.Field.set],
+     * so the Kotlin object's INSTANCE backing field is swapped through sun.misc.Unsafe instead
+     * (resolved reflectively because sun.* is absent from the android.jar compile classpath).
+     * Known limitation: HotSpot may in theory constant-fold trusted-final static reads and
+     * bypass the swap; short-lived test JVMs make this a non-issue here, but if delegation
+     * tests ever pass vacuously against the real store, suspect folding first.
+     */
+    private val unsafe: Any by lazy {
+        val theUnsafe = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe")
+        theUnsafe.isAccessible = true
+        theUnsafe.get(null)!!
+    }
+
+    /** Reflection bridge over [sun.misc.Unsafe] static-field writes. */
+    private fun putStaticObject(field: java.lang.reflect.Field, value: Any?) {
+        val unsafeClass = unsafe.javaClass
+        val base = unsafeClass.getMethod("staticFieldBase", java.lang.reflect.Field::class.java)
+            .invoke(unsafe, field)
+        val offset = unsafeClass.getMethod("staticFieldOffset", java.lang.reflect.Field::class.java)
+            .invoke(unsafe, field) as Long
+        unsafeClass.getMethod(
+            "putObject",
+            Any::class.java,
+            Long::class.javaPrimitiveType,
+            Any::class.java,
+        ).invoke(unsafe, base, offset, value)
+    }
+
+    /**
+     * Swaps the singleton backing field of the Kotlin [DiagnosticsStore] object with a
+     * mock so provider→store delegation can be verified argument-by-argument. The
+     * original instance is captured once and restored in [tearDown].
+     */
+    private fun swapStoreInstanceWithMock(): DiagnosticsStore {
+        val field = DiagnosticsStore::class.java.getDeclaredField("INSTANCE")
+        field.isAccessible = true
+        if (originalStoreInstance == null) {
+            originalStoreInstance = field.get(null)
+        }
+        val storeMock: DiagnosticsStore = mock()
+        putStaticObject(field, storeMock)
+        return storeMock
+    }
+
+    private fun restoreStoreInstance() {
+        if (originalStoreInstance == null) return
+        val field = DiagnosticsStore::class.java.getDeclaredField("INSTANCE")
+        field.isAccessible = true
+        putStaticObject(field, originalStoreInstance)
+        originalStoreInstance = null
+    }
+
+    /**
+     * Runs [block] while intercepting every Bundle constructed inside it. Under JVM unit
+     * tests android.jar's Bundle is a stub (putBoolean is a no-op and getBoolean always
+     * returns false), so the provider's result-bundle flag can only be verified against a
+     * mocked construction. Returns the single constructed result bundle.
+     */
+    private fun captureResultBundleFrom(block: () -> Bundle?): Bundle {
+        var captured: Bundle? = null
+        Mockito.mockConstruction(Bundle::class.java).use { construction ->
+            block()
+            captured = construction.constructed().single()
+        }
+        return captured!!
     }
 
     @Test
@@ -229,7 +313,7 @@ class DiagnosticsProviderTest {
     // =========================================================================
 
     @Test
-    fun `call RECORD_DIAGNOSTICS writes whitelisted milestone keys`() {
+    fun `call RECORD_DIAGNOSTICS writes whitelisted milestone keys and reports success`() {
         val extras = mock<Bundle>()
         whenever(extras.keySet()).thenReturn(
             setOf(
@@ -242,9 +326,11 @@ class DiagnosticsProviderTest {
         whenever(extras.get(Constants.PREF_DIAG_LAST_PACKAGE_LOADED)).thenReturn("com.google.android.apps.photos")
         whenever(extras.get(Constants.PREF_DIAG_LAST_PACKAGE_READY_AT)).thenReturn(1700000005000L)
 
-        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
+        val result = captureResultBundleFrom {
+            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
+        }
 
-        assertNotNull(result)
+        verify(result).putBoolean("success", true)
         verify(mockEditor).putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, 1700000000000L)
         verify(mockEditor).putString(Constants.PREF_DIAG_LAST_PACKAGE_LOADED, "com.google.android.apps.photos")
         verify(mockEditor).putLong(Constants.PREF_DIAG_LAST_PACKAGE_READY_AT, 1700000005000L)
@@ -272,9 +358,11 @@ class DiagnosticsProviderTest {
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_NATIVE_READY)).thenReturn(true)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_SYSPROPS)).thenReturn(true)
 
-        val result = provider.call(Constants.METHOD_RECORD_VERIFY, null, extras)
+        val result = captureResultBundleFrom {
+            provider.call(Constants.METHOD_RECORD_VERIFY, null, extras)
+        }
 
-        assertNotNull(result)
+        verify(result).putBoolean("success", true)
         verify(mockEditor).putLong(Constants.PREF_DIAG_VERIFY_AT, 1700000010000L)
         verify(mockEditor).putString(Constants.PREF_DIAG_VERIFY_DEVICE, "Pixel 8 Pro")
         verify(mockEditor).putBoolean(Constants.PREF_DIAG_VERIFY_OK, false)
@@ -286,9 +374,11 @@ class DiagnosticsProviderTest {
 
     @Test
     fun `call CLEAR_VERIFY removes all verify preference keys`() {
-        val result = provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)
+        val result = captureResultBundleFrom {
+            provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)
+        }
 
-        assertNotNull(result)
+        verify(result).putBoolean("success", true)
         verify(mockEditor).remove(Constants.PREF_DIAG_VERIFY_AT)
         verify(mockEditor).remove(Constants.PREF_DIAG_VERIFY_DEVICE)
         verify(mockEditor).remove(Constants.PREF_DIAG_VERIFY_PACKAGE)
@@ -326,19 +416,131 @@ class DiagnosticsProviderTest {
 
     @Test
     fun `call returns success false on unknown method without modifying preferences`() {
-        val extras = mock<Bundle>()
-        val result = provider.call("UNSUPPORTED_METHOD_XYZ", null, extras)
+        val result = captureResultBundleFrom {
+            provider.call("UNSUPPORTED_METHOD_XYZ", null, mock<Bundle>())
+        }
 
-        assertNotNull(result)
+        verify(result).putBoolean("success", false)
         verifyNoInteractions(mockEditor)
     }
 
     @Test
     fun `call returns success false when context is null`() {
         val unattachedProvider = DiagnosticsProvider()
-        val result = unattachedProvider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, Bundle())
 
-        assertNotNull(result)
+        val result = captureResultBundleFrom {
+            unattachedProvider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, null)
+        }
+
+        verify(result).putBoolean("success", false)
+        verifyNoInteractions(mockEditor)
+    }
+
+    // =========================================================================
+    // call() → DiagnosticsStore.applyDiagnostics delegation wiring (new signature)
+    // =========================================================================
+
+    @Test
+    fun `call delegates to applyDiagnostics with resolved context method extras and uid arguments`() {
+        val storeMock = swapStoreInstanceWithMock()
+        whenever(storeMock.applyDiagnostics(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
+            .thenReturn(true)
+        val packageManager = mock<PackageManager>()
+        whenever(mockContext.packageManager).thenReturn(packageManager)
+        whenever(packageManager.getPackagesForUid(10123))
+            .thenReturn(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS))
+        provider.testCallingUid = 10123
+        provider.testMyUid = 10000
+
+        val extras = mock<Bundle>()
+        val result = captureResultBundleFrom {
+            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
+        }
+
+        verify(result).putBoolean("success", true)
+        verify(storeMock).applyDiagnostics(
+            context = eq(mockContext),
+            method = eq(Constants.METHOD_RECORD_DIAGNOSTICS),
+            extras = same(extras),
+            callingUid = eq(10123),
+            callingPackages = eq(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)),
+            myUid = eq(10000),
+        )
+    }
+
+    @Test
+    fun `call propagates false delegation outcome as success false`() {
+        val storeMock = swapStoreInstanceWithMock()
+        whenever(storeMock.applyDiagnostics(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
+            .thenReturn(false)
+
+        val result = captureResultBundleFrom {
+            provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)
+        }
+
+        verify(result).putBoolean("success", false)
+        verify(storeMock).applyDiagnostics(
+            context = eq(mockContext),
+            method = eq(Constants.METHOD_CLEAR_VERIFY),
+            extras = isNull(),
+            callingUid = eq(10000),
+            callingPackages = anyOrNull(),
+            myUid = eq(10000),
+        )
+    }
+
+    @Test
+    fun `call does not delegate to applyDiagnostics when context is unresolvable`() {
+        val storeMock = swapStoreInstanceWithMock()
+        val unattachedProvider = DiagnosticsProvider()
+
+        val result = captureResultBundleFrom {
+            unattachedProvider.call(Constants.METHOD_RECORD_VERIFY, null, null)
+        }
+
+        verify(result).putBoolean("success", false)
+        verifyNoInteractions(storeMock)
+    }
+
+    // =========================================================================
+    // Remote-caller UID path through the real provider→store stack
+    // =========================================================================
+
+    @Test
+    fun `call authorizes remote scoped-app uid end to end and writes milestone`() {
+        val packageManager = mock<PackageManager>()
+        whenever(mockContext.packageManager).thenReturn(packageManager)
+        whenever(packageManager.getPackagesForUid(10123))
+            .thenReturn(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS))
+        provider.testCallingUid = 10123
+        provider.testMyUid = 10000
+
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_MODULE_LOADED_AT))
+        whenever(extras.get(Constants.PREF_DIAG_MODULE_LOADED_AT)).thenReturn(1700000000000L)
+
+        val result = captureResultBundleFrom {
+            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
+        }
+
+        verify(result).putBoolean("success", true)
+        verify(mockEditor).putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, 1700000000000L)
+        verify(mockEditor).apply()
+    }
+
+    @Test
+    fun `call rejects remote uid whose packages cannot be resolved end to end`() {
+        val packageManager = mock<PackageManager>()
+        whenever(mockContext.packageManager).thenReturn(packageManager)
+        whenever(packageManager.getPackagesForUid(10999)).thenReturn(null)
+        provider.testCallingUid = 10999
+        provider.testMyUid = 10000
+
+        val result = captureResultBundleFrom {
+            provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, mock<Bundle>())
+        }
+
+        verify(result).putBoolean("success", false)
         verifyNoInteractions(mockEditor)
     }
 }
