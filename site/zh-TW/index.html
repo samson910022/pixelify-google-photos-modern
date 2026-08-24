@@ -22,6 +22,8 @@
       <nav aria-label="主要導覽">
         <ul class="nav-links">
           <li><a href="#features">功能</a></li>
+          <li><a href="#entitlements">機型權益</a></li>
+          <li><a href="#verification">驗證備份</a></li>
           <li><a href="#requirements">需求</a></li>
           <li><a href="#install">安裝</a></li>
           <li><a href="#download">下載</a></li>
@@ -83,14 +85,91 @@
         <li>全新 Material 3 現代化介面，支援動態取色與雙介面切換（可自由切換現代／經典 UI）。</li>
         <li>首次使用新手導引流程，說明預設 Pixel XL 無限備份並提供一鍵強制停止作用中應用程式與啟動 Google 相簿。</li>
         <li>模擬特定 Google Pixel 裝置設定檔（涵蓋 Pixel XL、Pixel 6、Pixel Fold、Pixel Tablet、Pixel 9 Pro Fold 至 Pixel 10 系列共 30 種設定檔）。</li>
+        <li>即時顯示各機型對應之備份權益標籤與畫質要求警告提示。</li>
         <li>模擬與 Pixel 相關的系統功能旗標。</li>
         <li>多層級泛用退避偽裝管線，相容 Android 8.0 至 Android 14、15、16+ 及各式深度客製 OEM ROM。</li>
         <li>可選擇模擬相容的 Android 版本。</li>
         <li>覆寫 ROM 內建的 Pixel feature level。</li>
         <li>透過進階設定個別選擇功能旗標。</li>
         <li>匯入、匯出及分享模組設定。</li>
-        <li>應用內診斷畫面：顯示模組啟用狀態、Hook 里程碑與上次裝置模擬 VERIFY 結果，無需 logcat；可一鍵複製不含帳號資料的診斷報告。</li>
+        <li>應用內診斷畫面：顯示模組啟用狀態、備份權益狀態、Hook 里程碑與上次裝置模擬 VERIFY 結果，無需 logcat；可一鍵複製不含帳號資料的診斷報告。</li>
       </ul>
+    </section>
+
+    <section id="entitlements" class="wrap" aria-labelledby="entitlements-title">
+      <h2 id="entitlements-title">裝置設定檔與備份權益說明</h2>
+      <p>
+        依據 Google 的相簿雲端儲存政策，不同世代的 Pixel 機型享有不同的備份權益與功能：
+      </p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">設定檔層級</th>
+              <th scope="col">適用機型</th>
+              <th scope="col">Google 相簿備份權益</th>
+              <th scope="col">所需相簿備份畫質設定</th>
+              <th scope="col">解鎖功能層級</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">無限制原始畫質</th>
+              <td><strong>Pixel XL</strong> <em>（預設）</em></td>
+              <td>永久免費無限制備份（原始畫質與省儲存空間皆不佔空間）</td>
+              <td>原始畫質 或 省儲存空間</td>
+              <td>Pixel 2016 基礎層級（最穩定享有無限空間；無 Tensor AI 工具）</td>
+            </tr>
+            <tr>
+              <th scope="row">僅限無限制省儲存空間</th>
+              <td>Pixel 2, Pixel 3 XL, Pixel 3a XL, Pixel 4 XL, Pixel 4a, Pixel 5, Pixel 5a</td>
+              <td>僅限「省儲存空間（高畫質）」享有免費無限制備份</td>
+              <td><strong>必須設定為「省儲存空間」</strong>（若設為原始畫質會扣除帳號空間！）</td>
+              <td>中階 Pixel 功能旗標</td>
+            </tr>
+            <tr>
+              <th scope="row">僅解鎖相片編輯功能</th>
+              <td>Pixel 6 至 Pixel 10 系列、Pixel Fold、Pixel Tablet</td>
+              <td><strong>無免費無限制備份</strong>（所有上傳皆正常扣除 Google 帳號空間）</td>
+              <td>所有畫質皆會扣除雲端空間</td>
+              <td>最新 Pixel 相機與 AI 相片編輯功能（魔術橡皮擦、Ultra HDR、肖像光影等）</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <aside class="callout callout-important" role="note">
+        <strong class="label">重要提示</strong>
+        <p>
+          若您的主要目的是<strong>獲得免費無限制的相簿空間</strong>，請務必選擇 <strong>Pixel XL</strong>（原始畫質）或 <strong>Pixel 2 至 Pixel 5a</strong>（畫質設為<strong>省儲存空間</strong>）。選擇 Pixel 6 或更新機型將不會享有免費相簿空間。
+        </p>
+      </aside>
+    </section>
+
+    <section id="verification" class="wrap" aria-labelledby="verification-title">
+      <h2 id="verification-title">如何確認備份是否成功</h2>
+      <p>您可以透過以下兩種方法確認裝置模擬與免費備份是否正常生效：</p>
+      <div class="card-grid">
+        <div class="card">
+          <h3>方法一：檢查 Google 相簿備份設定</h3>
+          <ol class="steps">
+            <li>開啟 <strong>Google 相簿</strong>。</li>
+            <li>點選右上角個人頭像 &gt; <strong>備份</strong>。</li>
+            <li>點選右上角齒輪圖示（<strong>備份設定</strong>）。</li>
+            <li>確認橫幅是否顯示：<em>「這部 Pixel 可免費備份無限量的相片和影片」</em>。</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>方法二：實際上傳相片並檢查詳細資料</h3>
+          <ol class="steps">
+            <li>在 Google 相簿中實際上傳備份一張相片／影片。</li>
+            <li>點開該相片並<strong>向上滑動</strong>查看詳細資訊（或在 <code>photos.google.com</code> 查看）。</li>
+            <li>確認儲存空間資訊顯示：<em>「這個項目不佔用你的帳戶儲存空間」</em>（使用 0 個位元組）。</li>
+          </ol>
+        </div>
+      </div>
+      <p class="note troubleshooting-note">
+        <strong>疑難排解：</strong>若相片上傳後仍顯示扣除空間，請至本 App 的「<strong>診斷</strong>」畫面確認 VERIFY 成功、確認 Pixel 2–5 已設為<strong>省儲存空間</strong>畫質，並點擊「<strong>強制停止作用範圍 App</strong>」或清除 Google 相簿快取。
+      </p>
     </section>
 
     <section id="requirements" class="wrap" aria-labelledby="requirements-title">

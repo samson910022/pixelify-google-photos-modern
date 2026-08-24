@@ -22,6 +22,8 @@
       <nav aria-label="メインナビゲーション">
         <ul class="nav-links">
           <li><a href="#features">機能</a></li>
+          <li><a href="#entitlements">端末特典</a></li>
+          <li><a href="#verification">確認手順</a></li>
           <li><a href="#requirements">要件</a></li>
           <li><a href="#install">インストール</a></li>
           <li><a href="#download">ダウンロード</a></li>
@@ -84,14 +86,91 @@
         <li>新しい Material 3 モダンインターフェース（動的カラー抽出対応）およびモダン／クラシック UI の切り替え機能。</li>
         <li>初回起動時オンボーディングガイド（デフォルトの Pixel XL 無制限バックアップの案内および 1 クリックでの強制停止・起動アクション）。</li>
         <li>特定の Google Pixel 端末プロファイルの偽装（Pixel XL、Pixel 6、Pixel Fold、Pixel Tablet、Pixel 9 Pro Fold から Pixel 10 シリーズまで計 30 種類を網羅）。</li>
+        <li>各端末モデルに対応する特典バッジと必要なバックアップ画質警告をリアルタイム表示。</li>
         <li>Pixel 関連のシステム機能フラグを偽装。</li>
         <li>マルチティアの汎用フォールバックパイプライン（Android 8.0 から Android 14、15、16+ および各種カスタム OEM ROM に対応）。</li>
         <li>互換性のある Android バージョンを任意で偽装。</li>
         <li>ROM が提供する Pixel feature level を上書き。</li>
         <li>詳細設定で個別の機能フラグを選択。</li>
         <li>モジュール設定のインポート、エクスポート、共有。</li>
-        <li>アプリ内診断画面：モジュールの有効状態・フックのマイルストーン・直近のデバイス偽装 VERIFY 結果を logcat 不要で確認でき、アカウント情報を含まない診断レポートをコピー可能。</li>
+        <li>アプリ内診断画面：モジュールの有効状態・バックアップ特典状態・フックのマイルストーン・直近のデバイス偽装 VERIFY 結果を logcat 不要で確認でき、アカウント情報を含まない診断レポートをコピー可能。</li>
       </ul>
+    </section>
+
+    <section id="entitlements" class="wrap" aria-labelledby="entitlements-title">
+      <h2 id="entitlements-title">端末プロファイルとバックアップ特典</h2>
+      <p>
+        Google のクラウドストレージポリシーに基づき、Pixel の世代ごとに付与される特典と機能が異なります：
+      </p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">プロファイル階層</th>
+              <th scope="col">対象端末モデル</th>
+              <th scope="col">Google フォト 特典</th>
+              <th scope="col">必要なバックアップ画質設定</th>
+              <th scope="col">解除される機能レベル</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">無制限オリジナル品質</th>
+              <td><strong>Pixel XL</strong> <em>（既定）</em></td>
+              <td>元の画質および保存容量の節約画質で無制限無料バックアップ（0 バイト消費）</td>
+              <td>元の画質 または 保存容量の節約画質</td>
+              <td>Pixel 2016 基本階層（最も安定して無制限容量を享受可能。Tensor AI ツール非対応）</td>
+            </tr>
+            <tr>
+              <th scope="row">無制限保存容量節約画質のみ</th>
+              <td>Pixel 2, Pixel 3 XL, Pixel 3a XL, Pixel 4 XL, Pixel 4a, Pixel 5, Pixel 5a</td>
+              <td>「保存容量の節約画質（高画質）」のみ無制限無料バックアップ</td>
+              <td><strong>「保存容量の節約画質」が必須</strong>（「元の画質」は容量を消費します）</td>
+              <td>中位 Pixel 機能フラグ</td>
+            </tr>
+            <tr>
+              <th scope="row">写真編集機能のみ</th>
+              <td>Pixel 6 〜 Pixel 10 シリーズ、Pixel Fold、Pixel Tablet</td>
+              <td><strong>無料の無制限特典はありません</strong>（アップロードはアカウント容量を消費します）</td>
+              <td>すべての画質設定で容量を消費</td>
+              <td>最新の Pixel カメラおよび AI 写真編集機能（消しゴムマジック、Ultra HDR など）</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <aside class="callout callout-important" role="note">
+        <strong class="label">重要なお知らせ</strong>
+        <p>
+          主な目的が<strong>無料の無制限フォトストレージの獲得</strong>である場合は、必ず <strong>Pixel XL</strong>（元の画質）または <strong>Pixel 2 〜 Pixel 5a</strong>（画質設定を<strong>保存容量の節約画質</strong>に設定）を選択してください。Pixel 6 以降のモデルには無料容量は付与されません。
+        </p>
+      </aside>
+    </section>
+
+    <section id="verification" class="wrap" aria-labelledby="verification-title">
+      <h2 id="verification-title">バックアップが成功したか確認する方法</h2>
+      <p>端末偽装と無料バックアップが正常に動作しているかは以下の 2 つの方法で確認できます：</p>
+      <div class="card-grid">
+        <div class="card">
+          <h3>方法 1: Google フォトのバックアップ設定</h3>
+          <ol class="steps">
+            <li><strong>Google フォト</strong>を開きます。</li>
+            <li>右上のプロフィールアイコン &gt; <strong>バックアップ</strong>をタップ。</li>
+            <li>右上の歯車アイコン（<strong>バックアップ設定</strong>）をタップ。</li>
+            <li>バナーに表示されているか確認：<em>「この Pixel からは写真や動画を無料で無制限にバックアップできます」</em>。</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>方法 2: アップロード写真の詳細情報を確認</h3>
+          <ol class="steps">
+            <li>Google フォトで写真または動画を 1 枚バックアップします。</li>
+            <li>その写真を開き、<strong>上にスワイプ</strong>して詳細情報を確認します（または <code>photos.google.com</code> で確認）。</li>
+            <li>ストレージ情報欄に表示されていることを確認：<em>「このアイテムはアカウントの保存容量を使用しません」</em>（0 バイト使用）。</li>
+          </ol>
+        </div>
+      </div>
+      <p class="note troubleshooting-note">
+        <strong>トラブルシューティング：</strong>写真が容量を消費する場合は、アプリ内の「<strong>診断</strong>」画面で VERIFY が成功（OK）しているか確認し、Pixel 2〜5 では画質が<strong>保存容量の節約画質</strong>になっているか確認した上で、「<strong>スコープ内アプリを強制停止</strong>」または Google フォトのキャッシュ消去を行ってください。
+      </p>
     </section>
 
     <section id="requirements" class="wrap" aria-labelledby="requirements-title">

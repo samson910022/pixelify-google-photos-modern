@@ -57,6 +57,21 @@ After enable + recommended Photos scope + force-stop/reopen Photos:
 - **Toast or notification about VERIFY / device spoof failed** means the module loaded, but Build spoof VERIFY failed (common on some Android 17+ ROMs; multi-strategy writes are attempted, success is not guaranteed on every ROM).
 - **No visible failure and Photos still shows the real device model**: open the in-app **Diagnostics** screen — an empty/absent milestone section points to a load failure, while a recorded VERIFY FAIL points to a spoof write failure. Sanitized logcat is only needed for deeper debugging.
 
+### Verifying backup success and troubleshooting quota issues
+
+To confirm whether unlimited Google Photos backup is active and not consuming cloud quota:
+
+1. **Method 1 (Backup Settings banner):** Open Google Photos > tap profile avatar > **Backup** > tap the gear icon (**Backup settings**) > verify the banner states: *"This Pixel can back up unlimited photos & videos at no charge."*
+2. **Method 2 (Uploaded photo details):** Back up a photo in Google Photos > swipe up on the photo details (or check on `photos.google.com`) > verify that it states: *"This item doesn't take up space in your account storage"* (0 bytes used).
+
+**Troubleshooting quota consumption:**
+- **Selected device model entitlement:**
+  - **Pixel XL:** Unlimited Original Quality and Storage Saver (0 quota used).
+  - **Pixel 2 – Pixel 5a:** Unlimited Storage Saver ONLY. Google Photos backup quality **MUST** be set to **Storage saver**; setting Original Quality will consume cloud storage quota.
+  - **Pixel 6 and newer:** No free unlimited backup. Uploads consume Google Account quota regardless of quality setting.
+- **Module state:** Open the in-app **Diagnostics** screen and confirm that the module is active and the last device-spoof result is **VERIFY OK**.
+- **Stale cache:** Force-stop Google Photos (using the in-app **Force-stop scoped apps** button) or clear Google Photos app cache and reopen.
+
 Remove account identifiers, device serials, file-system paths, tokens, exported preferences, and unrelated application data before sharing diagnostics. Enable verbose logging only while reproducing a problem, then disable it.
 
 ## Where to report

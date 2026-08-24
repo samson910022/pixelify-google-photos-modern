@@ -138,6 +138,46 @@
 
                     </com.google.android.material.textfield.TextInputLayout>
 
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/modern_card_entitlement"
+                        style="?attr/materialCardViewFilledStyle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:padding="12dp">
+
+                            <TextView
+                                android:id="@+id/modern_entitlement_badge"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:textAppearance="?attr/textAppearanceTitleSmall"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/modern_entitlement_desc"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:textAppearance="?attr/textAppearanceBodySmall" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/modern_btn_verify_guide"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:text="@string/verification_guide_btn"
+                                app:icon="@drawable/ic_info" />
+
+                        </LinearLayout>
+
+                    </com.google.android.material.card.MaterialCardView>
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/modern_btn_customize_features"
                         style="@style/Widget.Material3.Button.TonalButton"

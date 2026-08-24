@@ -1,0 +1,149 @@
+<resources>
+    <string name="app_name">Pixelify Infinity</string>
+
+    <!-- メイン画面 -->
+    <string name="reset">リセット</string>
+    <string name="device_to_spoof">偽装する端末</string>
+    <string name="spoofs_build_and_features">選択した端末プロパティと機能フラグを偽装します。LSPosed の推奨スコープは Google フォトです。他のアプリへの適用は高度な設定でありサポート対象外です。Play 開発者サービス、Play ストア、システム UI、銀行・決済アプリをスコープに含めないでください。</string>
+    <string name="customize_feature_flags">機能フラグのカスタマイズ</string>
+    <string name="feature_flags_changed">機能フラグが変更されました</string>
+    <string name="override_rom_feature_levels">ROM の機能レベルを上書き</string>
+    <string name="override_rom_feature_levels_desc">より旧型の Pixel プロファイルを選択した場合、ROM がすでに提供している上位の機能レベルを無視します。<b>（推奨）</b></string>
+    <string name="force_stop_google_photos">スコープ内アプリを\n強制停止</string>
+    <string name="module_not_enabled">モジュールが有効になっていません。互換性のある Xposed マネージャーで Pixelify Infinity を有効化し、Google フォトをスコープに含めた上で（推奨）、本アプリを再度開いてください。Xposed マネージャーで必要な場合は端末を再起動してください。</string>
+    <string name="close">閉じる</string>
+    <string name="open_google_photos">Google フォトを開く</string>
+    <string name="support_link">サポート／問題を報告</string>
+    <string name="update_available">アプリの更新があります</string>
+
+    <!-- 変更履歴 -->
+    <string name="version_head">バージョン 1.4.1</string>
+    <string name="version_desc">コールド スタート時の競合によりモジュール状態が非アクティブと誤判定される問題を解決し、不要な Unsafe リフレクション プローブを削除して、スレッド間の並行処理コントラクトを強化しました。</string>
+    <string name="changelog">変更履歴</string>
+
+    <!-- 設定のインポート／エクスポート -->
+    <string name="please_force_stop_google_photos">変更を適用するには、スコープ内のアプリ（Google フォトおよび LSPosed モジュールのスコープに含まれるその他のアプリ）を強制停止して再度開いてください。</string>
+    <string name="export_config">設定のエクスポート</string>
+    <string name="export_config_desc">このモジュールの設定を JSON ファイルとして保存または共有します。</string>
+    <string name="export_complete">エクスポート完了</string>
+    <string name="share">共有</string>
+    <string name="select_a_location">保存場所を選択</string>
+    <string name="share_config_file">設定ファイルを共有</string>
+    <string name="import_config">設定のインポート</string>
+    <string name="import_config_desc">Pixelify Infinity の JSON 設定ファイルを選択してください。</string>
+    <string name="share_error">設定の共有またはエクスポートができません。</string>
+    <string name="read_error">選択された設定ファイルを読み込めません。</string>
+    <string name="import_complete">インポート完了</string>
+    <string name="invalid_imported_device">インポートされた端末プロファイルは非対応のためスキップされました。</string>
+    <string name="invalid_imported_android_version">インポートされた Android バージョンは非対応のためスキップされました。</string>
+    <string name="advanced_options">詳細オプション</string>
+
+    <!-- 機能のカスタマイズ -->
+    <string name="save">保存</string>
+
+    <!-- 詳細オプション -->
+    <string name="enable_verbose_logging">詳細ログを有効化</string>
+    <string name="enable_verbose_logging_desc">Xposed および Android のログに診断詳細を追加します。問題を再現する場合にのみ有効にし、ログを共有する前に個人情報を削除してください。</string>
+    <string name="spoof_android_version">Android バージョンを偽装</string>
+    <string name="spoof_android_version_desc">端末の実際のバージョンよりも新しい Android バージョンを選択しないでください。</string>
+    <string name="this_might_cause_crash">互換性のない値を指定すると Google フォトがクラッシュする可能性があります。</string>
+    <string name="dont_spoof_android_version">Android バージョンを偽装しない <b>（推奨）</b></string>
+    <string name="follow_spoof_device_version">選択した Pixel プロファイルの Android バージョンを使用</string>
+    <string name="manually_set_android_version">Android バージョンを手動で設定</string>
+    <string name="device_version_separator"> – </string>
+
+    <!-- ユーティリティ メッセージ -->
+    <string name="killing_please_wait">スコープ内アプリを停止中…</string>
+    <string name="failed_to_stop_package">一部のスコープ内アプリを自動で強制停止できませんでした。Android の設定から手動で停止してください。</string>
+    <string name="failed_to_launch_package">Google フォトを自動で開くことができませんでした。</string>
+    <string name="unable_to_open_link">このリンクを開くことができるアプリがありません。</string>
+
+    <!-- 初回オンボーディング -->
+    <string name="onboarding_title">Pixelify Infinity へようこそ</string>
+    <string name="onboarding_default_profile_title">初期設定として Pixel XL が選択されています</string>
+    <string name="onboarding_default_profile_desc">Pixel XL では保存容量を消費しない&lt;b&gt;無制限の元の画質バックアップ&lt;/b&gt;が有効になります。最新の編集機能（消しゴムマジックや Ultra HDR など）を利用したい場合は、設定からいつでも新しい Pixel モデルに切り替えられます。</string>
+    <string name="onboarding_force_stop_warning_title">重要: Google フォトの強制停止</string>
+    <string name="onboarding_force_stop_warning_desc">Pixel XL がすでに選択されている場合でも、Google フォトを完全に停止して再起動するまで偽装は適用されません。下のボタンをタップして変更を今すぐ適用してください。</string>
+    <string name="onboarding_action_force_stop_and_launch">強制停止してフォトを起動</string>
+    <string name="onboarding_action_got_it">了解</string>
+
+    <!-- デュアル UI モード -->
+    <string name="switch_to_classic_ui">クラシック UI に切り替え</string>
+    <string name="switch_to_modern_ui">モダン UI に切り替え</string>
+    <string name="ui_mode_changed">UI モードを変更しました</string>
+
+    <!-- モダン UI テキスト -->
+    <string name="module_status_active">LSPosed モジュール有効</string>
+    <string name="module_status_inactive">モジュール無効</string>
+    <string name="module_scope_info">スコープ: Google フォト</string>
+    <string name="section_device_profile">端末プロファイル</string>
+    <string name="section_features">機能フラグ</string>
+    <string name="section_actions">操作</string>
+    <string name="customize_flags_summary">設定済み機能フラグ</string>
+    <string name="device_spoofed_active">現在の偽装プロファイル: %1$s</string>
+    <string name="reopen_photos_hint">設定変更後はスコープ内アプリを強制停止して適用してください</string>
+
+    <!-- 端末特典とバックアップ確認 -->
+    <string name="entitlement_badge_unlimited_original">無制限の元の画質（容量消費なし）</string>
+    <string name="entitlement_badge_unlimited_storage_saver">保存容量の節約画質のみ無制限（高画質）</string>
+    <string name="entitlement_badge_no_unlimited">無料バックアップなし（編集機能のみ）</string>
+    <string name="entitlement_desc_unlimited_original">Pixel XL からバックアップされた写真と動画は、「元の画質」および「保存容量の節約画質」のいずれでも Google アカウントの保存容量を消費しません。</string>
+    <string name="entitlement_desc_unlimited_storage_saver">無料無制限バックアップは、Google フォトのバックアップ画質が「保存容量の節約画質」に設定されている場合に「のみ」適用されます。「元の画質」でバックアップすると Google アカウントの保存容量を消費します！</string>
+    <string name="entitlement_desc_no_unlimited">Pixel 6 以降の端末には無料の無制限クラウド バックアップ特典はありません。すべてのアップロードで Google アカウントの保存容量を消費します。無制限のバックアップ容量が必要な場合は、Pixel XL（元の画質）または Pixel 2〜5（保存容量の節約画質）を選択してください。</string>
+    <string name="entitlement_tag_original">（元の画質で無制限）</string>
+    <string name="entitlement_tag_storage_saver">（保存容量の節約画質で無制限）</string>
+    <string name="entitlement_tag_editing_only">（編集機能のみ／無料バックアップなし）</string>
+    <string name="entitlement_tag_none">（偽装なし）</string>
+    <string name="verification_guide_btn">バックアップ成功の確認方法</string>
+    <string name="verification_guide_title">無制限バックアップの確認方法</string>
+    <string name="verification_guide_content_html">&lt;b&gt;無制限バックアップを確認する 2 つの方法:&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;1. Google フォトのバックアップ設定を確認&lt;/b&gt;&lt;br&gt;- &lt;b&gt;Google フォト&lt;/b&gt;を開きます。&lt;br&gt;- 右上のアカウント アイコン &gt; &lt;b&gt;バックアップ&lt;/b&gt;をタップします。&lt;br&gt;- 右上の歯車アイコンをタップします。&lt;br&gt;- バナーに &lt;i&gt;「この Pixel からは写真や動画を無料で無制限にバックアップできます」&lt;/i&gt; と表示されていることを確認します。&lt;br&gt;&lt;br&gt;&lt;b&gt;2. 写真をアップロードして容量詳細を確認&lt;/b&gt;&lt;br&gt;- Google フォトで新しい写真や動画をバックアップします。&lt;br&gt;- その写真を開いて上にスワイプし、詳細を表示します（または &lt;i&gt;photos.google.com&lt;/i&gt; で詳細を確認します）。&lt;br&gt;- 保存容量の項目に &lt;i&gt;「このアイテムはアカウントの保存容量を使用しません」&lt;/i&gt; （0 バイト使用）と表示されていることを確認します。&lt;br&gt;&lt;br&gt;&lt;b&gt;トラブルシューティングと診断:&lt;/b&gt;&lt;br&gt;- &lt;b&gt;診断を確認:&lt;/b&gt; 診断画面を開き、モジュールが有効で VERIFY に合格していることを確認します。&lt;br&gt;- &lt;b&gt;バックアップ画質を確認:&lt;/b&gt; Pixel 2〜5 で無料の無制限容量を利用するには、画質を&lt;b&gt;保存容量の節約画質&lt;/b&gt;にする必要があります。元の画質では Google アカウントの容量を消費します。&lt;br&gt;- &lt;b&gt;アプリのキャッシュを消去:&lt;/b&gt; Google フォトが古い端末情報をキャッシュしている場合は、&lt;b&gt;スコープ内アプリを強制停止&lt;/b&gt;をタップするか、Google フォトのキャッシュを消去して再起動してください。</string>
+
+    <!-- 診断 -->
+    <string name="diagnostics">診断</string>
+    <string name="diagnostics_title">Pixelify Infinity 診断</string>
+    <string name="diagnostics_section_status">モジュール状態</string>
+    <string name="diagnostics_section_entitlement">バックアップ特典と確認手順</string>
+    <string name="diagnostics_entitlement_profile_format">現在の偽装プロファイル: %1$s — %2$s</string>
+    <string name="diagnostics_verification_methods_title">バックアップ成功の確認方法:</string>
+    <string name="diagnostics_verification_methods_desc">1. Google フォト &gt; アカウント アイコン &gt; バックアップ &gt; バックアップ設定（歯車アイコン）: 無制限バックアップ バナーを確認します。\n2. 写真をアップロード &gt; 写真を上にスワイプ: 「このアイテムはアカウントの保存容量を使用しません」（0 バイト使用）を確認します。\n\n保存容量が消費されている場合は、以下の VERIFY 結果が OK であることを確認し、バックアップ画質がモデルの条件（例: Pixel 2〜5 は保存容量の節約画質）に合致していることを確認した上で、Google フォトを強制停止してキャッシュを消去してください。</string>
+    <string name="diagnostics_section_milestones">フックのマイルストーン</string>
+    <string name="diagnostics_section_verify">直近の端末偽装 VERIFY</string>
+    <string name="diagnostics_section_build">Build フィールド: 実機 vs 偽装ターゲット</string>
+    <string name="diagnostics_section_build_desc">値はこのアプリ プロセス（実機）内で読み取られます。偽装は Google フォトなどのスコープ内アプリ内でのみ適用されます。上の VERIFY 結果はフック プロセスの状態を反映しています。</string>
+    <string name="diagnostics_section_howto">この画面の見方</string>
+    <string name="diagnostics_howto_desc">「フックのマイルストーンが記録されていません」は通常、モジュールが Google フォトに読み込まれていないことを意味します。LSPosed の有効化とスコープを確認して再起動してください。「パッケージは読み込まれましたが準備完了になりませんでした」は、お使いの Xposed バリアントのフレームワーク/API 互換性の問題を示しています。VERIFY の失敗は、モジュールは実行されたものの Build フィールドに書き込めなかったことを意味します。問題を報告する際は「診断レポートをコピー」を使用してください。レポートにはモジュールのスコープ一覧や端末の Build 値が含まれますが、アカウント情報は含まれません。</string>
+    <string name="diagnostics_copy_report">診断レポートをコピー</string>
+    <string name="diagnostics_copied">診断レポートをコピーしました</string>
+    <string name="diagnostics_copy_failed">クリップボードにアクセスできません。</string>
+    <string name="diagnostics_module_active">モジュール有効: %1$s</string>
+    <string name="diagnostics_scope">スコープ: %1$s</string>
+    <string name="diagnostics_yes">はい</string>
+    <string name="diagnostics_no">いいえ</string>
+    <string name="diagnostics_unknown">不明</string>
+    <string name="diagnostics_unavailable">&lt;利用不可&gt;</string>
+    <string name="diagnostics_none">&lt;なし&gt;</string>
+    <string name="diagnostics_build_column_field">フィールド</string>
+    <string name="diagnostics_build_column_real">実機（この端末）</string>
+    <string name="diagnostics_build_column_target">偽装ターゲット</string>
+    <string name="diagnostics_verify_result">結果: %1$s</string>
+    <string name="diagnostics_verify_device">端末: %1$s</string>
+    <string name="diagnostics_verify_package">パッケージ: %1$s</string>
+    <string name="diagnostics_verify_time">時刻: %1$s</string>
+    <string name="diagnostics_verify_native">ネイティブ ライター (JNI): %1$s</string>
+    <string name="diagnostics_verify_sysprops">SystemProperties フック: %1$s</string>
+    <string name="diagnostics_verify_ok">成功</string>
+    <string name="diagnostics_verify_failed">失敗 — %1$s</string>
+    <string name="diagnostics_verify_not_recorded">VERIFY 記録がまだありません。Google フォトを一度開き、数秒待ってからこの画面を再度開いてください。</string>
+    <string name="diagnostics_verify_no_package_ready">VERIFY 記録がまだありません — スコープ対象のパッケージが準備完了状態に達していません。</string>
+    <string name="diagnostics_connection_banner">モジュール サービスが接続されていません。診断データは Xposed モジュールのリモート設定から読み取られます。LSPosed で本モジュールを有効化し、Google フォトを開いてから、この画面を再度開いてください。</string>
+    <string name="diagnostics_milestone_no_record">フック アクティビティがまだ記録されていません。Google フォトを一度開き、数秒待ってからこの画面を再度開いてください。</string>
+    <string name="diagnostics_milestone_module_loaded">モジュールがスコープ対象プロセス（%1$s）に読み込まれました。</string>
+    <string name="diagnostics_milestone_no_package">モジュールは読み込まれましたが、スコープ対象のパッケージが検出されませんでした。Google フォトが LSPosed モジュールのスコープに含まれているか確認し、再起動してください。</string>
+    <string name="diagnostics_milestone_package_loaded">パッケージ読み込み完了: %1$s（ここで早期端末偽装が実行されました）。</string>
+    <string name="diagnostics_milestone_package_not_ready">パッケージは読み込まれましたが準備完了になりませんでした — お使いの Xposed バリアントのフレームワーク/API 互換性の問題を示しています。</string>
+    <string name="diagnostics_milestone_package_ready">パッケージ準備完了: %1$s（フックを再適用しました）。</string>
+    <string name="diagnostics_milestone_verify_ok">直近の端末偽装 VERIFY に合格しました (nativeReady=%1$s)。</string>
+    <string name="diagnostics_milestone_verify_failed">直近の端末偽装 VERIFY が失敗しました: %1$s (nativeReady=%2$s)。コピーした診断レポートを確認するか、詳細ログを有効にしてください。</string>
+    <string name="diagnostics_milestone_verify_unexpected">VERIFY は実行されましたが結果が記録されませんでした（予期しないエラー）。</string>
+    <string name="diagnostics_milestone_verify_none">パッケージの準備完了処理は実行されましたが VERIFY 結果が記録されませんでした。詳細オプションで詳細ログを有効にして再試行してください。</string>
+</resources>

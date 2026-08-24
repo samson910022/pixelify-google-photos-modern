@@ -25,6 +25,46 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 - Modern Material 3 interface with dynamic color and an optional classic theme.
 - In-app **Diagnostics** screen: module-active state, hook milestones, and the last device-spoof VERIFY result without logcat; copy a sanitized report (no account data) for issue reports.
 
+## Device profiles and backup entitlements
+
+Different Pixel hardware generations receive different Google Photos backup entitlements and feature tiers under Google's cloud storage policies:
+
+| Profile tier | Device models | Google Photos backup entitlement | Required backup quality setting | Unlocked feature set |
+| --- | --- | --- | --- | --- |
+| **Unlimited Original Quality** | **Pixel XL** *(Default)* | **Unlimited free backup at Original Quality & Storage Saver** (0 bytes quota used) | **Original quality** or **Storage saver** | Pixel 2016 base tier (stable unlimited backup; no Tensor AI editing tools) |
+| **Unlimited Storage Saver Only** | **Pixel 2**, **Pixel 3 XL**, **Pixel 3a XL**, **Pixel 4 XL**, **Pixel 4a**, **Pixel 5**, **Pixel 5a** | **Unlimited free backup at Storage Saver quality ONLY** | **Storage saver ONLY**<br>*(Original quality consumes Google Account storage!)* | Mid-tier Pixel features |
+| **Editing Features Only** *(No Free Backup)* | **Pixel 6 / 6 Pro / 6a**, **Pixel 7 / 7 Pro / 7a**, **Pixel Fold**, **Pixel Tablet**, **Pixel 8 / 8 Pro / 8a**, **Pixel 9 / 9 Pro / XL / Fold / 9a**, **Pixel 10 series** | **NO free unlimited backup** (All uploads consume Google Account storage quota) | Google Account storage quota is consumed for all quality settings | Modern Pixel camera and AI editing tools (e.g. Magic Eraser, Ultra HDR, Portrait Light, Photo Unblur) |
+
+> [!WARNING]
+> If your goal is **free unlimited Google Photos cloud storage**, you must select **Pixel XL** (for Original Quality) or **Pixel 2 through Pixel 5a** (with backup quality set to **Storage saver**). Selecting Pixel 6 or newer models will **not** grant free cloud storage.
+
+## How to verify unlimited backup
+
+Follow either of these two methods to verify that spoofing and free cloud backup are working properly:
+
+### Method 1: Check Google Photos backup settings banner
+
+1. Open **Google Photos**.
+2. Tap your profile icon at the top right > **Backup**.
+3. Tap the **gear icon** (⚙️ Backup settings) at the top right.
+4. Check that the storage section displays the confirmation banner:<br>
+   *"This Pixel can back up unlimited photos & videos at no charge."*
+
+### Method 2: Upload a test photo & check storage details
+
+1. Take or back up a new photo or video in Google Photos.
+2. Tap to open the photo and **swipe up** to view its details (or open `photos.google.com` on a web browser and view photo info).
+3. Confirm that the storage line displays:<br>
+   *"This item doesn't take up space in your account storage"* (or **0 bytes used**).
+
+### Troubleshooting & Diagnostics
+
+If photos still consume account storage quota:
+1. Open the in-app **Diagnostics** screen in Pixelify Infinity (Module App → Diagnostics) and verify that the module is active and the last device-spoof result is **VERIFY OK**.
+2. Verify that your Google Photos backup quality setting matches that profile's free conditions (e.g. **Storage saver** for Pixel 2–5).
+3. If Google Photos cached stale device properties, tap **Force-stop scoped apps** or clear Google Photos app cache and restart.
+4. Ensure you have not selected a Pixel 6 or newer profile (which does not provide free backup).
+
 ## Requirements
 
 - Android 8.0 (API 26) or later.

@@ -177,6 +177,12 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             )
         }
 
+        val entitlement = DeviceProps.getBackupEntitlement(snapshot.selectedDevice)
+        findViewById<TextView>(R.id.diagnostics_entitlement_profile)?.text =
+            getString(R.string.diagnostics_entitlement_profile_format, snapshot.selectedDevice, getString(entitlement.badgeResId))
+        findViewById<TextView>(R.id.diagnostics_entitlement_requirement)?.text =
+            getString(entitlement.descResId)
+
         val milestoneLines = DiagnosticsCollector.milestoneSignals(snapshot.state).map {
             localizedMilestone(it)
         }

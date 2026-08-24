@@ -687,4 +687,106 @@ class DevicePropsTest {
         assertNull(DeviceProps.getDeviceProps("Pixel 10 Pro Fold"))
         assertNull(DeviceProps.getDeviceProps("Pixel 10a"))
     }
+
+    // =========================================================================
+    // BackupEntitlement tiers (Google Photos contract mirroring)
+    // =========================================================================
+
+    /**
+     * Contract Mirroring:
+     * 1. 1st Generation (Pixel 2016 - Pixel & Pixel XL): Lifetime free unlimited backup
+     *    at Original Quality (and Storage Saver) without consuming Google Account storage quota.
+     * 2. Generations 2 through 5a (2017 - mid 2021): Lifetime free unlimited backup at
+     *    Storage Saver (High Quality) ONLY. Original Quality backups consume storage quota.
+     * 3. Generations 6 and newer (2021+), Pixel Fold/Tablet, None, unrecognized, empty, or null:
+     *    No free unlimited backup. Backups consume Google Account storage quota.
+     *
+     * Fail-closed contract: Any unlisted, blank, or null device safely falls back to NO_UNLIMITED_STORAGE.
+     */
+
+    @Test
+    fun `Pixel and Pixel XL map to UNLIMITED_ORIGINAL entitlement`() {
+        // Both 2016 Pixel (sailfish) and Pixel XL (marlin) are contractually Original Quality tier
+        assertEquals(
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL,
+            DeviceProps.getBackupEntitlement("Pixel XL")
+        )
+        assertEquals(
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL,
+            DeviceProps.getBackupEntitlement("Pixel")
+        )
+
+        // Within allDevices catalog, Pixel XL is the representative 2016 entry
+        val originalDevices = DeviceProps.allDevices.filter {
+            DeviceProps.getBackupEntitlement(it.deviceName) == DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL
+        }
+        assertEquals(listOf("Pixel XL"), originalDevices.map { it.deviceName })
+    }
+
+    @Test
+    fun `Pixel 2 through Pixel 5a have UNLIMITED_STORAGE_SAVER entitlement`() {
+        val expectedStorageSaver = listOf(
+            "Pixel 2",
+            "Pixel 3 XL",
+            "Pixel 3a XL",
+            "Pixel 4 XL",
+            "Pixel 4a",
+            "Pixel 5",
+            "Pixel 5a"
+        )
+        expectedStorageSaver.forEach { name ->
+            assertEquals(
+                "Device '$name' should have UNLIMITED_STORAGE_SAVER entitlement",
+                DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER,
+                DeviceProps.getBackupEntitlement(name)
+            )
+        }
+
+        val storageSaverDevices = DeviceProps.allDevices.filter {
+            DeviceProps.getBackupEntitlement(it.deviceName) == DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER
+        }.map { it.deviceName }
+        assertEquals(expectedStorageSaver, storageSaverDevices)
+    }
+
+    @Test
+    fun `Pixel 6 and newer plus None have NO_UNLIMITED_STORAGE entitlement`() {
+        val modernOrNone = DeviceProps.allDevices
+            .map { it.deviceName }
+            .filter { it != "Pixel XL" && it !in listOf("Pixel 2", "Pixel 3 XL", "Pixel 3a XL", "Pixel 4 XL", "Pixel 4a", "Pixel 5", "Pixel 5a") }
+
+        modernOrNone.forEach { name ->
+            assertEquals(
+                "Device '$name' should have NO_UNLIMITED_STORAGE entitlement",
+                DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE,
+                DeviceProps.getBackupEntitlement(name)
+            )
+        }
+    }
+
+    @Test
+    fun `getBackupEntitlement edge cases fail closed to NO_UNLIMITED_STORAGE`() {
+        // Null, empty, blank, unknown, and casing mismatches must safely fail-closed
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement(null))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement(""))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("   "))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("Unknown"))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("Unknown Device"))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("pixel xl"))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("PIXEL XL"))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("pixel"))
+    }
+
+    @Test
+    fun `all BackupEntitlement entries define non-zero string resource IDs`() {
+        DeviceProps.BackupEntitlement.values().forEach { entitlement ->
+            assertTrue(
+                "Entitlement '${entitlement.name}' badgeResId should be non-zero",
+                entitlement.badgeResId != 0
+            )
+            assertTrue(
+                "Entitlement '${entitlement.name}' descResId should be non-zero",
+                entitlement.descResId != 0
+            )
+        }
+    }
 }

@@ -321,6 +321,8 @@ class DiagnosticsCollectorTest {
         assertTrue(report.contains("Module active: yes"))
         assertTrue(report.contains("Scope: com.google.android.apps.photos"))
         assertTrue(report.contains("Selected profile: Pixel XL"))
+        assertTrue(report.contains("Entitlement tier: Unlimited Original Quality (0 quota used)"))
+        assertTrue(report.contains("Backup quality requirement: Original quality or Storage saver (0 bytes quota used)"))
         assertTrue(report.contains("No hook activity recorded yet"))
         assertTrue(report.contains("Build fields (real vs spoof target):"))
     }
@@ -337,6 +339,23 @@ class DiagnosticsCollectorTest {
         )
         assertTrue(report.contains("Module active: no"))
         assertTrue(report.contains("Scope: unknown"))
+        assertTrue(report.contains("Entitlement tier: No free unlimited backup (Uploads consume Google Account storage quota)"))
+        assertTrue(report.contains("Backup quality requirement: None — Google Account storage is consumed for all uploads"))
+    }
+
+    @Test
+    fun `formatReportText formats storage saver requirement for Pixel 5`() {
+        val report = DiagnosticsCollector.formatReportText(
+            state = HookState(),
+            moduleActive = true,
+            scope = listOf("com.google.android.apps.photos"),
+            selectedDevice = "Pixel 5",
+            real = emptyMap(),
+            target = emptyMap(),
+        )
+        assertTrue(report.contains("Selected profile: Pixel 5"))
+        assertTrue(report.contains("Entitlement tier: Unlimited Storage Saver only (Requires 'Storage saver' backup quality)"))
+        assertTrue(report.contains("Backup quality requirement: MUST be set to 'Storage saver' in Google Photos settings"))
     }
 
     @Test

@@ -83,10 +83,29 @@
     <string name="device_spoofed_active">Active Profile: %1$s</string>
     <string name="reopen_photos_hint">Force-stop scoped apps after changing settings to apply</string>
 
+    <!-- Device Entitlements & Verification -->
+    <string name="entitlement_badge_unlimited_original">Unlimited Original Quality (0 quota used)</string>
+    <string name="entitlement_badge_unlimited_storage_saver">Unlimited Storage Saver only (High Quality)</string>
+    <string name="entitlement_badge_no_unlimited">No Free Backup (Editing perks only)</string>
+    <string name="entitlement_desc_unlimited_original">Photos and videos backed up from Pixel XL do not count toward your Google Account storage quota at Original Quality or Storage Saver quality.</string>
+    <string name="entitlement_desc_unlimited_storage_saver">Free backup applies ONLY when Google Photos backup quality is set to "Storage saver". Original Quality will consume your Google Account storage quota!</string>
+    <string name="entitlement_desc_no_unlimited">Pixel 6 and newer devices do NOT include free unlimited cloud backup. All uploads consume Google Account storage quota. If you want unlimited album storage, select Pixel XL (Original quality) or Pixel 2–5 (Storage saver).</string>
+    <string name="entitlement_tag_original">(Original Quality Unlimited)</string>
+    <string name="entitlement_tag_storage_saver">(Storage Saver Unlimited)</string>
+    <string name="entitlement_tag_editing_only">(Editing Perks / No Free Backup)</string>
+    <string name="entitlement_tag_none">(No Spoofing)</string>
+    <string name="verification_guide_btn">How to verify backup success</string>
+    <string name="verification_guide_title">How to Verify Unlimited Backup</string>
+    <string name="verification_guide_content_html">&lt;b&gt;Two Ways to Verify Unlimited Backup:&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;1. Check Google Photos Backup Settings&lt;/b&gt;&lt;br&gt;- Open &lt;b&gt;Google Photos&lt;/b&gt;.&lt;br&gt;- Tap your profile icon at top-right &gt; &lt;b&gt;Backup&lt;/b&gt;.&lt;br&gt;- Tap the gear icon at top-right.&lt;br&gt;- Check that the banner displays: &lt;i&gt;“This Pixel can back up unlimited photos &amp; videos at no charge.”&lt;/i&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;2. Upload a Photo &amp; Check Storage Details&lt;/b&gt;&lt;br&gt;- Back up a new photo or video in Google Photos.&lt;br&gt;- Open the photo and swipe up to view details (or view info on &lt;i&gt;photos.google.com&lt;/i&gt;).&lt;br&gt;- Check that the storage section states: &lt;i&gt;“This item doesn’t take up space in your account storage”&lt;/i&gt; (0 bytes used).&lt;br&gt;&lt;br&gt;&lt;b&gt;Troubleshooting &amp; Diagnostics:&lt;/b&gt;&lt;br&gt;- &lt;b&gt;Check Diagnostics:&lt;/b&gt; Open Diagnostics to ensure the module is active and VERIFY passed.&lt;br&gt;- &lt;b&gt;Check Backup Quality:&lt;/b&gt; Pixel 2–5 require &lt;b&gt;Storage saver&lt;/b&gt; quality for free unlimited quota. Original quality will consume Google Account storage.&lt;br&gt;- &lt;b&gt;Clear App Cache:&lt;/b&gt; If Google Photos cached old device properties, tap &lt;b&gt;Force-stop scoped apps&lt;/b&gt; or clear Google Photos app cache and restart.</string>
+
     <!-- Diagnostics -->
     <string name="diagnostics">Diagnostics</string>
     <string name="diagnostics_title">Pixelify Infinity Diagnostics</string>
     <string name="diagnostics_section_status">Module status</string>
+    <string name="diagnostics_section_entitlement">Backup entitlement &amp; verification</string>
+    <string name="diagnostics_entitlement_profile_format">Active Profile: %1$s — %2$s</string>
+    <string name="diagnostics_verification_methods_title">How to confirm backup success:</string>
+    <string name="diagnostics_verification_methods_desc">1. Google Photos &gt; Avatar &gt; Backup &gt; Backup settings (gear icon): check for the unlimited backup banner.\n2. Upload a photo &gt; swipe up on photo: confirm “This item doesn’t take up space in your account storage” (0 bytes used).\n\nIf quota is consumed, verify that the VERIFY result below is OK, ensure backup quality matches model conditions (e.g. Storage saver for Pixel 2–5), and force-stop Google Photos to clear stale cache.</string>
     <string name="diagnostics_section_milestones">Hook milestones</string>
     <string name="diagnostics_section_verify">Last device-spoof VERIFY</string>
     <string name="diagnostics_section_build">Build fields: real vs spoof target</string>

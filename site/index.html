@@ -22,6 +22,8 @@
       <nav aria-label="Primary">
         <ul class="nav-links">
           <li><a href="#features">Features</a></li>
+          <li><a href="#entitlements">Entitlements</a></li>
+          <li><a href="#verification">Verify</a></li>
           <li><a href="#requirements">Requirements</a></li>
           <li><a href="#install">Install</a></li>
           <li><a href="#download">Download</a></li>
@@ -85,14 +87,91 @@
         <li>Modern Material 3 interface with dynamic Monet color extraction and dual UI toggle (seamlessly switch between Modern and Classic UI).</li>
         <li>First-run onboarding guide explaining default Pixel XL unlimited backup with a 1-click force-stop &amp; launch action.</li>
         <li>Spoof selected Google Pixel device profiles (30 device profiles spanning Pixel XL, Pixel 6, Pixel Fold, Pixel Tablet, Pixel 9 Pro Fold, up to Pixel 10 series).</li>
+        <li>Real-time entitlement badges and quality requirement warnings for every device model.</li>
         <li>Spoof Pixel-related system feature flags.</li>
         <li>Multi-tier capability-driven write fallback pipeline supporting Android 8.0 through Android 14, 15, 16, and custom OEM ROMs.</li>
         <li>Optionally spoof a compatible Android version.</li>
         <li>Override ROM-provided Pixel feature levels.</li>
         <li>Select individual feature flags through an advanced configuration screen.</li>
         <li>Import, export, and share module configuration.</li>
-        <li>In-app Diagnostics screen: view module-active state, hook milestones, and the last device-spoof VERIFY result without logcat, and copy a sanitized report (no account data) for issue reports.</li>
+        <li>In-app Diagnostics screen: view module-active state, backup entitlement status, hook milestones, and the last device-spoof VERIFY result without logcat, and copy a sanitized report for issue reports.</li>
       </ul>
+    </section>
+
+    <section id="entitlements" class="wrap" aria-labelledby="entitlements-title">
+      <h2 id="entitlements-title">Device Profiles &amp; Backup Entitlements</h2>
+      <p>
+        Different Pixel hardware profiles provide different Google Photos backup entitlements under Google's cloud storage policies:
+      </p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th scope="col">Profile Tier</th>
+              <th scope="col">Models</th>
+              <th scope="col">Backup Entitlement</th>
+              <th scope="col">Required Quality Setting</th>
+              <th scope="col">Unlocked Features</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">Unlimited Original Quality</th>
+              <td><strong>Pixel XL</strong> <em>(Default)</em></td>
+              <td>Unlimited free backup at Original Quality &amp; Storage Saver (0 bytes quota used)</td>
+              <td>Original quality or Storage saver</td>
+              <td>Pixel 2016 base tier (stable unlimited backup; no Tensor AI editing tools)</td>
+            </tr>
+            <tr>
+              <th scope="row">Unlimited Storage Saver Only</th>
+              <td>Pixel 2, Pixel 3 XL, Pixel 3a XL, Pixel 4 XL, Pixel 4a, Pixel 5, Pixel 5a</td>
+              <td>Unlimited free backup at Storage Saver quality ONLY</td>
+              <td><strong>Storage saver ONLY</strong> (Original quality consumes account storage!)</td>
+              <td>Mid-tier Pixel features</td>
+            </tr>
+            <tr>
+              <th scope="row">Editing Features Only</th>
+              <td>Pixel 6 through Pixel 10 series, Pixel Fold, Pixel Tablet</td>
+              <td><strong>No free unlimited backup</strong> (Uploads consume Google Account storage quota)</td>
+              <td>Google Account quota applies to all uploads</td>
+              <td>Modern Pixel camera &amp; AI editing tools (Magic Eraser, Ultra HDR, Photo Unblur, etc.)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <aside class="callout callout-important" role="note">
+        <strong class="label">Important</strong>
+        <p>
+          If your primary goal is <strong>free unlimited Google Photos storage</strong>, select <strong>Pixel XL</strong> (Original quality) or <strong>Pixel 2 through Pixel 5a</strong> (with quality set to <strong>Storage saver</strong>). Pixel 6 and newer models do not grant free backup quota.
+        </p>
+      </aside>
+    </section>
+
+    <section id="verification" class="wrap" aria-labelledby="verification-title">
+      <h2 id="verification-title">How to Verify Unlimited Backup</h2>
+      <p>Confirm that device spoofing and unlimited cloud backup are active using either method:</p>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Method 1: In-App Backup Settings</h3>
+          <ol class="steps">
+            <li>Open <strong>Google Photos</strong>.</li>
+            <li>Tap profile avatar at top-right &gt; <strong>Backup</strong>.</li>
+            <li>Tap the gear icon (<strong>Backup settings</strong>) at top-right.</li>
+            <li>Confirm the banner displays: <em>"This Pixel can back up unlimited photos &amp; videos at no charge."</em></li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Method 2: Upload &amp; Storage Details</h3>
+          <ol class="steps">
+            <li>Back up a new photo or video in Google Photos.</li>
+            <li>Open the photo and <strong>swipe up</strong> to view details (or view details on <code>photos.google.com</code>).</li>
+            <li>Confirm the storage line states: <em>"This item doesn't take up space in your account storage"</em> (0 bytes used).</li>
+          </ol>
+        </div>
+      </div>
+      <p class="note troubleshooting-note">
+        <strong>Troubleshooting:</strong> If uploads still consume quota, open the in-app <strong>Diagnostics</strong> screen in Pixelify Infinity to confirm VERIFY is OK, check that your backup quality is set to <strong>Storage saver</strong> for Pixel 2–5 profiles, and use <strong>Force-stop scoped apps</strong> or clear Google Photos app cache.
+      </p>
     </section>
 
     <section id="requirements" class="wrap" aria-labelledby="requirements-title">
