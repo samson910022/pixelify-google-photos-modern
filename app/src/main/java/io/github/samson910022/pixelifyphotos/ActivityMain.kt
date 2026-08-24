@@ -300,16 +300,8 @@ class ActivityMain : AppCompatActivity() {
         descView: TextView?
     ) {
         val entitlement = DeviceProps.getBackupEntitlement(deviceName)
-        val (badgeRes, descRes) = when (entitlement) {
-            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL ->
-                Pair(R.string.entitlement_badge_unlimited_original, R.string.entitlement_desc_unlimited_original)
-            DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER ->
-                Pair(R.string.entitlement_badge_unlimited_storage_saver, R.string.entitlement_desc_unlimited_storage_saver)
-            DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE ->
-                Pair(R.string.entitlement_badge_no_unlimited, R.string.entitlement_desc_no_unlimited)
-        }
-        badgeView?.text = getString(badgeRes)
-        descView?.text = getString(descRes)
+        badgeView?.text = getString(entitlement.badgeResId)
+        descView?.text = getString(entitlement.descResId)
     }
 
     /**

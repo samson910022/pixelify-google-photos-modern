@@ -775,4 +775,18 @@ class DevicePropsTest {
         assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("PIXEL XL"))
         assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("pixel"))
     }
+
+    @Test
+    fun `all BackupEntitlement entries define non-zero string resource IDs`() {
+        DeviceProps.BackupEntitlement.values().forEach { entitlement ->
+            assertTrue(
+                "Entitlement '${entitlement.name}' badgeResId should be non-zero",
+                entitlement.badgeResId != 0
+            )
+            assertTrue(
+                "Entitlement '${entitlement.name}' descResId should be non-zero",
+                entitlement.descResId != 0
+            )
+        }
+    }
 }

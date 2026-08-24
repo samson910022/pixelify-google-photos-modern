@@ -306,4 +306,18 @@ class UtilsConfigTest {
         val importedFeatures = imported[Constants.PREF_SPOOF_FEATURES_LIST] as Set<String>
         assertEquals(allNames, importedFeatures)
     }
+
+    @Test
+    fun `imported legacy Pixel configuration resolves to UNLIMITED_ORIGINAL entitlement`() {
+        val json = JSONObject().apply {
+            put(Constants.PREF_DEVICE_TO_SPOOF, "Pixel")
+        }
+        val imported = parseImportJson(json)
+        val deviceName = imported[Constants.PREF_DEVICE_TO_SPOOF] as? String
+        assertEquals("Pixel", deviceName)
+        assertEquals(
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL,
+            DeviceProps.getBackupEntitlement(deviceName)
+        )
+    }
 }

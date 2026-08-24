@@ -178,18 +178,10 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         }
 
         val entitlement = DeviceProps.getBackupEntitlement(snapshot.selectedDevice)
-        val (badgeRes, descRes) = when (entitlement) {
-            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL ->
-                Pair(R.string.entitlement_badge_unlimited_original, R.string.entitlement_desc_unlimited_original)
-            DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER ->
-                Pair(R.string.entitlement_badge_unlimited_storage_saver, R.string.entitlement_desc_unlimited_storage_saver)
-            DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE ->
-                Pair(R.string.entitlement_badge_no_unlimited, R.string.entitlement_desc_no_unlimited)
-        }
         findViewById<TextView>(R.id.diagnostics_entitlement_profile)?.text =
-            getString(R.string.diagnostics_entitlement_profile_format, snapshot.selectedDevice, getString(badgeRes))
+            getString(R.string.diagnostics_entitlement_profile_format, snapshot.selectedDevice, getString(entitlement.badgeResId))
         findViewById<TextView>(R.id.diagnostics_entitlement_requirement)?.text =
-            getString(descRes)
+            getString(entitlement.descResId)
 
         val milestoneLines = DiagnosticsCollector.milestoneSignals(snapshot.state).map {
             localizedMilestone(it)

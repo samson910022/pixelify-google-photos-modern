@@ -1,5 +1,7 @@
 package io.github.samson910022.pixelifyphotos
 
+import androidx.annotation.StringRes
+
 /**
  * Build values taken from:
  * Pixel 6:
@@ -662,24 +664,36 @@ object DeviceProps {
     /**
      * Google Photos backup entitlement tiers corresponding to Pixel hardware generations.
      */
-    enum class BackupEntitlement {
+    enum class BackupEntitlement(
+        @StringRes val badgeResId: Int,
+        @StringRes val descResId: Int,
+    ) {
         /**
          * Pixel 1 / Pixel XL (2016): Lifetime unlimited backup at Original Quality (and Storage Saver)
          * without consuming Google Account storage quota.
          */
-        UNLIMITED_ORIGINAL,
+        UNLIMITED_ORIGINAL(
+            badgeResId = R.string.entitlement_badge_unlimited_original,
+            descResId = R.string.entitlement_desc_unlimited_original,
+        ),
 
         /**
          * Pixel 2 through Pixel 5 / 5a (2017 - mid 2021): Lifetime unlimited backup at Storage Saver
          * (High Quality) ONLY. Original Quality backups consume Google Account storage quota!
          */
-        UNLIMITED_STORAGE_SAVER,
+        UNLIMITED_STORAGE_SAVER(
+            badgeResId = R.string.entitlement_badge_unlimited_storage_saver,
+            descResId = R.string.entitlement_desc_unlimited_storage_saver,
+        ),
 
         /**
          * Pixel 6 series and newer (2021+), Pixel Fold/Tablet, and None: No free unlimited backup.
          * All backups consume Google Account storage quota. Spoofing unlocks camera / AI editing perks.
          */
-        NO_UNLIMITED_STORAGE,
+        NO_UNLIMITED_STORAGE(
+            badgeResId = R.string.entitlement_badge_no_unlimited,
+            descResId = R.string.entitlement_desc_no_unlimited,
+        );
     }
 
     /**
@@ -687,6 +701,8 @@ object DeviceProps {
      *
      * Mirrors Google Photos entitlement tiers:
      * - Pixel (2016, sailfish) & Pixel XL (2016, marlin) -> UNLIMITED_ORIGINAL
+     *   (Note: Pixel XL is the primary 2016 catalog entry in [allDevices]; bare "Pixel"
+     *   is mapped here for config import safety and forward compatibility).
      * - Pixel 2 through Pixel 5a (2017 to mid-2021) -> UNLIMITED_STORAGE_SAVER
      * - Pixel 6 series and newer (2021+), non-Pixel, empty, or null -> NO_UNLIMITED_STORAGE
      */
