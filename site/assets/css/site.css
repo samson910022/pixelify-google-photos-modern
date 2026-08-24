@@ -421,6 +421,10 @@ code,
   font-size: 0.95rem;
 }
 
+.troubleshooting-note {
+  margin-top: 1rem;
+}
+
 /* Tables */
 .table-wrap {
   overflow-x: auto;

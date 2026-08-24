@@ -684,9 +684,15 @@ object DeviceProps {
 
     /**
      * Determine the [BackupEntitlement] tier for the given device name.
+     *
+     * Mirrors Google Photos entitlement tiers:
+     * - Pixel (2016, sailfish) & Pixel XL (2016, marlin) -> UNLIMITED_ORIGINAL
+     * - Pixel 2 through Pixel 5a (2017 to mid-2021) -> UNLIMITED_STORAGE_SAVER
+     * - Pixel 6 series and newer (2021+), non-Pixel, empty, or null -> NO_UNLIMITED_STORAGE
      */
     fun getBackupEntitlement(deviceName: String?): BackupEntitlement {
         return when (deviceName) {
+            "Pixel",
             "Pixel XL" -> BackupEntitlement.UNLIMITED_ORIGINAL
             "Pixel 2",
             "Pixel 3 XL",

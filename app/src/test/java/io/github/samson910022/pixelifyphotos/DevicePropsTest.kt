@@ -689,16 +689,34 @@ class DevicePropsTest {
     }
 
     // =========================================================================
-    // BackupEntitlement tiers
+    // BackupEntitlement tiers (Google Photos contract mirroring)
     // =========================================================================
 
+    /**
+     * Contract Mirroring:
+     * 1. 1st Generation (Pixel 2016 - Pixel & Pixel XL): Lifetime free unlimited backup
+     *    at Original Quality (and Storage Saver) without consuming Google Account storage quota.
+     * 2. Generations 2 through 5a (2017 - mid 2021): Lifetime free unlimited backup at
+     *    Storage Saver (High Quality) ONLY. Original Quality backups consume storage quota.
+     * 3. Generations 6 and newer (2021+), Pixel Fold/Tablet, None, unrecognized, empty, or null:
+     *    No free unlimited backup. Backups consume Google Account storage quota.
+     *
+     * Fail-closed contract: Any unlisted, blank, or null device safely falls back to NO_UNLIMITED_STORAGE.
+     */
+
     @Test
-    fun `Pixel XL is the only device with UNLIMITED_ORIGINAL entitlement`() {
+    fun `Pixel and Pixel XL map to UNLIMITED_ORIGINAL entitlement`() {
+        // Both 2016 Pixel (sailfish) and Pixel XL (marlin) are contractually Original Quality tier
         assertEquals(
             DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL,
             DeviceProps.getBackupEntitlement("Pixel XL")
         )
+        assertEquals(
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL,
+            DeviceProps.getBackupEntitlement("Pixel")
+        )
 
+        // Within allDevices catalog, Pixel XL is the representative 2016 entry
         val originalDevices = DeviceProps.allDevices.filter {
             DeviceProps.getBackupEntitlement(it.deviceName) == DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL
         }
@@ -743,9 +761,18 @@ class DevicePropsTest {
                 DeviceProps.getBackupEntitlement(name)
             )
         }
+    }
 
-        // Null and unknown device names should also safely map to NO_UNLIMITED_STORAGE
+    @Test
+    fun `getBackupEntitlement edge cases fail closed to NO_UNLIMITED_STORAGE`() {
+        // Null, empty, blank, unknown, and casing mismatches must safely fail-closed
         assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement(null))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement(""))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("   "))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("Unknown"))
         assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("Unknown Device"))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("pixel xl"))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("PIXEL XL"))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("pixel"))
     }
 }

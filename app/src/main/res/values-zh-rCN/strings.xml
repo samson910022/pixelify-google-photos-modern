@@ -1,0 +1,149 @@
+<resources>
+    <string name="app_name">Pixelify Infinity</string>
+
+    <!-- 主界面 -->
+    <string name="reset">重置</string>
+    <string name="device_to_spoof">要模拟的设备</string>
+    <string name="spoofs_build_and_features">模拟特定设备属性与功能标志。LSPosed 建议勾选 Google 相册；其他 App 属于高级且不支持。切勿将 Play 服务、Play 商店、系统界面或银行／支付类 App 纳入作用域。</string>
+    <string name="customize_feature_flags">自定义功能标志</string>
+    <string name="feature_flags_changed">功能标志已更改</string>
+    <string name="override_rom_feature_levels">覆盖 ROM 功能层级</string>
+    <string name="override_rom_feature_levels_desc">选择较低世代的 Pixel 配置文件时，忽略 ROM 已提供的较高功能层级。<b>（推荐）</b></string>
+    <string name="force_stop_google_photos">强行停止\n作用域 App</string>
+    <string name="module_not_enabled">模块未激活。请在兼容的 Xposed 管理器中启用 Pixelify Infinity，将 Google 相册保留在作用域中（推荐），然后重新打开此应用。若 Xposed 管理器有要求，请重启设备。</string>
+    <string name="close">关闭</string>
+    <string name="open_google_photos">打开 Google 相册</string>
+    <string name="support_link">支持／反馈问题</string>
+    <string name="update_available">有可用的应用更新</string>
+
+    <!-- 更新日志 -->
+    <string name="version_head">版本 1.4.1</string>
+    <string name="version_desc">解决了冷启动竞态条件导致模块状态误报为未激活的问题，清理了无效的 Unsafe 反射探测，并强化了跨线程并发契约。</string>
+    <string name="changelog">更新日志</string>
+
+    <!-- 配置导入／导出 -->
+    <string name="please_force_stop_google_photos">请强行停止作用域 App（Google 相册及 LSPosed 模块作用域内的其他应用）并重新打开，以使更改生效。</string>
+    <string name="export_config">导出配置</string>
+    <string name="export_config_desc">将此模块的设置保存或分享为 JSON 文件。</string>
+    <string name="export_complete">导出完成</string>
+    <string name="share">分享</string>
+    <string name="select_a_location">选择保存位置</string>
+    <string name="share_config_file">分享配置文件</string>
+    <string name="import_config">导入配置</string>
+    <string name="import_config_desc">选择 Pixelify Infinity 的 JSON 配置文件。</string>
+    <string name="share_error">无法分享或导出配置。</string>
+    <string name="read_error">无法读取所选的配置文件。</string>
+    <string name="import_complete">导入完成</string>
+    <string name="invalid_imported_device">导入的设备配置文件不受支持，已跳过。</string>
+    <string name="invalid_imported_android_version">导入的 Android 版本不受支持，已跳过。</string>
+    <string name="advanced_options">高级选项</string>
+
+    <!-- 功能自定义 -->
+    <string name="save">保存</string>
+
+    <!-- 高级选项 -->
+    <string name="enable_verbose_logging">启用详细日志</string>
+    <string name="enable_verbose_logging_desc">在 Xposed 和 Android 日志中添加详细诊断信息。仅在复现问题时启用，并在分享日志前移除个人敏感信息。</string>
+    <string name="spoof_android_version">模拟 Android 版本</string>
+    <string name="spoof_android_version_desc">请勿选择高于设备实际版本的 Android 版本。</string>
+    <string name="this_might_cause_crash">不兼容的值可能会导致 Google 相册崩溃。</string>
+    <string name="dont_spoof_android_version">不模拟 Android 版本 <b>（推荐）</b></string>
+    <string name="follow_spoof_device_version">使用所选 Pixel 配置文件的 Android 版本</string>
+    <string name="manually_set_android_version">手动设置 Android 版本</string>
+    <string name="device_version_separator"> – </string>
+
+    <!-- 工具消息 -->
+    <string name="killing_please_wait">正在停止作用域 App…</string>
+    <string name="failed_to_stop_package">无法自动强行停止一个或多个作用域应用，请在 Android 系统设置中手动停止。</string>
+    <string name="failed_to_launch_package">无法自动打开 Google 相册。</string>
+    <string name="unable_to_open_link">没有可用于打开此链接的应用。</string>
+
+    <!-- 首次启动引导 -->
+    <string name="onboarding_title">欢迎使用 Pixelify Infinity</string>
+    <string name="onboarding_default_profile_title">已默认选择 Pixel XL</string>
+    <string name="onboarding_default_profile_desc">Pixel XL 可解锁&lt;b&gt;无限原画质 Google 相册备份&lt;/b&gt;且不消耗存储空间。如果您更青睐较新的照片编辑功能（例如魔术橡皮擦、Ultra HDR），可随时在设置中切换为较新的 Pixel 机型。</string>
+    <string name="onboarding_force_stop_warning_title">重要提醒：必须强行停止 Google 相册</string>
+    <string name="onboarding_force_stop_warning_desc">尽管已默认选择 Pixel XL，但 Google 相册在彻底停止并重新打开前不会应用伪装。点击下方按钮即可立即应用更改。</string>
+    <string name="onboarding_action_force_stop_and_launch">强行停止并打开相册</string>
+    <string name="onboarding_action_got_it">我知道了</string>
+
+    <!-- 双界面模式 -->
+    <string name="switch_to_classic_ui">切换到经典界面</string>
+    <string name="switch_to_modern_ui">切换到现代界面</string>
+    <string name="ui_mode_changed">界面模式已更改</string>
+
+    <!-- 现代界面文本 -->
+    <string name="module_status_active">LSPosed 模块已激活</string>
+    <string name="module_status_inactive">模块未激活</string>
+    <string name="module_scope_info">作用域：Google 相册</string>
+    <string name="section_device_profile">设备配置文件</string>
+    <string name="section_features">功能标志</string>
+    <string name="section_actions">快捷操作</string>
+    <string name="customize_flags_summary">已配置的功能标志</string>
+    <string name="device_spoofed_active">当前模拟机型：%1$s</string>
+    <string name="reopen_photos_hint">更改设置后请强行停止作用域 App 以应用更改</string>
+
+    <!-- 设备权益与备份验证 -->
+    <string name="entitlement_badge_unlimited_original">无限制原画质备份（不占空间）</string>
+    <string name="entitlement_badge_unlimited_storage_saver">仅限无限制省存储空间备份（高画质）</string>
+    <string name="entitlement_badge_no_unlimited">无免费备份（仅解锁照片编辑功能）</string>
+    <string name="entitlement_desc_unlimited_original">从 Pixel XL 备份的照片和视频，以“原画质”或“省存储空间画质”上传均不计入您的 Google 账号存储空间配额。</string>
+    <string name="entitlement_desc_unlimited_storage_saver">免费无限备份“仅在”Google 相册备份画质设为“省存储空间”时生效。若设为“原画质”，上传仍将正常消耗您的 Google 账号存储空间配额！</string>
+    <string name="entitlement_desc_no_unlimited">Pixel 6 及更新机型不包含免费无限制云端备份权益。所有上传均会正常消耗 Google 账号存储空间配额。如需无限相册存储空间，请选择 Pixel XL（原画质）或 Pixel 2–5（省存储空间）。</string>
+    <string name="entitlement_tag_original">（原画质无限）</string>
+    <string name="entitlement_tag_storage_saver">（省空间画质无限）</string>
+    <string name="entitlement_tag_editing_only">（仅编辑功能／无免费备份）</string>
+    <string name="entitlement_tag_none">（不模拟）</string>
+    <string name="verification_guide_btn">如何验证备份成功</string>
+    <string name="verification_guide_title">如何验证无限制备份</string>
+    <string name="verification_guide_content_html">&lt;b&gt;验证无限制备份的两种方法：&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;1. 检查 Google 相册备份设置&lt;/b&gt;&lt;br&gt;- 打开 &lt;b&gt;Google 相册&lt;/b&gt;。&lt;br&gt;- 点击右上角头像 &gt; &lt;b&gt;备份&lt;/b&gt;。&lt;br&gt;- 点击右上角齿轮图标进入备份设置。&lt;br&gt;- 检查横幅是否显示：&lt;i&gt;“这台 Pixel 可免费备份无限量的照片和视频”&lt;/i&gt;。&lt;br&gt;&lt;br&gt;&lt;b&gt;2. 上传照片并检查存储详情&lt;/b&gt;&lt;br&gt;- 在 Google 相册中备份一张新照片或视频。&lt;br&gt;- 打开照片并上滑查看详情（或在 &lt;i&gt;photos.google.com&lt;/i&gt; 上查看详情）。&lt;br&gt;- 检查存储空间一栏是否显示：&lt;i&gt;“此内容不占用您的账号存储空间”&lt;/i&gt;（使用 0 字节）。&lt;br&gt;&lt;br&gt;&lt;b&gt;疑难解答与诊断：&lt;/b&gt;&lt;br&gt;- &lt;b&gt;查看诊断：&lt;/b&gt;打开“诊断”界面以确认模块处于激活状态且 VERIFY 通过。&lt;br&gt;- &lt;b&gt;检查备份画质：&lt;/b&gt;Pixel 2–5 需要设置为&lt;b&gt;省存储空间&lt;/b&gt;画质才能享有免费无限制配额。原画质将消耗 Google 账号存储空间。&lt;br&gt;- &lt;b&gt;清除应用缓存：&lt;/b&gt;若 Google 相册缓存了旧设备属性，请点击“&lt;b&gt;强行停止作用域 App&lt;/b&gt;”或清除 Google 相册应用缓存并重启。</string>
+
+    <!-- 诊断 -->
+    <string name="diagnostics">诊断</string>
+    <string name="diagnostics_title">Pixelify Infinity 诊断</string>
+    <string name="diagnostics_section_status">模块状态</string>
+    <string name="diagnostics_section_entitlement">备份权益与验证说明</string>
+    <string name="diagnostics_entitlement_profile_format">当前模拟机型：%1$s — %2$s</string>
+    <string name="diagnostics_verification_methods_title">如何确认备份成功：</string>
+    <string name="diagnostics_verification_methods_desc">1. Google 相册 &gt; 个人头像 &gt; 备份 &gt; 备份设置（齿轮图标）：检查是否存在无限制备份横幅。\n2. 上传照片 &gt; 上滑查看详情：确认显示“此内容不占用您的账号存储空间”（使用 0 字节）。\n\n若仍消耗存储空间，请确认下方 VERIFY 结果为成功（OK）、备份画质符合机型要求（例如 Pixel 2–5 须设为省存储空间），并强行停止 Google 相册以清除旧缓存。</string>
+    <string name="diagnostics_section_milestones">Hook 里程碑</string>
+    <string name="diagnostics_section_verify">上次设备模拟 VERIFY</string>
+    <string name="diagnostics_section_build">Build 字段：实际值 vs 模拟目标</string>
+    <string name="diagnostics_section_build_desc">数值是在本应用进程内读取（实际设备）。模拟仅应用于作用域内的应用（例如 Google 相册）——上方的 VERIFY 结果反映的是 Hook 进程。</string>
+    <string name="diagnostics_section_howto">如何解读此界面</string>
+    <string name="diagnostics_howto_desc">“未记录任何 Hook 里程碑”通常表示模块从未加载到 Google 相册中——请检查 LSPosed 是否启用及作用域设置，然后重启设备。“已加载软件包但从未就绪”表明您的 Xposed 版本存在框架／API 兼容性问题。VERIFY 失败表示模块已运行但无法写入 Build 字段。反馈问题时请使用“复制诊断报告”——报告包含模块作用域列表与设备 Build 数值，但不含任何账户数据。</string>
+    <string name="diagnostics_copy_report">复制诊断报告</string>
+    <string name="diagnostics_copied">诊断报告已复制</string>
+    <string name="diagnostics_copy_failed">无法访问剪贴板。</string>
+    <string name="diagnostics_module_active">模块已激活：%1$s</string>
+    <string name="diagnostics_scope">作用域：%1$s</string>
+    <string name="diagnostics_yes">是</string>
+    <string name="diagnostics_no">否</string>
+    <string name="diagnostics_unknown">未知</string>
+    <string name="diagnostics_unavailable">&lt;不可用&gt;</string>
+    <string name="diagnostics_none">&lt;无&gt;</string>
+    <string name="diagnostics_build_column_field">字段</string>
+    <string name="diagnostics_build_column_real">实际（本机）</string>
+    <string name="diagnostics_build_column_target">模拟目标</string>
+    <string name="diagnostics_verify_result">结果：%1$s</string>
+    <string name="diagnostics_verify_device">设备：%1$s</string>
+    <string name="diagnostics_verify_package">软件包：%1$s</string>
+    <string name="diagnostics_verify_time">时间：%1$s</string>
+    <string name="diagnostics_verify_native">Native 写入器（JNI）：%1$s</string>
+    <string name="diagnostics_verify_sysprops">SystemProperties hook：%1$s</string>
+    <string name="diagnostics_verify_ok">成功</string>
+    <string name="diagnostics_verify_failed">失败 — %1$s</string>
+    <string name="diagnostics_verify_not_recorded">暂无 VERIFY 记录。请打开一次 Google 相册，等待几秒后重新打开此界面。</string>
+    <string name="diagnostics_verify_no_package_ready">暂无 VERIFY 记录——作用域软件包尚未达到就绪状态。</string>
+    <string name="diagnostics_connection_banner">模块服务未连接。诊断数据是从 Xposed 模块的远程偏好设置中读取的。请在 LSPosed 中启用此模块并打开 Google 相册，然后重新打开此界面。</string>
+    <string name="diagnostics_milestone_no_record">暂无任何 Hook 活动记录。请打开一次 Google 相册，等待几秒后重新打开此界面。</string>
+    <string name="diagnostics_milestone_module_loaded">模块已在作用域进程中加载（%1$s）。</string>
+    <string name="diagnostics_milestone_no_package">模块已加载，但未检测到任何作用域软件包。请检查 Google 相册是否在 LSPosed 模块作用域中，然后重启设备。</string>
+    <string name="diagnostics_milestone_package_loaded">软件包已加载：%1$s（此处已执行早期设备模拟）。</string>
+    <string name="diagnostics_milestone_package_not_ready">软件包已加载但从未就绪——这表明您的 Xposed 版本存在框架／API 兼容性问题。</string>
+    <string name="diagnostics_milestone_package_ready">软件包已就绪：%1$s（已重新应用 hook）。</string>
+    <string name="diagnostics_milestone_verify_ok">上次设备模拟 VERIFY 通过（nativeReady=%1$s）。</string>
+    <string name="diagnostics_milestone_verify_failed">上次设备模拟 VERIFY 失败：%1$s（nativeReady=%2$s）。请查看复制的诊断报告或启用详细日志。</string>
+    <string name="diagnostics_milestone_verify_unexpected">VERIFY 已运行但未记录任何结果（异常）。</string>
+    <string name="diagnostics_milestone_verify_none">软件包已就绪但未记录任何 VERIFY 结果；请在高级选项中启用详细日志后重试。</string>
+</resources>
