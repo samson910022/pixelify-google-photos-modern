@@ -90,6 +90,43 @@
                 android:layout_marginTop="4dp"
                 android:text="@string/spoofs_build_and_features"/>
 
+            <LinearLayout
+                android:id="@+id/classic_card_entitlement"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="8dp"
+                android:padding="10dp"
+                android:background="?android:attr/colorBackgroundFloating">
+
+                <TextView
+                    android:id="@+id/classic_entitlement_badge"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="?android:attr/textAppearanceMedium"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/classic_entitlement_desc"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textAppearance="?android:attr/textAppearanceSmall" />
+
+                <TextView
+                    android:id="@+id/classic_btn_verify_guide"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/verification_guide_btn"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    android:textColor="?android:attr/colorPrimary"
+                    android:textStyle="bold"
+                    android:clickable="true"
+                    android:focusable="true" />
+
+            </LinearLayout>
+
         </LinearLayout>
 
         <Space

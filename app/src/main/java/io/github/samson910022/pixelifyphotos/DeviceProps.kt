@@ -660,6 +660,46 @@ object DeviceProps {
     }
 
     /**
+     * Google Photos backup entitlement tiers corresponding to Pixel hardware generations.
+     */
+    enum class BackupEntitlement {
+        /**
+         * Pixel 1 / Pixel XL (2016): Lifetime unlimited backup at Original Quality (and Storage Saver)
+         * without consuming Google Account storage quota.
+         */
+        UNLIMITED_ORIGINAL,
+
+        /**
+         * Pixel 2 through Pixel 5 / 5a (2017 - mid 2021): Lifetime unlimited backup at Storage Saver
+         * (High Quality) ONLY. Original Quality backups consume Google Account storage quota!
+         */
+        UNLIMITED_STORAGE_SAVER,
+
+        /**
+         * Pixel 6 series and newer (2021+), Pixel Fold/Tablet, and None: No free unlimited backup.
+         * All backups consume Google Account storage quota. Spoofing unlocks camera / AI editing perks.
+         */
+        NO_UNLIMITED_STORAGE,
+    }
+
+    /**
+     * Determine the [BackupEntitlement] tier for the given device name.
+     */
+    fun getBackupEntitlement(deviceName: String?): BackupEntitlement {
+        return when (deviceName) {
+            "Pixel XL" -> BackupEntitlement.UNLIMITED_ORIGINAL
+            "Pixel 2",
+            "Pixel 3 XL",
+            "Pixel 3a XL",
+            "Pixel 4 XL",
+            "Pixel 4a",
+            "Pixel 5",
+            "Pixel 5a" -> BackupEntitlement.UNLIMITED_STORAGE_SAVER
+            else -> BackupEntitlement.NO_UNLIMITED_STORAGE
+        }
+    }
+
+    /**
      * Default name of device to spoof on first open / missing pref / reset.
      * Already-saved PREF_DEVICE_TO_SPOOF is not migrated.
      */

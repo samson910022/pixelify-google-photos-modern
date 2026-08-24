@@ -83,10 +83,29 @@
     <string name="device_spoofed_active">目前模擬機型：%1$s</string>
     <string name="reopen_photos_hint">變更設定後請強制停止作用範圍 App 讓變更生效</string>
 
+    <!-- 裝置權益與備份驗證 -->
+    <string name="entitlement_badge_unlimited_original">無限制原始畫質備份（不佔空間）</string>
+    <string name="entitlement_badge_unlimited_storage_saver">僅限無限制省儲存空間備份（高畫質）</string>
+    <string name="entitlement_badge_no_unlimited">無免費備份（僅解鎖相片編輯功能）</string>
+    <string name="entitlement_desc_unlimited_original">以 Pixel XL 備份的照片與影片，以「原始畫質」或「省儲存空間畫質」上傳皆完全不佔用 Google 帳號空間。</string>
+    <string name="entitlement_desc_unlimited_storage_saver">免費無限備份「僅在」Google 相簿備份畫質設為「省儲存空間（高畫質）」時生效。若設為「原始畫質」，上傳將會正常扣除 Google 帳號空間！</string>
+    <string name="entitlement_desc_no_unlimited">Pixel 6 及後續機型不具備免費相簿備份權益，上傳會正常扣除 Google 帳號空間。若需要無限相簿空間，請改選 Pixel XL（原始畫質）或 Pixel 2–5（省儲存空間）。</string>
+    <string name="entitlement_tag_original">（原始畫質無限）</string>
+    <string name="entitlement_tag_storage_saver">（省空間畫質無限）</string>
+    <string name="entitlement_tag_editing_only">（僅相片功能／無免費備份）</string>
+    <string name="entitlement_tag_none">（不模擬）</string>
+    <string name="verification_guide_btn">如何確認備份成功</string>
+    <string name="verification_guide_title">如何確認備份是否成功</string>
+    <string name="verification_guide_content_html">&lt;b&gt;判斷備份是否成功的兩種方法：&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;1. 檢查 Google 相簿備份設定&lt;/b&gt;&lt;br&gt;- 開啟 &lt;b&gt;Google 相簿&lt;/b&gt;。&lt;br&gt;- 點選右上角個人頭像 &gt; &lt;b&gt;備份&lt;/b&gt;。&lt;br&gt;- 點選右上角齒輪圖示進入備份設定。&lt;br&gt;- 檢查橫幅是否正確顯示：&lt;i&gt;「這部 Pixel 可免費備份無限量的相片和影片」&lt;/i&gt;。&lt;br&gt;&lt;br&gt;&lt;b&gt;2. 實際上傳相片並檢查詳細資料&lt;/b&gt;&lt;br&gt;- 在 Google 相簿中實際上傳備份一張相片或影片。&lt;br&gt;- 點開該相片並向上滑動查看詳細資訊（或至 &lt;i&gt;photos.google.com&lt;/i&gt; 查看相片詳細資訊）。&lt;br&gt;- 檢查儲存空間是否顯示：&lt;i&gt;「這個項目不佔用你的帳戶儲存空間」&lt;/i&gt;（使用 0 個位元組）。&lt;br&gt;&lt;br&gt;&lt;b&gt;疑難排解與診斷：&lt;/b&gt;&lt;br&gt;- &lt;b&gt;檢查模組診斷：&lt;/b&gt;進入「診斷」畫面，確認模組狀態為啟用且 VERIFY 成功。&lt;br&gt;- &lt;b&gt;檢查備份畫質：&lt;/b&gt;Pixel 2–5「必須」設定為&lt;b&gt;省儲存空間（高畫質）&lt;/b&gt;才能享有免費權益；設為原始畫質會扣除帳號空間。&lt;br&gt;- &lt;b&gt;清除快取：&lt;/b&gt;若相簿仍顯示舊機型狀態，請點擊「&lt;b&gt;強制停止作用範圍 App&lt;/b&gt;」或至系統清除 Google 相簿快取後重新開啟。</string>
+
     <!-- 診斷 -->
     <string name="diagnostics">診斷</string>
     <string name="diagnostics_title">Pixelify Infinity 診斷</string>
     <string name="diagnostics_section_status">模組狀態</string>
+    <string name="diagnostics_section_entitlement">備份權益與驗證說明</string>
+    <string name="diagnostics_entitlement_profile_format">目前模擬機型：%1$s — %2$s</string>
+    <string name="diagnostics_verification_methods_title">如何確認備份成功：</string>
+    <string name="diagnostics_verification_methods_desc">1. Google 相簿 &gt; 個人頭像 &gt; 備份 &gt; 備份設定（齒輪圖示）：檢查是否有無限制備份橫幅。\n2. 上傳相片 &gt; 向上滑動查看詳細資訊：確認顯示「這個項目不佔用你的帳戶儲存空間」（使用 0 個位元組）。\n\n若仍扣除雲端空間，請確認下方 VERIFY 結果為成功、備份畫質符合該機型條件（如 Pixel 2–5 需設為省儲存空間），並強制停止 Google 相簿以清除快取。</string>
     <string name="diagnostics_section_milestones">Hook 里程碑</string>
     <string name="diagnostics_section_verify">上次裝置模擬 VERIFY</string>
     <string name="diagnostics_section_build">Build 欄位：實際值 vs 模擬目標</string>

@@ -184,11 +184,30 @@ object DiagnosticsCollector {
         real: Map<String, String>,
         target: Map<String, String>,
     ): String {
+        val entitlement = DeviceProps.getBackupEntitlement(selectedDevice)
+        val entitlementSummary = when (entitlement) {
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL ->
+                "Unlimited Original Quality (0 quota used)"
+            DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER ->
+                "Unlimited Storage Saver only (Requires 'Storage saver' backup quality)"
+            DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE ->
+                "No free unlimited backup (Uploads consume Google Account storage quota)"
+        }
+        val qualityRequirement = when (entitlement) {
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL ->
+                "Original quality or Storage saver (0 bytes quota used)"
+            DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER ->
+                "MUST be set to 'Storage saver' in Google Photos settings"
+            DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE ->
+                "None — Google Account storage is consumed for all uploads"
+        }
         val sb = StringBuilder()
         sb.appendLine("Pixelify Infinity diagnostics")
         sb.appendLine("Module active: ${if (moduleActive) "yes" else "no"}")
         sb.appendLine("Scope: ${scope?.joinToString() ?: "unknown (Xposed service not connected)"}")
         sb.appendLine("Selected profile: $selectedDevice")
+        sb.appendLine("Entitlement tier: $entitlementSummary")
+        sb.appendLine("Backup quality requirement: $qualityRequirement")
         sb.appendLine()
         sb.appendLine("Hook milestones:")
         interpretMilestones(state).forEach { sb.appendLine("- $it") }

@@ -264,6 +264,73 @@ class ActivityMain : AppCompatActivity() {
     }
 
     /**
+     * Data item for device dropdown / spinner displaying the device name with its entitlement tag.
+     */
+    private data class DeviceDisplayItem(
+        val deviceName: String,
+        val displayLabel: String,
+    ) {
+        override fun toString(): String = displayLabel
+    }
+
+    /**
+     * Build list of [DeviceDisplayItem] instances with localized entitlement tags for UI selection.
+     */
+    private fun getDeviceDisplayItems(): List<DeviceDisplayItem> {
+        return DeviceProps.allDevices.map { entry ->
+            val tag = when (DeviceProps.getBackupEntitlement(entry.deviceName)) {
+                DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL -> getString(R.string.entitlement_tag_original)
+                DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER -> getString(R.string.entitlement_tag_storage_saver)
+                DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE -> if (entry.deviceName == "None") {
+                    getString(R.string.entitlement_tag_none)
+                } else {
+                    getString(R.string.entitlement_tag_editing_only)
+                }
+            }
+            DeviceDisplayItem(entry.deviceName, "${entry.deviceName} $tag")
+        }
+    }
+
+    /**
+     * Update the entitlement badge and description views based on the selected device.
+     */
+    private fun updateEntitlementUi(
+        deviceName: String,
+        badgeView: TextView?,
+        descView: TextView?
+    ) {
+        val entitlement = DeviceProps.getBackupEntitlement(deviceName)
+        val (badgeRes, descRes) = when (entitlement) {
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL ->
+                Pair(R.string.entitlement_badge_unlimited_original, R.string.entitlement_desc_unlimited_original)
+            DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER ->
+                Pair(R.string.entitlement_badge_unlimited_storage_saver, R.string.entitlement_desc_unlimited_storage_saver)
+            DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE ->
+                Pair(R.string.entitlement_badge_no_unlimited, R.string.entitlement_desc_no_unlimited)
+        }
+        badgeView?.text = getString(badgeRes)
+        descView?.text = getString(descRes)
+    }
+
+    /**
+     * Display a dialog explaining how to verify unlimited backup status and troubleshoot quota issues.
+     */
+    private fun showVerificationGuideDialog() {
+        val message = Html.fromHtml(
+            getString(R.string.verification_guide_content_html),
+            Html.FROM_HTML_MODE_COMPACT
+        )
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.verification_guide_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.close, null)
+            .setNeutralButton(R.string.diagnostics) { _, _ ->
+                startActivity(Intent(this, DiagnosticsActivity::class.java))
+            }
+            .show()
+    }
+
+    /**
      * Bind and initialize view elements for the Classic UI layout.
      *
      * @param pref SharedPreferences instance containing user settings.
@@ -280,6 +347,9 @@ class ActivityMain : AppCompatActivity() {
         val supportLink = findViewById<TextView>(R.id.support_link)
         val confExport = findViewById<ImageButton>(R.id.conf_export)
         val confImport = findViewById<ImageButton>(R.id.conf_import)
+        val classicEntitlementBadge = findViewById<TextView>(R.id.classic_entitlement_badge)
+        val classicEntitlementDesc = findViewById<TextView>(R.id.classic_entitlement_desc)
+        val classicBtnVerifyGuide = findViewById<TextView>(R.id.classic_btn_verify_guide)
 
         resetSettings?.setOnClickListener { performResetSettings(pref) }
 
@@ -294,17 +364,22 @@ class ActivityMain : AppCompatActivity() {
             }
         }
 
+        val deviceItems = getDeviceDisplayItems()
+        val defaultSelection = pref?.getString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
+            ?: DeviceProps.defaultDeviceName
+        updateEntitlementUi(defaultSelection, classicEntitlementBadge, classicEntitlementDesc)
+
         deviceSpooferSpinner?.apply {
-            val deviceNames = DeviceProps.allDevices.map { it.deviceName }
-            val aa = ArrayAdapter(this@ActivityMain, android.R.layout.simple_spinner_item, deviceNames)
+            val aa = ArrayAdapter(this@ActivityMain, android.R.layout.simple_spinner_item, deviceItems)
             aa.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             adapter = aa
-            val defaultSelection = pref?.getString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
-            setSelection(aa.getPosition(defaultSelection), false)
+            val pos = deviceItems.indexOfFirst { it.deviceName == defaultSelection }.coerceAtLeast(0)
+            setSelection(pos, false)
 
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    val deviceName = aa.getItem(position)
+                    val selectedItem = aa.getItem(position)
+                    val deviceName = selectedItem?.deviceName ?: DeviceProps.defaultDeviceName
                     pref?.edit()?.apply {
                         putString(PREF_DEVICE_TO_SPOOF, deviceName)
                         putStringSet(
@@ -313,12 +388,18 @@ class ActivityMain : AppCompatActivity() {
                         )
                         apply()
                     }
+                    updateEntitlementUi(deviceName, classicEntitlementBadge, classicEntitlementDesc)
                     peekFeatureFlagsChanged(featureFlagsChanged)
                     showRebootSnack()
                 }
 
                 override fun onNothingSelected(parent: AdapterView<*>?) {}
             }
+        }
+
+        classicBtnVerifyGuide?.apply {
+            paintFlags = Paint.UNDERLINE_TEXT_FLAG
+            setOnClickListener { showVerificationGuideDialog() }
         }
 
         advancedOptions?.apply {
@@ -362,15 +443,25 @@ class ActivityMain : AppCompatActivity() {
         val statusProfile = findViewById<TextView>(R.id.modern_status_profile)
         statusProfile?.text = getString(R.string.device_spoofed_active, currentDevice)
 
-        val deviceNames = DeviceProps.allDevices.map { it.deviceName }
+        val modernEntitlementBadge = findViewById<TextView>(R.id.modern_entitlement_badge)
+        val modernEntitlementDesc = findViewById<TextView>(R.id.modern_entitlement_desc)
+        updateEntitlementUi(currentDevice, modernEntitlementBadge, modernEntitlementDesc)
+
+        findViewById<View>(R.id.modern_btn_verify_guide)?.setOnClickListener {
+            showVerificationGuideDialog()
+        }
+
+        val deviceItems = getDeviceDisplayItems()
         val autoCompleteDevice = findViewById<AutoCompleteTextView>(R.id.auto_complete_device)
         autoCompleteDevice?.apply {
-            val adapter = ArrayAdapter(this@ActivityMain, android.R.layout.simple_dropdown_item_1line, deviceNames)
+            val adapter = ArrayAdapter(this@ActivityMain, android.R.layout.simple_dropdown_item_1line, deviceItems)
             setAdapter(adapter)
-            setText(currentDevice, false)
+            val currentItem = deviceItems.find { it.deviceName == currentDevice } ?: deviceItems.first()
+            setText(currentItem.displayLabel, false)
 
             setOnItemClickListener { _, _, position, _ ->
-                val selectedDevice = adapter.getItem(position) ?: DeviceProps.defaultDeviceName
+                val selectedItem = adapter.getItem(position)
+                val selectedDevice = selectedItem?.deviceName ?: DeviceProps.defaultDeviceName
                 pref?.edit()?.apply {
                     putString(PREF_DEVICE_TO_SPOOF, selectedDevice)
                     putStringSet(
@@ -380,6 +471,7 @@ class ActivityMain : AppCompatActivity() {
                     apply()
                 }
                 statusProfile?.text = getString(R.string.device_spoofed_active, selectedDevice)
+                updateEntitlementUi(selectedDevice, modernEntitlementBadge, modernEntitlementDesc)
                 showRebootSnack()
             }
         }

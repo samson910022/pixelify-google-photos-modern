@@ -687,4 +687,65 @@ class DevicePropsTest {
         assertNull(DeviceProps.getDeviceProps("Pixel 10 Pro Fold"))
         assertNull(DeviceProps.getDeviceProps("Pixel 10a"))
     }
+
+    // =========================================================================
+    // BackupEntitlement tiers
+    // =========================================================================
+
+    @Test
+    fun `Pixel XL is the only device with UNLIMITED_ORIGINAL entitlement`() {
+        assertEquals(
+            DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL,
+            DeviceProps.getBackupEntitlement("Pixel XL")
+        )
+
+        val originalDevices = DeviceProps.allDevices.filter {
+            DeviceProps.getBackupEntitlement(it.deviceName) == DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL
+        }
+        assertEquals(listOf("Pixel XL"), originalDevices.map { it.deviceName })
+    }
+
+    @Test
+    fun `Pixel 2 through Pixel 5a have UNLIMITED_STORAGE_SAVER entitlement`() {
+        val expectedStorageSaver = listOf(
+            "Pixel 2",
+            "Pixel 3 XL",
+            "Pixel 3a XL",
+            "Pixel 4 XL",
+            "Pixel 4a",
+            "Pixel 5",
+            "Pixel 5a"
+        )
+        expectedStorageSaver.forEach { name ->
+            assertEquals(
+                "Device '$name' should have UNLIMITED_STORAGE_SAVER entitlement",
+                DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER,
+                DeviceProps.getBackupEntitlement(name)
+            )
+        }
+
+        val storageSaverDevices = DeviceProps.allDevices.filter {
+            DeviceProps.getBackupEntitlement(it.deviceName) == DeviceProps.BackupEntitlement.UNLIMITED_STORAGE_SAVER
+        }.map { it.deviceName }
+        assertEquals(expectedStorageSaver, storageSaverDevices)
+    }
+
+    @Test
+    fun `Pixel 6 and newer plus None have NO_UNLIMITED_STORAGE entitlement`() {
+        val modernOrNone = DeviceProps.allDevices
+            .map { it.deviceName }
+            .filter { it != "Pixel XL" && it !in listOf("Pixel 2", "Pixel 3 XL", "Pixel 3a XL", "Pixel 4 XL", "Pixel 4a", "Pixel 5", "Pixel 5a") }
+
+        modernOrNone.forEach { name ->
+            assertEquals(
+                "Device '$name' should have NO_UNLIMITED_STORAGE entitlement",
+                DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE,
+                DeviceProps.getBackupEntitlement(name)
+            )
+        }
+
+        // Null and unknown device names should also safely map to NO_UNLIMITED_STORAGE
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement(null))
+        assertEquals(DeviceProps.BackupEntitlement.NO_UNLIMITED_STORAGE, DeviceProps.getBackupEntitlement("Unknown Device"))
+    }
 }
