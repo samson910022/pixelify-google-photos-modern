@@ -12,7 +12,7 @@ Thank you for helping improve Pixelify Infinity. This repository is an independe
 
 ## Development environment
 
-- JDK 17 (`JAVA_HOME` must point at a real JDK 17, not only an Android SDK)
+- JDK 17 (latest security update recommended for CVE-2026-91403 JSSE fix; `JAVA_HOME` must point at a real JDK 17, not only an Android SDK)
 - Android SDK Platform 36
 - Android Build Tools 36.0.0 or a compatible version
 - The repository Gradle wrapper
