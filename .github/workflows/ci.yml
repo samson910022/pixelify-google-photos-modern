@@ -31,6 +31,46 @@ jobs:
           java-version: "17"
           check-latest: true
 
+      - name: Remove impacted roots from CI JDK truststore
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool="$JAVA_HOME/bin/keytool"
+          cacerts="$JAVA_HOME/lib/security/cacerts"
+          test -x "$keytool"
+          test -f "$cacerts"
+
+          # This is runner-local Java TLS hardening; it does not alter Android app trust.
+          # Validate truststore access before treating a missing alias as success.
+          "$keytool" -list -keystore "$cacerts" -storepass changeit >/dev/null
+
+          aliases=(
+            "emsigneccrootcag3 [jdk]"
+            "comodoaaaca [jdk]"
+          )
+          error_log="${RUNNER_TEMP}/keytool-alias-check.log"
+          for alias in "${aliases[@]}"; do
+            if "$keytool" -list -keystore "$cacerts" -storepass changeit -alias "$alias" >"$error_log" 2>&1; then
+              "$keytool" -delete -keystore "$cacerts" -storepass changeit -alias "$alias"
+            elif ! grep -Fq "does not exist" "$error_log"; then
+              echo "::error::Unable to inspect JDK truststore alias: $alias"
+              cat "$error_log" >&2
+              exit 1
+            fi
+
+            if "$keytool" -list -keystore "$cacerts" -storepass changeit -alias "$alias" >"$error_log" 2>&1; then
+              echo "::error::Impacted certificate alias remains in the CI JDK truststore: $alias" >&2
+              exit 1
+            fi
+            if ! grep -Fq "does not exist" "$error_log"; then
+              echo "::error::Unable to verify removal of JDK truststore alias: $alias"
+              cat "$error_log" >&2
+              exit 1
+            fi
+            echo "Verified impacted alias is absent from the CI JDK truststore: $alias"
+          done
+          rm -f "$error_log"
+
       - name: Validate wrapper and configure Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
         with:
