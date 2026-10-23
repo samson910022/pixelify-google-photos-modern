@@ -35,41 +35,127 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          keytool="$JAVA_HOME/bin/keytool"
-          cacerts="$JAVA_HOME/lib/security/cacerts"
-          test -x "$keytool"
-          test -f "$cacerts"
+          : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
+          : "${GITHUB_ENV:?GITHUB_ENV is required}"
+          source_store="$JAVA_HOME/lib/security/cacerts"
+          test -x "$JAVA_HOME/bin/java"
+          test -x "$JAVA_HOME/bin/javac"
+          test -f "$source_store"
+          test -r "$source_store"
 
-          # This is runner-local Java TLS hardening; it does not alter Android app trust.
-          # Validate truststore access before treating a missing alias as success.
-          "$keytool" -list -keystore "$cacerts" -storepass changeit >/dev/null
+          # Modify only a private, writable copy; this is runner-local Java TLS hardening
+          # and does not alter Android app trust or the runner's cached JDK.
+          truststore="$(mktemp "$RUNNER_TEMP/ci-cacerts.XXXXXX")"
+          cp -- "$source_store" "$truststore"
+          chmod u+rw "$truststore"
 
-          aliases=(
-            "emsigneccrootcag3 [jdk]"
-            "comodoaaaca [jdk]"
-          )
-          error_log="${RUNNER_TEMP}/keytool-alias-check.log"
-          for alias in "${aliases[@]}"; do
-            if "$keytool" -list -keystore "$cacerts" -storepass changeit -alias "$alias" >"$error_log" 2>&1; then
-              "$keytool" -delete -keystore "$cacerts" -storepass changeit -alias "$alias"
-            elif ! grep -Fq "does not exist" "$error_log"; then
-              echo "::error::Unable to inspect JDK truststore alias: $alias"
-              cat "$error_log" >&2
-              exit 1
-            fi
+          cat >"$RUNNER_TEMP/RemoveImpactedTrustAnchors.java" <<'JAVA'
+          import java.io.IOException;
+          import java.io.InputStream;
+          import java.io.OutputStream;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.security.KeyStore;
+          import java.security.cert.Certificate;
+          import java.security.cert.X509Certificate;
+          import java.util.ArrayList;
+          import java.util.Enumeration;
+          import java.util.List;
+          import java.util.Set;
+          import javax.security.auth.x500.X500Principal;
 
-            if "$keytool" -list -keystore "$cacerts" -storepass changeit -alias "$alias" >"$error_log" 2>&1; then
-              echo "::error::Impacted certificate alias remains in the CI JDK truststore: $alias" >&2
-              exit 1
-            fi
-            if ! grep -Fq "does not exist" "$error_log"; then
-              echo "::error::Unable to verify removal of JDK truststore alias: $alias"
-              cat "$error_log" >&2
-              exit 1
-            fi
-            echo "Verified impacted alias is absent from the CI JDK truststore: $alias"
-          done
-          rm -f "$error_log"
+          public final class RemoveImpactedTrustAnchors {
+              private static final char[] PASSWORD = "changeit".toCharArray();
+              private static final Set<String> TARGET_SUBJECTS = Set.of(
+                  "cn=emsign ecc root ca - g3,o=emudhra technologies limited,ou=emsign pki,c=in",
+                  "cn=aaa certificate services,o=comodo ca limited,l=salford,st=greater manchester,c=gb"
+              );
+
+              private static String storeType(Path path) throws IOException {
+                  try (InputStream input = Files.newInputStream(path)) {
+                      byte[] header = input.readNBytes(4);
+                      if (header.length == 4
+                              && header[0] == (byte) 0xfe && header[1] == (byte) 0xed
+                              && header[2] == (byte) 0xfe && header[3] == (byte) 0xed) {
+                          return "JKS";
+                      }
+                      if (header.length > 0 && (header[0] & 0xff) == 0x30) {
+                          return "PKCS12";
+                      }
+                      throw new IOException("Unsupported or corrupt Java truststore format");
+                  }
+              }
+
+              private static KeyStore load(Path path, String type) throws Exception {
+                  KeyStore store = KeyStore.getInstance(type);
+                  try (InputStream input = Files.newInputStream(path)) {
+                      store.load(input, PASSWORD);
+                  }
+                  int certificates = 0;
+                  for (Enumeration<String> aliases = store.aliases(); aliases.hasMoreElements();) {
+                      if (store.getCertificate(aliases.nextElement()) != null) certificates++;
+                  }
+                  if (certificates == 0) throw new IOException("Truststore contains no certificates");
+                  return store;
+              }
+
+              private static boolean isTarget(Certificate certificate) {
+                  return certificate instanceof X509Certificate x509
+                      && TARGET_SUBJECTS.contains(x509.getSubjectX500Principal()
+                          .getName(X500Principal.CANONICAL));
+              }
+
+              private static int removeTargets(KeyStore store) throws Exception {
+                  int removed = 0;
+                  List<String> aliasesToRemove = new ArrayList<>();
+                  for (Enumeration<String> aliases = store.aliases(); aliases.hasMoreElements();) {
+                      String alias = aliases.nextElement();
+                      if (isTarget(store.getCertificate(alias))) aliasesToRemove.add(alias);
+                  }
+                  for (String alias : aliasesToRemove) {
+                      store.deleteEntry(alias);
+                      removed++;
+                  }
+                  return removed;
+              }
+
+              private static void verifyAbsent(KeyStore store) throws Exception {
+                  for (Enumeration<String> aliases = store.aliases(); aliases.hasMoreElements();) {
+                      if (isTarget(store.getCertificate(aliases.nextElement()))) {
+                          throw new IOException("An impacted trust anchor remains in the truststore");
+                      }
+                  }
+              }
+
+              public static void main(String[] args) throws Exception {
+                  if (args.length != 1) throw new IllegalArgumentException("Expected truststore path");
+                  Path path = Path.of(args[0]);
+                  String type = storeType(path);
+                  KeyStore store = load(path, type);
+                  int removed = removeTargets(store);
+                  verifyAbsent(store);
+                  try (OutputStream output = Files.newOutputStream(path)) {
+                      store.store(output, PASSWORD);
+                  }
+
+                  // Reload the written bytes so write/format errors cannot be mistaken for success.
+                  verifyAbsent(load(path, type));
+                  System.err.println("Removed " + removed + " impacted certificate(s); both target subjects are absent.");
+                  System.out.println(type);
+              }
+          }
+          JAVA
+
+          "$JAVA_HOME/bin/javac" -d "$RUNNER_TEMP" "$RUNNER_TEMP/RemoveImpactedTrustAnchors.java"
+          store_type="$("$JAVA_HOME/bin/java" -cp "$RUNNER_TEMP" RemoveImpactedTrustAnchors "$truststore")"
+          case "$store_type" in
+            JKS|PKCS12) ;;
+            *) echo "::error::Truststore helper returned an unsupported format" >&2; exit 1 ;;
+          esac
+
+          tool_options="${JAVA_TOOL_OPTIONS-}"
+          tool_options="${tool_options:+$tool_options }-Djavax.net.ssl.trustStore=$truststore -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=$store_type"
+          printf 'JAVA_TOOL_OPTIONS=%s\n' "$tool_options" >>"$GITHUB_ENV"
 
       - name: Validate wrapper and configure Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
