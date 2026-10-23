@@ -12,10 +12,14 @@ Thank you for helping improve Pixelify Infinity. This repository is an independe
 
 ## Development environment
 
-- JDK 17 (latest security update recommended for CVE-2026-91403 JSSE fix; `JAVA_HOME` must point at a real JDK 17, not only an Android SDK)
+- JDK 17 (use the latest available security update; it remains the build baseline, and `JAVA_HOME` must point at a real JDK 17, not only an Android SDK)
 - Android SDK Platform 36
 - Android Build Tools 36.0.0 or a compatible version
 - The repository Gradle wrapper
+
+### OpenJDK eMudhra advisory (CVE-2026-91403)
+
+Updating JDK 17 alone may not address this certificate risk. For local Java/Gradle TLS, follow the [official OpenJDK instructions](https://openjdk.org/emudhra) for the standalone JDK trust store. This does not change or describe the Android app's runtime trust store.
 
 ### Why builds fail with “JAVA_HOME is not set”
 
