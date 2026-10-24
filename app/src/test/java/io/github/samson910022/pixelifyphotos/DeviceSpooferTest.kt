@@ -293,6 +293,23 @@ class DeviceSpooferTest {
     }
 
     @Test
+    fun `SystemProperties retry plan retries only missing overload and aggregate needs both`() {
+        val retry = DeviceSpoofer.systemPropertiesRetryPlan(
+            getRegistered = true,
+            getWithDefaultRegistered = false,
+        )
+        assertFalse(retry.hookGet)
+        assertTrue(retry.hookGetWithDefault)
+        assertFalse(DeviceSpoofer.allSystemPropertiesOverloadsRegistered(true, false))
+        assertFalse(DeviceSpoofer.allSystemPropertiesOverloadsRegistered(false, false))
+        assertTrue(DeviceSpoofer.allSystemPropertiesOverloadsRegistered(true, true))
+
+        val initial = DeviceSpoofer.systemPropertiesRetryPlan(false, false)
+        assertTrue(initial.hookGet)
+        assertTrue(initial.hookGetWithDefault)
+    }
+
+    @Test
     fun `buildSystemPropertyOverrides respects explicit BOARD and HARDWARE properties`() {
         val props = mapOf(
             "DEVICE" to "marlin",

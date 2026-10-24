@@ -9,11 +9,11 @@ import org.junit.Test
  * Unit tests for the JSON config serialization/deserialization logic
  * used by [Utils.writeConfigFile] and [Utils.readConfigFile].
  *
- * Since those methods require Android Context and ContentResolver,
- * we test the JSON construction and parsing logic directly.
+ * JSON export policy and import parsing are tested directly; this keeps the
+ * security allowlist exercised without needing an Android ContentResolver.
  *
  * This validates:
- * - fieldsNotToCopy exclusion
+ * - explicit user-settings export allowlist
  * - PREF_SPOOF_FEATURES_LIST stored as JSONArray
  * - Round-trip: write → read preserves all expected keys
  * - Malformed JSON handling
@@ -22,43 +22,11 @@ import org.junit.Test
 class UtilsConfigTest {
 
     // =========================================================================
-    // The fieldsNotToCopy list from Utils.writeConfigFile
+    // Config export logic: the same policy called by both save and share flows
     // =========================================================================
 
-    private val fieldsNotToCopy = listOf(
-        Constants.PREF_LAST_VERSION,
-        Constants.PREF_SPOOF_FEATURES_LIST,
-    )
-
-    // =========================================================================
-    // Config export logic: JSON construction
-    // =========================================================================
-
-    /**
-     * Simulates the export logic from Utils.writeConfigFile.
-     * Takes a map of pref keys → values, returns a JSONObject.
-     */
     private fun buildExportJson(allPrefs: Map<String, Any?>): JSONObject {
-        val jsonObject = JSONObject()
-
-        // First pass: copy everything except fieldsNotToCopy
-        for ((key, value) in allPrefs) {
-            if (key !in fieldsNotToCopy) {
-                if (value != null) {
-                    jsonObject.put(key, value)
-                }
-            }
-        }
-
-        // Second pass: store PREF_SPOOF_FEATURES_LIST as JSONArray
-        val featuresList = allPrefs[Constants.PREF_SPOOF_FEATURES_LIST]
-        if (featuresList is Set<*>) {
-            @Suppress("UNCHECKED_CAST")
-            val jsonArray = JSONArray((featuresList as Set<String>).toTypedArray())
-            jsonObject.put(Constants.PREF_SPOOF_FEATURES_LIST, jsonArray)
-        }
-
-        return jsonObject
+        return ConfigExportPolicy.toJson(MemorySharedPreferences(allPrefs))
     }
 
     /**
@@ -87,6 +55,7 @@ class UtilsConfigTest {
             Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS,
             Constants.PREF_ENABLE_VERBOSE_LOGS,
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
+            Constants.PREF_USE_CLASSIC_UI,
         ).forEach { key ->
             val value = jsonObject.opt(key)
             if (value is Boolean) result[key] = value
@@ -101,7 +70,7 @@ class UtilsConfigTest {
     }
 
     // =========================================================================
-    // Export: fieldsNotToCopy exclusion
+    // Export: explicit allowlist
     // =========================================================================
 
     @Test
@@ -136,13 +105,14 @@ class UtilsConfigTest {
     }
 
     @Test
-    fun `export preserves all non-excluded keys`() {
+    fun `export preserves explicitly allowlisted settings`() {
         val prefs = mapOf(
             Constants.PREF_LAST_VERSION to 5,  // should be excluded
             Constants.PREF_DEVICE_TO_SPOOF to "Pixel 5",
             Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS to false,
             Constants.PREF_ENABLE_VERBOSE_LOGS to true,
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE to false,
+            Constants.PREF_USE_CLASSIC_UI to true,
             Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL to "Android 14",
         )
         val json = buildExportJson(prefs)
@@ -152,6 +122,7 @@ class UtilsConfigTest {
         assertFalse(json.getBoolean(Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS))
         assertTrue(json.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS))
         assertFalse(json.getBoolean(Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE))
+        assertTrue(json.getBoolean(Constants.PREF_USE_CLASSIC_UI))
         assertEquals("Android 14", json.getString(Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL))
     }
 
@@ -188,6 +159,7 @@ class UtilsConfigTest {
             Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS to false,
             Constants.PREF_ENABLE_VERBOSE_LOGS to true,
             Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE to true,
+            Constants.PREF_USE_CLASSIC_UI to false,
         )
         val json = buildExportJson(prefs)
         val imported = parseImportJson(json)
@@ -195,6 +167,7 @@ class UtilsConfigTest {
         assertEquals(false, imported[Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS])
         assertEquals(true, imported[Constants.PREF_ENABLE_VERBOSE_LOGS])
         assertEquals(true, imported[Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE])
+        assertEquals(false, imported[Constants.PREF_USE_CLASSIC_UI])
     }
 
     @Test
@@ -261,9 +234,13 @@ class UtilsConfigTest {
     // =========================================================================
 
     @Test
-    fun `export of empty prefs produces valid JSON`() {
-        val json = buildExportJson(emptyMap())
-        assertEquals("{}", json.toString())
+    fun `export rejects readable prefs with no allowlisted settings`() {
+        try {
+            buildExportJson(emptyMap())
+            fail("empty user configuration must not be exported")
+        } catch (_: ConfigExportPolicy.EmptyConfigurationException) {
+            // The Activity reports a localized empty-config message and starts no export flow.
+        }
     }
 
     @Test
@@ -271,10 +248,73 @@ class UtilsConfigTest {
         val prefs = mapOf(
             Constants.PREF_DEVICE_TO_SPOOF to null,
             Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL to null,
+            Constants.PREF_ENABLE_VERBOSE_LOGS to true,
         )
         val json = buildExportJson(prefs)
         assertFalse(json.has(Constants.PREF_DEVICE_TO_SPOOF))
         assertFalse(json.has(Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL))
+        assertTrue(json.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS))
+    }
+
+    @Test
+    fun `export rejects a readable preference snapshot with a wrong allowlisted value type`() {
+        val malformed = MemorySharedPreferences(
+            mapOf(Constants.PREF_ENABLE_VERBOSE_LOGS to "true"),
+        )
+        try {
+            ConfigExportPolicy.toJson(malformed)
+            fail("wrong SharedPreferences value types must not serialize as an empty configuration")
+        } catch (_: IllegalStateException) {
+            // The Activity reports this as an unavailable export source.
+        }
+    }
+
+    @Test
+    fun `export contains user settings only and excludes diagnostics and internal preferences`() {
+        val userSettings = mapOf(
+            Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL",
+            Constants.PREF_SPOOF_FEATURES_LIST to setOf("Pixel 2020"),
+            Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS to true,
+            Constants.PREF_ENABLE_VERBOSE_LOGS to false,
+            Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE to true,
+            Constants.PREF_USE_CLASSIC_UI to true,
+            Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL to "Android 15",
+        )
+        val internalValues = mapOf<String, Any?>(
+            Constants.PREF_DIAG_BROADCAST_TOKEN to "secret-test-token",
+            Constants.PREF_DIAG_ACTIVE_RUN_ID to "private-run-id",
+            Constants.PREF_DIAG_ACTIVE_RUN_GENERATION to 72L,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT to 3,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH to "private-epoch",
+            Constants.EXTRA_DIAGNOSTICS_ORIGIN to Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            Constants.PREF_DIAG_ACTIVE_BINDER_PID to 12345,
+            Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT to 123456L,
+            Constants.PREF_DIAG_MODULE_LOADED_AT to 123455L,
+            Constants.PREF_DIAG_VERIFY_AT to 123457L,
+            Constants.PREF_DIAG_VERIFY_DEVICE to "Pixel XL",
+            Constants.PREF_DIAG_VERIFY_OK to true,
+            Constants.PREF_DIAG_FEATURE_HOOKS_AT to 123458L,
+            Constants.PREF_DIAG_FEATURE_HOOK_STRING to true,
+            Constants.PREF_LAST_VERSION to 99,
+            Constants.PREF_FIRST_RUN_COMPLETED to true,
+            "PREF_DIAG_EVENT_SEQUENCE:internal" to 77L,
+            "PREF_OFFLINE_SETTINGS_HANDOFF_PENDING" to true,
+            "private_internal_pref" to "do-not-export",
+        )
+
+        val json = buildExportJson(userSettings + internalValues)
+
+        assertEquals(ConfigExportPolicy.USER_SETTING_KEYS, json.keySet())
+        assertEquals("Pixel XL", json.getString(Constants.PREF_DEVICE_TO_SPOOF))
+        assertEquals(listOf("Pixel 2020"), (0 until json.getJSONArray(Constants.PREF_SPOOF_FEATURES_LIST).length())
+            .map { json.getJSONArray(Constants.PREF_SPOOF_FEATURES_LIST).getString(it) })
+        assertTrue(json.getBoolean(Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS))
+        assertFalse(json.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS))
+        assertTrue(json.getBoolean(Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE))
+        assertTrue(json.getBoolean(Constants.PREF_USE_CLASSIC_UI))
+        assertEquals("Android 15", json.getString(Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL))
+        internalValues.keys.forEach { key -> assertFalse("Unexpected export key: $key", json.has(key)) }
+        assertFalse(json.toString().contains("secret-test-token"))
     }
 
     // =========================================================================

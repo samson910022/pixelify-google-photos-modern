@@ -11,6 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -18,6 +19,7 @@ import org.mockito.MockedStatic
 import org.mockito.Mockito
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
@@ -46,6 +48,7 @@ class AppTest {
         mockedLog = Mockito.mockStatic(Log::class.java)
         mockedLog.`when`<Int> { Log.d(any<String>(), any<String>()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>()) }.thenReturn(0)
+        mockedLog.`when`<Int> { Log.w(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
         // Real Material internals would walk Activity lifecycle registrations against a
         // stub android.jar; intercept the entry point for deterministic JVM behavior.
         mockedDynamicColors = Mockito.mockStatic(DynamicColors::class.java)
@@ -53,8 +56,13 @@ class AppTest {
         mockFileEditor = mock()
         whenever(mockFilePrefs.edit()).thenReturn(mockFileEditor)
         whenever(mockFileEditor.putString(any(), any())).thenReturn(mockFileEditor)
+        whenever(mockFileEditor.putBoolean(any(), any())).thenReturn(mockFileEditor)
+        whenever(mockFileEditor.putInt(any(), any())).thenReturn(mockFileEditor)
+        whenever(mockFileEditor.putStringSet(any(), any())).thenReturn(mockFileEditor)
         whenever(mockFileEditor.commit()).thenReturn(true)
         app = App()
+        app.testTokenConvergenceOverride = { true }
+        app.testSettingsHandoffOverride = { true }
     }
 
     @After
@@ -62,6 +70,9 @@ class AppTest {
         try {
             setMockXposedService(null)
             clearListeners()
+            app.testAfterTokenConvergence = null
+            app.testTokenConvergenceOverride = null
+            app.testSettingsHandoffOverride = null
         } finally {
             mockedDynamicColors.close()
             mockedLog.close()
@@ -74,12 +85,13 @@ class AppTest {
      * still a non-final static and that the write landed.
      */
     private fun setMockXposedService(service: XposedService?) {
-        TestStatics.setStaticField(App::class.java, "mService", service)
+        App.setServiceStateForTests(service, ready = service != null)
     }
 
     /** Clears pending listeners via the production test seam. */
     private fun clearListeners() {
         App.clearServiceBoundListeners()
+        App.clearServiceStateListenersForTests()
     }
 
     private fun currentListenerCount(): Int =
@@ -145,6 +157,144 @@ class AppTest {
     }
 
     @Test
+    fun `token convergence failure remains connected error and never becomes ready`() {
+        app.testTokenConvergenceOverride = { false }
+        val phases = mutableListOf<ServicePhase>()
+        val stateListener: (ServiceReadinessSnapshot) -> Unit = { phases += it.phase }
+        App.addOnServiceStateListener(stateListener)
+        var boundCallbackInvoked = false
+        App.addOnServiceBoundListener { boundCallbackInvoked = true }
+        val service = mock<XposedService>()
+
+        app.onServiceBind(service)
+
+        val snapshot = App.serviceReadinessSnapshot()
+        assertSame(service, snapshot.service)
+        assertTrue(snapshot.connected)
+        assertFalse(snapshot.ready)
+        assertEquals(ServicePhase.ERROR, snapshot.phase)
+        assertFalse(App.isServiceReady())
+        assertNull(App.readyService())
+        assertFalse("ready-only listeners must not fire on failed convergence", boundCallbackInvoked)
+        assertEquals(1, currentListenerCount())
+        assertEquals(
+            listOf(ServicePhase.DISCONNECTED, ServicePhase.CONNECTED_SYNCING, ServicePhase.ERROR),
+            phases,
+        )
+        App.removeOnServiceStateListener(stateListener)
+    }
+
+    @Test
+    fun `older same-service bind success cannot override newer failed attempt or drain listeners`() {
+        val service = mock<XposedService>()
+        val firstAttemptStarted = CountDownLatch(1)
+        val releaseFirstAttempt = CountDownLatch(1)
+        val attempts = java.util.concurrent.atomic.AtomicInteger()
+        app.testTokenConvergenceOverride = {
+            if (attempts.incrementAndGet() == 1) {
+                firstAttemptStarted.countDown()
+                check(releaseFirstAttempt.await(5, TimeUnit.SECONDS))
+                true
+            } else {
+                false
+            }
+        }
+        var boundCallbackCount = 0
+        App.addOnServiceBoundListener { boundCallbackCount++ }
+
+        val olderBind = Thread { app.onServiceBind(service) }
+        olderBind.start()
+        assertTrue(firstAttemptStarted.await(5, TimeUnit.SECONDS))
+        app.onServiceBind(service)
+        assertEquals(ServicePhase.ERROR, App.serviceReadinessSnapshot().phase)
+        assertEquals(0, boundCallbackCount)
+
+        releaseFirstAttempt.countDown()
+        olderBind.join(5_000)
+
+        assertFalse(olderBind.isAlive)
+        assertSame(service, App.serviceReadinessSnapshot().service)
+        assertEquals(ServicePhase.ERROR, App.serviceReadinessSnapshot().phase)
+        assertFalse(App.isServiceReady())
+        assertEquals("stale attempt must not drain readiness listeners", 0, boundCallbackCount)
+        assertEquals(1, currentListenerCount())
+    }
+
+    @Test
+    fun `explicit convergence retry succeeds on current Binder and drains pending listener`() {
+        val service = mock<XposedService>()
+        val phases = mutableListOf<ServicePhase>()
+        val stateListener: (ServiceReadinessSnapshot) -> Unit = { phases += it.phase }
+        App.addOnServiceStateListener(stateListener)
+        var allowConvergence = false
+        app.testTokenConvergenceOverride = { allowConvergence }
+        var callbackCount = 0
+        App.addOnServiceBoundListener { callbackCount++ }
+
+        app.onServiceBind(service)
+        assertEquals(ServicePhase.ERROR, App.serviceReadinessSnapshot().phase)
+        assertEquals(0, callbackCount)
+
+        allowConvergence = true
+        assertTrue(app.retryServiceConvergence())
+
+        assertSame(service, App.readyService())
+        assertEquals(ServicePhase.READY, App.serviceReadinessSnapshot().phase)
+        assertEquals(1, callbackCount)
+        assertEquals(0, currentListenerCount())
+        assertEquals(
+            listOf(
+                ServicePhase.DISCONNECTED,
+                ServicePhase.CONNECTED_SYNCING,
+                ServicePhase.ERROR,
+                ServicePhase.CONNECTED_SYNCING,
+                ServicePhase.READY,
+            ),
+            phases,
+        )
+        App.removeOnServiceStateListener(stateListener)
+    }
+
+    @Test
+    fun `listener registered during bind waits until token convergence before refresh`() {
+        app.testTokenConvergenceOverride = null
+        val service = mock<XposedService>()
+        val remotePrefs = stubRemotePrefsOf(service)
+        whenever(remotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null))
+            .thenReturn("shared-token")
+        whenever(mockFilePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null))
+            .thenReturn("shared-token")
+        val syncStarted = CountDownLatch(1)
+        val allowSyncToFinish = CountDownLatch(1)
+        whenever(service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)).thenAnswer {
+            syncStarted.countDown()
+            check(allowSyncToFinish.await(5, TimeUnit.SECONDS))
+            remotePrefs
+        }
+        val appSpy = spyAppBackedByFileStore()
+        var convergenceFinished = false
+        var listenerObservedConvergedState = false
+        appSpy.testAfterTokenConvergence = { convergenceFinished = true }
+        val bindThread = Thread { appSpy.onServiceBind(service) }
+        bindThread.start()
+
+        assertTrue(syncStarted.await(5, TimeUnit.SECONDS))
+        assertNotNull("service object is visible during convergence", App.mService)
+        assertFalse("a visible service is not ready before token convergence", App.isServiceReady())
+        App.addOnServiceBoundListener {
+            listenerObservedConvergedState = convergenceFinished
+        }
+        assertFalse(listenerObservedConvergedState)
+        allowSyncToFinish.countDown()
+        bindThread.join(5_000)
+
+        assertFalse(bindThread.isAlive)
+        assertTrue(convergenceFinished)
+        assertTrue(App.isServiceReady())
+        assertTrue("collector listener should refresh only after convergence", listenerObservedConvergedState)
+    }
+
+    @Test
     fun `onServiceBind drains registry so re-binding notifies nothing extra`() {
         var invocationCount = 0
         App.addOnServiceBoundListener { invocationCount++ }
@@ -158,18 +308,557 @@ class AppTest {
 
     @Test
     fun `onServiceDied clears mService`() {
-        app.onServiceBind(mock<XposedService>())
+        val service = mock<XposedService>()
+        app.onServiceBind(service)
         assertNotNull(App.mService)
 
-        app.onServiceDied(mock<XposedService>())
+        app.onServiceDied(service)
 
         assertNull(App.mService)
     }
 
     @Test
+    fun `framework binding history remains true after service disconnect`() {
+        val service = mock<XposedService>()
+        assertFalse(App.hasObservedFrameworkBinding())
+
+        app.onServiceBind(service)
+        assertTrue(App.hasObservedFrameworkBinding())
+        app.onServiceDied(service)
+
+        assertNull(App.mService)
+        assertTrue(App.hasObservedFrameworkBinding())
+    }
+
+    @Test
+    fun `memory preferences separate live and persisted effects of failed commit`() {
+        val preferences = MemorySharedPreferences(
+            mapOf("setting" to "before"),
+            commitResult = false,
+            commitFalseUpdatesMemory = true,
+            commitFalseUpdatesDisk = false,
+        )
+
+        assertFalse(preferences.edit().putString("setting", "live-only").commit())
+        assertEquals("live map receives failed commit", "live-only", preferences.getString("setting", null))
+        assertEquals("disk remains independently observable", "before", preferences.persistedAll["setting"])
+
+        preferences.commitFalseUpdatesDisk = true
+        assertFalse(preferences.edit().putString("setting", "also-on-disk").commit())
+        assertEquals("also-on-disk", preferences.getString("setting", null))
+        assertEquals("disk update is independently configurable", "also-on-disk", preferences.persistedAll["setting"])
+    }
+
+    @Test
+    fun `guarded settings writes use local preferences for a never-bound offline cold start`() {
+        val context = mock<Context>()
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(mockFilePrefs)
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(mockFilePrefs)
+        App.setServiceStateForTests(null, ready = false)
+
+        val accepted = App.withGuardedSettingsPreferences(context) { prefs ->
+            assertSame(mockFilePrefs, prefs)
+            prefs.edit().apply()
+            true
+        }
+
+        assertTrue(accepted)
+        verify(context).getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE)
+        verify(mockFilePrefs, atLeastOnce()).edit()
+    }
+
+    @Test
+    fun `guarded offline settings edit persists its allowlisted handoff value`() {
+        val context = mock<Context>()
+        val local = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 5"))
+        val pending = MemorySharedPreferences()
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(local)
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(pending)
+        App.setServiceStateForTests(null, ready = false)
+
+        val accepted = App.withGuardedSettingsPreferences(
+            context,
+            editedKeys = setOf(Constants.PREF_DEVICE_TO_SPOOF),
+        ) { prefs ->
+            prefs.edit().putString(Constants.PREF_DEVICE_TO_SPOOF, "Pixel 5").apply()
+            true
+        }
+
+        assertTrue(accepted)
+        assertEquals("Pixel 5", pending.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertTrue(
+            pending.getStringSet("pending_keys", mutableSetOf())
+                ?.contains(Constants.PREF_DEVICE_TO_SPOOF) == true,
+        )
+    }
+
+    @Test
+    fun `pending store acquisition failure rolls back the offline setting edit`() {
+        val context = mock<Context>()
+        val local = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 3"))
+        val pending = MemorySharedPreferences()
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(local)
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenThrow(IllegalStateException("injected pending-store acquisition failure"))
+        App.setServiceStateForTests(null, ready = false)
+
+        val accepted = App.withGuardedSettingsPreferences(
+            context,
+            editedKeys = setOf(Constants.PREF_DEVICE_TO_SPOOF),
+        ) { prefs ->
+            prefs.edit().putString(Constants.PREF_DEVICE_TO_SPOOF, "Pixel 5").apply()
+            true
+        }
+
+        assertFalse(accepted)
+        assertEquals("Pixel 3", local.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertTrue(pending.all.isEmpty())
+
+        val laterContext = mock<Context>()
+        whenever(laterContext.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(pending)
+        val remote = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL"))
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(remote)
+        assertTrue(OfflineSettingsHandoff.converge(laterContext, service))
+        assertEquals("Pixel XL", remote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+    }
+
+    @Test
+    fun `pending commit failure rolls back and later bind has no stranded edit`() {
+        val context = mock<Context>()
+        val local = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 3"))
+        val pending = MemorySharedPreferences(commitResult = false)
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(local)
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(pending)
+        App.setServiceStateForTests(null, ready = false)
+
+        val accepted = App.withGuardedSettingsPreferences(
+            context,
+            editedKeys = setOf(Constants.PREF_DEVICE_TO_SPOOF),
+        ) { prefs ->
+            prefs.edit().putString(Constants.PREF_DEVICE_TO_SPOOF, "Pixel 5").apply()
+            true
+        }
+
+        assertFalse(accepted)
+        assertEquals("Pixel 3", local.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertTrue(pending.all.isEmpty())
+
+        pending.commitResult = true
+        val remote = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL"))
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(remote)
+        assertTrue(OfflineSettingsHandoff.converge(context, service))
+        assertEquals("Pixel XL", remote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertTrue(pending.all.isEmpty())
+    }
+
+    @Test
+    fun `Android commit false live pending intent is accepted and never silently lost or applied after recreation`() {
+        val context = mock<Context>()
+        val local = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 3"))
+        val pending = MemorySharedPreferences(commitResult = false, commitFalseUpdatesMemory = true)
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(local)
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(pending)
+        App.setServiceStateForTests(null, ready = false)
+        var persistenceWarning = false
+
+        val accepted = App.withGuardedSettingsPreferences(
+            context,
+            editedKeys = setOf(Constants.PREF_DEVICE_TO_SPOOF),
+            onOfflinePersistenceUncertain = { persistenceWarning = true },
+        ) { prefs ->
+            prefs.edit().putString(Constants.PREF_DEVICE_TO_SPOOF, "Pixel 5").apply()
+            true
+        }
+
+        assertTrue(accepted)
+        assertTrue("commit=false with matching live intent is visibly caveated", persistenceWarning)
+        assertEquals("Pixel 5", local.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertEquals("Pixel 5", pending.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertTrue(
+            pending.getStringSet("pending_keys", mutableSetOf())
+                .orEmpty().contains(Constants.PREF_DEVICE_TO_SPOOF),
+        )
+
+        // A new process sees only the durable pending-store state. The local apply
+        // may already be durable, but the failed pending commit is not promoted into
+        // a hidden remote write on recreation.
+        val recreatedPending = MemorySharedPreferences(pending.persistedAll)
+        val recreatedContext = mock<Context>()
+        whenever(recreatedContext.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(recreatedPending)
+        val recreatedRemote = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL"))
+        val recreatedService = mock<XposedService>()
+        whenever(recreatedService.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(recreatedRemote)
+        assertTrue(OfflineSettingsHandoff.converge(recreatedContext, recreatedService))
+        assertEquals("Pixel XL", recreatedRemote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+
+        // In the original process the marker and local value remain paired, so a
+        // bind can safely apply the accepted in-memory intent.
+        val sameProcessRemote = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL"))
+        val sameProcessService = mock<XposedService>()
+        whenever(sameProcessService.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME)))
+            .thenReturn(sameProcessRemote)
+        // A later bind-time marker cleanup can succeed; the original user write's
+        // commit=false state remains represented by the in-memory pending map.
+        pending.commitResult = true
+        assertTrue(OfflineSettingsHandoff.converge(context, sameProcessService))
+        assertEquals("Pixel 5", sameProcessRemote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+    }
+
+    @Test
+    fun `rejected pending edit recovery blocks uncertain local value in same and fresh instances`() {
+        val context = mock<Context>()
+        val local = MemorySharedPreferences(
+            mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 3"),
+        )
+        val pending = MemorySharedPreferences(commitResult = false)
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(local)
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(pending)
+        App.setServiceStateForTests(null, ready = false)
+
+        val accepted = App.withGuardedSettingsPreferences(
+            context,
+            editedKeys = setOf(Constants.PREF_DEVICE_TO_SPOOF),
+        ) { prefs ->
+            prefs.edit().putString(Constants.PREF_DEVICE_TO_SPOOF, "Pixel 5").apply()
+            // The edit is already on disk, but both the rejected pending marker
+            // and rollback commits now fail. The durable pre-edit recovery journal
+            // must keep the disk-only value from being exposed after recreation.
+            local.commitResult = false
+            local.commitFalseUpdatesMemory = true
+            true
+        }
+
+        assertFalse(accepted)
+        assertEquals("in-memory rollback is applied despite its false disk result",
+            "Pixel 3", local.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertEquals("edit remains on disk until recovery commits", "Pixel 5",
+            local.persistedAll[Constants.PREF_DEVICE_TO_SPOOF])
+        assertTrue(pending.all.isEmpty())
+
+        assertNull("same-process reads fail closed while recovery commit is failing", PrefUtils.getPrefs(context))
+
+        val recreatedLocal = MemorySharedPreferences(local.persistedAll)
+        val recreatedPending = MemorySharedPreferences(pending.persistedAll)
+        val recreatedContext = mock<Context>()
+        whenever(recreatedContext.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(recreatedLocal)
+        whenever(recreatedContext.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(recreatedPending)
+        App.setServiceStateForTests(null, ready = false)
+        val recoveredFresh = PrefUtils.getPrefs(recreatedContext)
+        assertSame(recreatedLocal, recoveredFresh)
+        assertEquals("fresh process restores the durable pre-edit value before exposing settings",
+            "Pixel 3", recreatedLocal.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertEquals("recovery itself is durable", "Pixel 3",
+            recreatedLocal.persistedAll[Constants.PREF_DEVICE_TO_SPOOF])
+
+        local.commitResult = true
+        val recoveredSameProcess = PrefUtils.getPrefs(context)
+        assertSame(local, recoveredSameProcess)
+        assertEquals("same process remains on the rollback value", "Pixel 3",
+            local.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+
+        val remote = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL"))
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(remote)
+        assertTrue(OfflineSettingsHandoff.converge(recreatedContext, service))
+        assertEquals("a rejected local edit has no remote handoff marker",
+            "Pixel XL", remote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+    }
+
+    @Test
+    fun `successful first bind waits for pending offline user settings handoff`() {
+        val priorLocal = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 3"))
+        val editedLocal = MemorySharedPreferences(mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 5"))
+        val pending = MemorySharedPreferences()
+        assertTrue(
+            OfflineSettingsHandoff.recordChanges(
+                pending,
+                OfflineSettingsHandoff.snapshot(priorLocal),
+                editedLocal,
+            ),
+        )
+        val remote = MemorySharedPreferences(
+            mapOf(
+                Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL",
+                "unrelated_remote_setting" to "preserve",
+            ),
+        )
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(remote)
+        val appSpy = spy(app)
+        doReturn(pending).whenever(appSpy).getSharedPreferences(
+            eq(OfflineSettingsHandoff.PREFERENCES_FILE),
+            eq(Context.MODE_PRIVATE),
+        )
+        appSpy.testTokenConvergenceOverride = { true }
+        appSpy.testSettingsHandoffOverride = null
+
+        appSpy.onServiceBind(service)
+
+        assertTrue("service readiness follows the settings handoff", App.isServiceReady())
+        assertEquals("Pixel 5", remote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertEquals("preserve", remote.getString("unrelated_remote_setting", null))
+        assertTrue(pending.all.isEmpty())
+    }
+
+    @Test
+    fun `offline edit survives simulated process recreation bind failure and explicit retry`() {
+        val context = mock<Context>()
+        val local = MemorySharedPreferences(
+            mapOf(
+                Constants.PREF_DEVICE_TO_SPOOF to "Pixel 3",
+                Constants.PREF_ENABLE_VERBOSE_LOGS to false,
+            ),
+        )
+        val pending = MemorySharedPreferences()
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(local)
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(pending)
+        App.setServiceStateForTests(null, ready = false)
+
+        assertTrue(
+            App.withGuardedSettingsPreferences(
+                context,
+                editedKeys = setOf(Constants.PREF_DEVICE_TO_SPOOF),
+            ) { prefs ->
+                prefs.edit().putString(Constants.PREF_DEVICE_TO_SPOOF, "Pixel 5").apply()
+                true
+            },
+        )
+        assertEquals("Pixel 5", pending.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+
+        // A fresh App instance sees the same durable handoff preferences, modeling
+        // the local-store state retained after the original process exits.
+        App.setServiceStateForTests(null, ready = false)
+        val recreatedApp = spy(App())
+        doReturn(pending).whenever(recreatedApp).getSharedPreferences(
+            eq(OfflineSettingsHandoff.PREFERENCES_FILE),
+            eq(Context.MODE_PRIVATE),
+        )
+        recreatedApp.testTokenConvergenceOverride = { true }
+        recreatedApp.testSettingsHandoffOverride = null
+
+        val remote = MemorySharedPreferences(
+            mapOf(
+                Constants.PREF_DEVICE_TO_SPOOF to "Pixel XL",
+                Constants.PREF_ENABLE_VERBOSE_LOGS to true,
+                "unrelated_remote_setting" to "preserve remote value",
+            ),
+            commitResult = false,
+        )
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(remote)
+
+        recreatedApp.onServiceBind(service)
+
+        assertEquals(ServicePhase.ERROR, App.serviceReadinessSnapshot().phase)
+        assertFalse(App.isServiceReady())
+        assertEquals("Pixel XL", remote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertEquals("preserve remote value", remote.getString("unrelated_remote_setting", null))
+        assertEquals("Pixel 5", pending.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertTrue(
+            pending.getStringSet("pending_keys", mutableSetOf())
+                ?.contains(Constants.PREF_DEVICE_TO_SPOOF) == true,
+        )
+
+        remote.commitResult = true
+        assertTrue(recreatedApp.retryServiceConvergence())
+
+        assertEquals(ServicePhase.READY, App.serviceReadinessSnapshot().phase)
+        assertTrue(App.isServiceReady())
+        assertEquals("Pixel 5", remote.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+        assertTrue(remote.getBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS, false))
+        assertEquals("preserve remote value", remote.getString("unrelated_remote_setting", null))
+        assertTrue(pending.all.isEmpty())
+    }
+
+    @Test
+    fun `main feature and advanced saves opened while ready are rejected after service death`() {
+        val context = mock<Context>()
+        val service = mock<XposedService>()
+        val remotePrefs = mock<SharedPreferences>()
+        val remoteEditor = mock<SharedPreferences.Editor>()
+        whenever(service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)).thenReturn(remotePrefs)
+        whenever(remotePrefs.edit()).thenReturn(remoteEditor)
+        whenever(remoteEditor.putString(any(), any())).thenReturn(remoteEditor)
+        whenever(remoteEditor.putStringSet(any(), any())).thenReturn(remoteEditor)
+        whenever(remoteEditor.putBoolean(any(), any())).thenReturn(remoteEditor)
+        app.onServiceBind(service)
+        assertTrue(App.isServiceReady())
+        var retainedRemote: SharedPreferences? = null
+        assertTrue(App.withGuardedSettingsPreferences(context) { prefs ->
+            retainedRemote = prefs
+            true
+        })
+        assertSame(remotePrefs, retainedRemote)
+
+        // These are the three activity save paths. Each asks the central guard for
+        // a fresh authorized source instead of reusing the remote handle captured
+        // when the screen was opened.
+        app.onServiceDied(service)
+        val saveAttempts = listOf(
+            "main screen" to { prefs: SharedPreferences ->
+                prefs.edit().putBoolean(Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS, false).apply()
+                true
+            },
+            "FeatureCustomize" to { prefs: SharedPreferences ->
+                prefs.edit().putStringSet(Constants.PREF_SPOOF_FEATURES_LIST, emptySet()).apply()
+                true
+            },
+            "AdvancedOptionsActivity" to { prefs: SharedPreferences ->
+                prefs.edit().putBoolean(Constants.PREF_ENABLE_VERBOSE_LOGS, true).apply()
+                true
+            },
+        )
+        saveAttempts.forEach { (screen, operation) ->
+            var invoked = false
+            val accepted = App.withGuardedSettingsPreferences(context) { currentPrefs ->
+                invoked = true
+                operation(currentPrefs)
+            }
+            assertFalse("$screen must not save after service death", accepted)
+            assertFalse("$screen must not receive a cached preference handle", invoked)
+        }
+        verify(remotePrefs, never()).edit()
+        verify(mockFilePrefs, never()).edit()
+        verify(context, never()).getSharedPreferences(any(), any())
+    }
+
+    @Test
+    fun `source version guard rejects child save values loaded before bind and rebind`() {
+        val context = mock<Context>()
+        App.setServiceStateForTests(null, ready = false)
+        val offlineVersion = App.serviceReadinessSnapshot().version
+        val firstService = mock<XposedService>()
+        app.onServiceBind(firstService)
+        val firstReadyVersion = App.serviceReadinessSnapshot().version
+        app.onServiceDied(firstService)
+        val reboundService = mock<XposedService>()
+        app.onServiceBind(reboundService)
+
+        val staleSave = listOf(offlineVersion, firstReadyVersion).map { expectedVersion ->
+            var invoked = false
+            val accepted = App.withGuardedSettingsPreferences(
+                context,
+                expectedStateVersion = expectedVersion,
+            ) {
+                invoked = true
+                true
+            }
+            accepted to invoked
+        }
+
+        assertEquals(listOf(false to false, false to false), staleSave)
+        verify(context, never()).getSharedPreferences(any(), any())
+    }
+
+    @Test
+    fun `settings mutation and readiness transition are serialized`() {
+        val context = mock<Context>()
+        val service = mock<XposedService>()
+        val remotePrefs = mock<SharedPreferences>()
+        val remoteEditor = mock<SharedPreferences.Editor>()
+        whenever(service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)).thenReturn(remotePrefs)
+        whenever(remotePrefs.edit()).thenReturn(remoteEditor)
+        whenever(remoteEditor.putString(any(), any())).thenReturn(remoteEditor)
+        app.onServiceBind(service)
+
+        val mutationEntered = CountDownLatch(1)
+        val releaseMutation = CountDownLatch(1)
+        val deathStarted = CountDownLatch(1)
+        val deathFinished = CountDownLatch(1)
+        var accepted = false
+        val mutationThread = Thread {
+            accepted = App.withGuardedSettingsPreferences(context) { prefs ->
+                mutationEntered.countDown()
+                check(releaseMutation.await(5, TimeUnit.SECONDS))
+                prefs.edit().putString(Constants.PREF_DEVICE_TO_SPOOF, "test-device").apply()
+                true
+            }
+        }
+        mutationThread.start()
+        assertTrue(mutationEntered.await(5, TimeUnit.SECONDS))
+
+        val deathThread = Thread {
+            deathStarted.countDown()
+            app.onServiceDied(service)
+            deathFinished.countDown()
+        }
+        deathThread.start()
+        assertTrue(deathStarted.await(5, TimeUnit.SECONDS))
+        assertFalse("death must not split a guarded mutation", deathFinished.await(100, TimeUnit.MILLISECONDS))
+
+        releaseMutation.countDown()
+        mutationThread.join(5_000)
+        deathThread.join(5_000)
+        assertFalse(mutationThread.isAlive)
+        assertFalse(deathThread.isAlive)
+        assertTrue(accepted)
+        assertTrue(deathFinished.await(1, TimeUnit.SECONDS))
+        verify(remoteEditor).putString(Constants.PREF_DEVICE_TO_SPOOF, "test-device")
+        assertEquals(ServicePhase.DISCONNECTED, App.serviceReadinessSnapshot().phase)
+    }
+
+    @Test
+    fun `stale death callback from older service cannot clear newer ready binding`() {
+        val oldService = mock<XposedService>()
+        val currentService = mock<XposedService>()
+        app.onServiceBind(oldService)
+        app.onServiceBind(currentService)
+        assertSame(currentService, App.mService)
+        assertTrue(App.isServiceReady())
+
+        app.onServiceDied(oldService)
+
+        assertSame(currentService, App.mService)
+        assertTrue(App.isServiceReady())
+    }
+
+    @Test
+    fun `persistent service-state listener observes death and rebind while still registered`() {
+        val states = mutableListOf<Pair<Boolean, Long>>()
+        val listener: (ServiceReadinessSnapshot) -> Unit = { states += it.ready to it.version }
+        App.addOnServiceStateListener(listener)
+        val initialListenerCount = App.serviceStateListenerCountForTests()
+
+        val first = mock<XposedService>()
+        app.onServiceBind(first)
+        app.onServiceDied(first)
+        val second = mock<XposedService>()
+        app.onServiceBind(second)
+
+        assertEquals(listOf(false, false, true, false, false, true), states.map { it.first })
+        assertTrue(states.zipWithNext().all { (a, b) -> b.second > a.second })
+        assertEquals(initialListenerCount, App.serviceStateListenerCountForTests())
+
+        App.removeOnServiceStateListener(listener)
+        assertEquals(initialListenerCount - 1, App.serviceStateListenerCountForTests())
+        app.onServiceDied(second)
+        assertEquals("removed Activity listener must not be retained", 6, states.size)
+    }
+
+    @Test
     fun `listener registered after service death waits for rebind instead of firing`() {
-        app.onServiceBind(mock<XposedService>())
-        app.onServiceDied(mock<XposedService>())
+        val service = mock<XposedService>()
+        app.onServiceBind(service)
+        app.onServiceDied(service)
 
         var invoked = false
         App.addOnServiceBoundListener { invoked = true }
@@ -280,6 +969,7 @@ class AppTest {
 
     @Test
     fun `onServiceBind converges divergent remote token into the local file store`() {
+        app.testTokenConvergenceOverride = null
         val service = mock<XposedService>()
         val remotePrefs = stubRemotePrefsOf(service)
         whenever(remotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null))
@@ -296,12 +986,14 @@ class AppTest {
 
     @Test
     fun `onServiceBind mirrors local token into empty remote prefs`() {
+        app.testTokenConvergenceOverride = null
         val service = mock<XposedService>()
         val remotePrefs = stubRemotePrefsOf(service)
         val remoteEditor = mock<SharedPreferences.Editor>()
         whenever(remotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)).thenReturn(null)
         whenever(remotePrefs.edit()).thenReturn(remoteEditor)
         whenever(remoteEditor.putString(any(), any())).thenReturn(remoteEditor)
+        whenever(remoteEditor.commit()).thenReturn(true)
         whenever(mockFilePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null))
             .thenReturn("local-token-value")
         val appSpy = spyAppBackedByFileStore()
@@ -320,6 +1012,7 @@ class AppTest {
 
     @Test
     fun `onServiceBind leaves both stores untouched when tokens already agree`() {
+        app.testTokenConvergenceOverride = null
         val service = mock<XposedService>()
         val remotePrefs = stubRemotePrefsOf(service)
         whenever(remotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null))
@@ -336,6 +1029,7 @@ class AppTest {
 
     @Test
     fun `onServiceBind swallows convergence failure when remote prefs are unavailable`() {
+        app.testTokenConvergenceOverride = null
         val service = mock<XposedService>()
         whenever(service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME))
             .thenThrow(RuntimeException("remote prefs unavailable"))
@@ -347,7 +1041,7 @@ class AppTest {
         verify(mockFileEditor, never()).putString(any(), any())
         // The logged swallow proves convergence actually ran and hit its guarded
         // failure path, rather than the wiring being skipped entirely.
-        mockedLog.verify { Log.d(any(), any()) }
+        mockedLog.verify { Log.w(any(), any(), anyOrNull()) }
     }
 
     // =========================================================================

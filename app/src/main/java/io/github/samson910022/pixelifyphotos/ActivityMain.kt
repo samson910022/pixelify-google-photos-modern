@@ -14,6 +14,9 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.*
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.ActivityResultCallback
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
@@ -74,6 +77,26 @@ class ActivityMain : AppCompatActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var isClassicUi: Boolean = false
+    private var initializedServiceStateVersion: Long? = null
+    private var mainServiceStateListener: ((ServiceReadinessSnapshot) -> Unit)? = null
+    private var readinessDialog: androidx.appcompat.app.AlertDialog? = null
+    private var readinessDialogPhase: ServicePhase? = null
+    @Volatile private var frameworkBindingObserved = false
+    private data class AuthorizedConfigExport(
+        val source: ServiceReadinessSnapshot,
+        /** Serialized at capture time so later mutation cannot change the SAF snapshot. */
+        val json: String,
+    ) {
+        init {
+            require(JSONObject(json).length() > 0)
+        }
+    }
+    private val pendingConfigExport by lazy(LazyThreadSafetyMode.NONE) {
+        ConfigExportRequestGate.from(applicationContext)
+    }
+    private val configCreateLaunchers = mutableMapOf<String, ActivityResultLauncher<Intent>>()
+    private val deferredActivityRestart = DeferredActivityRestartGate()
+    private var configExportCallbackInProgress = false
 
     /** Active cold-start gate, or null when the enabled fast path skipped waiting. */
     private var moduleStateResolver: ModuleStateResolver? = null
@@ -101,11 +124,59 @@ class ActivityMain : AppCompatActivity() {
      */
     private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
 
+    private fun canEditSettings(): Boolean =
+        App.serviceReadinessSnapshot().let { state ->
+            initializedServiceStateVersion == state.version &&
+                MainSettingsReadinessPolicy.mayAccessPreferences(
+                    state,
+                    frameworkBindingObserved || App.hasObservedFrameworkBinding(),
+                )
+        }
+
+    private fun updateSettings(
+        editedKeys: Set<String> = emptySet(),
+        operation: (SharedPreferences) -> Boolean,
+    ): Boolean {
+        var offlinePersistenceUncertain = false
+        val updated = App.withGuardedSettingsPreferences(
+            this,
+            expectedStateVersion = initializedServiceStateVersion,
+            editedKeys = editedKeys,
+            onOfflinePersistenceUncertain = { offlinePersistenceUncertain = true },
+            operation = operation,
+        )
+        if (!updated && !isFinishing && !isDestroyed) {
+            Toast.makeText(this, R.string.settings_write_unavailable, Toast.LENGTH_LONG).show()
+        } else if (updated && offlinePersistenceUncertain && !isFinishing && !isDestroyed) {
+            Toast.makeText(this, R.string.settings_offline_memory_only, Toast.LENGTH_LONG).show()
+        }
+        return updated
+    }
+
+    private fun updateSettingsControls() {
+        val enabled = canEditSettings()
+        listOf(
+            R.id.reset_settings,
+            R.id.override_rom_feature_levels,
+            R.id.device_spoofer_spinner,
+            R.id.advanced_options,
+            R.id.customize_feature_flags,
+            R.id.conf_import,
+            R.id.auto_complete_device,
+            R.id.modern_btn_customize_features,
+            R.id.modern_switch_override_rom,
+            R.id.modern_item_advanced_options,
+            R.id.menu_import,
+            R.id.menu_reset,
+            R.id.menu_switch_ui,
+        ).forEach { id -> findViewById<View>(id)?.isEnabled = enabled }
+    }
+
     /**
      * Check if the Xposed module is actually active/enabled in LSPosed.
      */
     private fun isModuleEnabled(): Boolean {
-        return App.mService != null
+        return App.isServiceReady()
     }
 
     /**
@@ -151,6 +222,15 @@ class ActivityMain : AppCompatActivity() {
      */
     private fun restartActivity() {
         if (isFinishing || isDestroyed) return
+        if (!deferredActivityRestart.requestRestart(
+                configExportPending = pendingConfigExport.hasAwaitingResult() || configExportCallbackInProgress,
+            )
+        ) return
+        performActivityRestart()
+    }
+
+    private fun performActivityRestart() {
+        if (isFinishing || isDestroyed) return
         finish()
         startActivity(Intent(this, ActivityMain::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -169,7 +249,9 @@ class ActivityMain : AppCompatActivity() {
      * the chosen UI mode, checks onboarding and updates.
      */
     override fun onCreate(savedInstanceState: Bundle?) {
-        val pref = getPrefs()
+        val initialServiceState = App.serviceReadinessSnapshot()
+        frameworkBindingObserved = App.hasObservedFrameworkBinding() || initialServiceState.connected
+        val pref = PrefUtils.getPrefs(this, initialServiceState)
         isClassicUi = pref?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
 
         if (isClassicUi) {
@@ -186,35 +268,139 @@ class ActivityMain : AppCompatActivity() {
             }
         }
 
-        if (!isModuleEnabled()) {
-            moduleStateResolver = createModuleStateResolver().also { it.start() }
+        // Re-register the durable request's unique key before STARTED so ActivityResultRegistry
+        // can restore/deliver an in-flight SAF result after rotation or process recreation.
+        restorePendingConfigExportLauncher()
+        ensureMainServiceStateListener()
+        updateSettingsControls()
+        val currentState = App.serviceReadinessSnapshot()
+        when (ActivityMainLifecycle.onCreate(currentState, frameworkBindingObserved || App.hasObservedFrameworkBinding())) {
+            ActivityMainLifecycle.Action.INITIALIZE_REMOTE -> initializeForReadyService()
+            ActivityMainLifecycle.Action.INITIALIZE_LOCAL_AND_WAIT -> {
+                initializeForOfflineService()
+                moduleStateResolver = createModuleStateResolver().also { it.start() }
+            }
+            ActivityMainLifecycle.Action.WAIT_FOR_CONNECTION -> {
+                showServiceNotReadyDialog(currentState)
+                if (currentState.phase == ServicePhase.ERROR) App.requestServiceConvergenceRetry()
+            }
+            ActivityMainLifecycle.Action.WAIT_FOR_REBIND -> showServiceNotReadyDialog(currentState)
+            ActivityMainLifecycle.Action.NO_CHANGE -> Unit
+        }
+    }
+
+    /** Reconciles the cold-start bind resolver with the current remembered lifecycle state. */
+    private fun onModuleStateResolved(enabled: Boolean) {
+        val state = App.serviceReadinessSnapshot()
+        when (ActivityMainLifecycle.onResolverResolved(
+            enabled,
+            state,
+            frameworkBindingObserved || App.hasObservedFrameworkBinding(),
+        )) {
+            ActivityMainLifecycle.Action.INITIALIZE_REMOTE -> initializeForReadyService()
+            ActivityMainLifecycle.Action.WAIT_FOR_CONNECTION -> {
+                showServiceNotReadyDialog(state)
+                if (state.phase == ServicePhase.ERROR) App.requestServiceConvergenceRetry()
+            }
+            ActivityMainLifecycle.Action.WAIT_FOR_REBIND -> showServiceNotReadyDialog(state)
+            ActivityMainLifecycle.Action.INITIALIZE_LOCAL_AND_WAIT,
+            ActivityMainLifecycle.Action.NO_CHANGE -> Unit
+        }
+    }
+
+    private fun ensureMainServiceStateListener() {
+        if (mainServiceStateListener != null) return
+        lateinit var listener: (ServiceReadinessSnapshot) -> Unit
+        listener = { observedState ->
+            if (observedState.connected || App.hasObservedFrameworkBinding()) frameworkBindingObserved = true
+            mainHandler.post {
+                if (isFinishing || isDestroyed || mainServiceStateListener !== listener) return@post
+                val current = App.serviceReadinessSnapshot()
+                frameworkBindingObserved = frameworkBindingObserved || App.hasObservedFrameworkBinding() || current.connected
+                invalidateOptionsMenu()
+                updateSettingsControls()
+                when (ActivityMainLifecycle.onServiceStateChanged(current, frameworkBindingObserved)) {
+                    ActivityMainLifecycle.Action.INITIALIZE_REMOTE -> initializeForReadyService()
+                    ActivityMainLifecycle.Action.WAIT_FOR_CONNECTION,
+                    ActivityMainLifecycle.Action.WAIT_FOR_REBIND -> showServiceNotReadyDialog(current)
+                    ActivityMainLifecycle.Action.INITIALIZE_LOCAL_AND_WAIT,
+                    ActivityMainLifecycle.Action.NO_CHANGE -> Unit
+                }
+            }
+        }
+        mainServiceStateListener = listener
+        App.addOnServiceStateListener(listener)
+    }
+
+    private fun initializeForReadyService() {
+        val state = App.serviceReadinessSnapshot()
+        if (!MainSettingsReadinessPolicy.mayInitializeConnectedSettings(state)) return
+        if (initializedServiceStateVersion == state.version) return
+        val preferences = PrefUtils.getPrefs(this, state) ?: getPrefs()
+        val requestedClassicUi = preferences?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
+        val latestState = App.serviceReadinessSnapshot()
+        if (!latestState.ready || latestState.version != state.version) return
+        readinessDialog?.dismiss()
+        readinessDialog = null
+        readinessDialogPhase = null
+        initializedServiceStateVersion = state.version
+        updateSettingsControls()
+        if (requestedClassicUi != isClassicUi) {
+            restartActivity()
             return
         }
-        initializeUi(pref)
+        initializeUi(preferences)
     }
 
-    /**
-     * Delivers the resolved verdict: bind within the grace window initializes the
-     * full UI; expiry keeps the original blocking "module not enabled" dialog.
-     */
-    private fun onModuleStateResolved(enabled: Boolean) {
-        if (enabled) {
-            initializeUi(getPrefs())
-        } else {
-            showModuleNotEnabledDialog()
+    private fun initializeForOfflineService() {
+        val state = App.serviceReadinessSnapshot()
+        if (ActivityMainLifecycle.onCreate(state, App.hasObservedFrameworkBinding()) !=
+            ActivityMainLifecycle.Action.INITIALIZE_LOCAL_AND_WAIT
+        ) return
+        if (initializedServiceStateVersion == state.version) return
+        val preferences = PrefUtils.getPrefs(this, state) ?: return
+        val latestState = App.serviceReadinessSnapshot()
+        if (latestState.version != state.version || latestState.connected || App.hasObservedFrameworkBinding()) return
+        initializedServiceStateVersion = state.version
+        updateSettingsControls()
+        initializeUi(preferences)
+    }
+
+    private fun showServiceNotReadyDialog(state: ServiceReadinessSnapshot) {
+        val message = when (state.phase) {
+            ServicePhase.CONNECTED_SYNCING -> getString(R.string.diagnostics_connection_syncing)
+            ServicePhase.ERROR -> getString(R.string.diagnostics_connection_error)
+            ServicePhase.DISCONNECTED -> if (frameworkBindingObserved) {
+                getString(R.string.diagnostics_connection_disconnected)
+            } else return
+            else -> return
         }
-    }
-
-    /**
-     * Display the non-dismissable "module not enabled" dialog shown only after the
-     * bind grace window expires without service delivery.
-     */
-    private fun showModuleNotEnabledDialog() {
-        MaterialAlertDialogBuilder(this)
-            .setMessage(R.string.module_not_enabled)
-            .setPositiveButton(R.string.close) { _, _ -> finish() }
+        val existing = readinessDialog
+        if (existing?.isShowing == true && readinessDialogPhase == state.phase) {
+            existing.setMessage(message)
+            return
+        }
+        existing?.dismiss()
+        readinessDialogPhase = state.phase
+        val isRetryableError = MainSettingsReadinessPolicy.mayRetryConvergence(state)
+        val builder = MaterialAlertDialogBuilder(this)
+            .setMessage(message)
+            .setPositiveButton(if (isRetryableError) R.string.retry else R.string.close, null)
             .setCancelable(false)
-            .show()
+        if (isRetryableError) {
+            builder.setNegativeButton(R.string.close) { _, _ -> finish() }
+        }
+        readinessDialog = builder.create().also { dialog ->
+            dialog.setCanceledOnTouchOutside(false)
+            dialog.show()
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (isRetryableError) {
+                    App.requestServiceConvergenceRetry()
+                } else {
+                    finish()
+                }
+            }
+        }
     }
 
     /**
@@ -233,14 +419,12 @@ class ActivityMain : AppCompatActivity() {
         checkFirstRunOnboarding(pref)
 
         // Check if changelogs need to be shown when upgrading from older version.
-        pref?.apply {
-            val thisVersion = BuildConfig.VERSION_CODE
-            if (getInt(PREF_LAST_VERSION, 0) < thisVersion) {
-                showChangeLog()
-                edit().apply {
-                    putInt(PREF_LAST_VERSION, thisVersion)
-                    apply()
-                }
+        val thisVersion = BuildConfig.VERSION_CODE
+        if ((pref?.getInt(PREF_LAST_VERSION, 0) ?: thisVersion) < thisVersion) {
+            showChangeLog()
+            updateSettings { currentPrefs ->
+                currentPrefs.edit().putInt(PREF_LAST_VERSION, thisVersion).apply()
+                true
             }
         }
 
@@ -343,15 +527,18 @@ class ActivityMain : AppCompatActivity() {
         val classicEntitlementDesc = findViewById<TextView>(R.id.classic_entitlement_desc)
         val classicBtnVerifyGuide = findViewById<TextView>(R.id.classic_btn_verify_guide)
 
-        resetSettings?.setOnClickListener { performResetSettings(pref) }
+        resetSettings?.setOnClickListener { performResetSettings() }
 
         overrideROMFeatureLevels?.apply {
             isChecked = pref?.getBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true) ?: false
             setOnCheckedChangeListener { _, isChecked ->
-                pref?.edit()?.run {
-                    putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, isChecked)
-                    apply()
-                    showRebootSnack()
+                if (canEditSettings()) {
+                    if (updateSettings(setOf(PREF_OVERRIDE_ROM_FEATURE_LEVELS)) { currentPrefs ->
+                        currentPrefs.edit().putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, isChecked).apply()
+                        true
+                    }) {
+                        showRebootSnack()
+                    }
                 }
             }
         }
@@ -368,21 +555,35 @@ class ActivityMain : AppCompatActivity() {
             val pos = deviceItems.indexOfFirst { it.deviceName == defaultSelection }.coerceAtLeast(0)
             setSelection(pos, false)
 
+            var initialSelectionCallback = true
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     val selectedItem = aa.getItem(position)
                     val deviceName = selectedItem?.deviceName ?: DeviceProps.defaultDeviceName
-                    pref?.edit()?.apply {
-                        putString(PREF_DEVICE_TO_SPOOF, deviceName)
-                        putStringSet(
-                            PREF_SPOOF_FEATURES_LIST,
-                            DeviceProps.getFeaturesUpToFromDeviceName(deviceName)
-                        )
-                        apply()
+                    if (initialSelectionCallback) {
+                        initialSelectionCallback = false
+                        if (position == pos) {
+                            updateEntitlementUi(deviceName, classicEntitlementBadge, classicEntitlementDesc)
+                            return
+                        }
+                    }
+                    val saved = canEditSettings() && updateSettings(
+                        setOf(PREF_DEVICE_TO_SPOOF, PREF_SPOOF_FEATURES_LIST)
+                    ) { currentPrefs ->
+                        currentPrefs.edit().apply {
+                            putString(PREF_DEVICE_TO_SPOOF, deviceName)
+                            putStringSet(
+                                PREF_SPOOF_FEATURES_LIST,
+                                DeviceProps.getFeaturesUpToFromDeviceName(deviceName)
+                            )
+                        }.apply()
+                        true
+                    }
+                    if (saved) {
+                        showRebootSnack()
                     }
                     updateEntitlementUi(deviceName, classicEntitlementBadge, classicEntitlementDesc)
                     peekFeatureFlagsChanged(featureFlagsChanged)
-                    showRebootSnack()
                 }
 
                 override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -397,7 +598,9 @@ class ActivityMain : AppCompatActivity() {
         advancedOptions?.apply {
             paintFlags = Paint.UNDERLINE_TEXT_FLAG
             setOnClickListener {
-                childActivityLauncher.launch(Intent(this@ActivityMain, AdvancedOptionsActivity::class.java))
+                if (canEditSettings()) {
+                    childActivityLauncher.launch(Intent(this@ActivityMain, AdvancedOptionsActivity::class.java))
+                }
             }
         }
 
@@ -411,7 +614,7 @@ class ActivityMain : AppCompatActivity() {
         forceStopGooglePhotos?.setOnClickListener { forceStopScopedApps() }
         openGooglePhotos?.setOnClickListener { openGooglePhotos() }
         customizeFeatureFlags?.setOnClickListener {
-            childActivityLauncher.launch(Intent(this, FeatureCustomize::class.java))
+            if (canEditSettings()) childActivityLauncher.launch(Intent(this, FeatureCustomize::class.java))
         }
 
         supportLink?.apply {
@@ -420,7 +623,7 @@ class ActivityMain : AppCompatActivity() {
         }
 
         confExport?.setOnClickListener { showExportDialog() }
-        confImport?.setOnClickListener { showImportDialog() }
+        confImport?.setOnClickListener { if (canEditSettings()) showImportDialog() }
     }
 
     /**
@@ -454,33 +657,42 @@ class ActivityMain : AppCompatActivity() {
             setOnItemClickListener { _, _, position, _ ->
                 val selectedItem = adapter.getItem(position)
                 val selectedDevice = selectedItem?.deviceName ?: DeviceProps.defaultDeviceName
-                pref?.edit()?.apply {
-                    putString(PREF_DEVICE_TO_SPOOF, selectedDevice)
-                    putStringSet(
-                        PREF_SPOOF_FEATURES_LIST,
-                        DeviceProps.getFeaturesUpToFromDeviceName(selectedDevice)
-                    )
-                    apply()
+                val saved = canEditSettings() && updateSettings(
+                    setOf(PREF_DEVICE_TO_SPOOF, PREF_SPOOF_FEATURES_LIST)
+                ) { currentPrefs ->
+                    currentPrefs.edit().apply {
+                        putString(PREF_DEVICE_TO_SPOOF, selectedDevice)
+                        putStringSet(
+                            PREF_SPOOF_FEATURES_LIST,
+                            DeviceProps.getFeaturesUpToFromDeviceName(selectedDevice)
+                        )
+                    }.apply()
+                    true
+                }
+                if (saved) {
+                    showRebootSnack()
                 }
                 statusProfile?.text = getString(R.string.device_spoofed_active, selectedDevice)
                 updateEntitlementUi(selectedDevice, modernEntitlementBadge, modernEntitlementDesc)
-                showRebootSnack()
             }
         }
 
         val btnCustomizeFeatures = findViewById<View>(R.id.modern_btn_customize_features)
         btnCustomizeFeatures?.setOnClickListener {
-            childActivityLauncher.launch(Intent(this, FeatureCustomize::class.java))
+            if (canEditSettings()) childActivityLauncher.launch(Intent(this, FeatureCustomize::class.java))
         }
 
         val switchOverrideRom = findViewById<MaterialSwitch>(R.id.modern_switch_override_rom)
         switchOverrideRom?.apply {
             isChecked = pref?.getBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true) ?: false
             setOnCheckedChangeListener { _, isChecked ->
-                pref?.edit()?.run {
-                    putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, isChecked)
-                    apply()
-                    showRebootSnack()
+                if (canEditSettings()) {
+                    if (updateSettings(setOf(PREF_OVERRIDE_ROM_FEATURE_LEVELS)) { currentPrefs ->
+                        currentPrefs.edit().putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, isChecked).apply()
+                        true
+                    }) {
+                        showRebootSnack()
+                    }
                 }
             }
         }
@@ -489,7 +701,7 @@ class ActivityMain : AppCompatActivity() {
         findViewById<View>(R.id.modern_btn_open_photos)?.setOnClickListener { openGooglePhotos() }
 
         findViewById<View>(R.id.modern_item_advanced_options)?.setOnClickListener {
-            childActivityLauncher.launch(Intent(this, AdvancedOptionsActivity::class.java))
+            if (canEditSettings()) childActivityLauncher.launch(Intent(this, AdvancedOptionsActivity::class.java))
         }
 
         findViewById<View>(R.id.modern_item_diagnostics)?.setOnClickListener {
@@ -519,7 +731,10 @@ class ActivityMain : AppCompatActivity() {
                 .setTitle(R.string.onboarding_title)
                 .setMessage(message)
                 .setPositiveButton(R.string.onboarding_action_force_stop_and_launch) { _, _ ->
-                    pref?.edit()?.putBoolean(PREF_FIRST_RUN_COMPLETED, true)?.apply()
+                    if (canEditSettings()) updateSettings { currentPrefs ->
+                        currentPrefs.edit().putBoolean(PREF_FIRST_RUN_COMPLETED, true).apply()
+                        true
+                    }
                     forceStopScopedApps()
                     findViewById<View>(android.R.id.content)?.postDelayed({
                         if (!isFinishing && !isDestroyed) {
@@ -528,7 +743,10 @@ class ActivityMain : AppCompatActivity() {
                     }, 500)
                 }
                 .setNegativeButton(R.string.onboarding_action_got_it) { _, _ ->
-                    pref?.edit()?.putBoolean(PREF_FIRST_RUN_COMPLETED, true)?.apply()
+                    if (canEditSettings()) updateSettings { currentPrefs ->
+                        currentPrefs.edit().putBoolean(PREF_FIRST_RUN_COMPLETED, true).apply()
+                        true
+                    }
                 }
                 .setCancelable(false)
                 .show()
@@ -538,31 +756,46 @@ class ActivityMain : AppCompatActivity() {
     /**
      * Reset all user configurations back to factory defaults and restart the activity.
      *
-     * @param pref SharedPreferences instance to reset.
      */
-    private fun performResetSettings(pref: SharedPreferences?) {
-        pref?.edit()?.run {
-            putString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
-            putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true)
-            putStringSet(
+    private fun performResetSettings() {
+        if (!canEditSettings()) return
+        val reset = updateSettings(
+            setOf(
+                PREF_DEVICE_TO_SPOOF,
+                PREF_OVERRIDE_ROM_FEATURE_LEVELS,
                 PREF_SPOOF_FEATURES_LIST,
-                DeviceProps.defaultFeatures.map { it.displayName }.toSet()
+                PREF_ENABLE_VERBOSE_LOGS,
+                PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
+                PREF_SPOOF_ANDROID_VERSION_MANUAL,
             )
-            putBoolean(PREF_ENABLE_VERBOSE_LOGS, false)
-            putBoolean(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, false)
-            putString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
-            apply()
+        ) { currentPrefs ->
+            currentPrefs.edit().apply {
+                putString(PREF_DEVICE_TO_SPOOF, DeviceProps.defaultDeviceName)
+                putBoolean(PREF_OVERRIDE_ROM_FEATURE_LEVELS, true)
+                putStringSet(
+                    PREF_SPOOF_FEATURES_LIST,
+                    DeviceProps.defaultFeatures.map { it.displayName }.toSet()
+                )
+                putBoolean(PREF_ENABLE_VERBOSE_LOGS, false)
+                putBoolean(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE, false)
+                putString(PREF_SPOOF_ANDROID_VERSION_MANUAL, null)
+            }.apply()
+            true
         }
-        restartActivity()
+        if (reset) restartActivity()
     }
 
     /**
      * Toggle between Modern and Classic UI layouts and restart the activity.
      */
     private fun toggleUiMode() {
-        val pref = getPrefs()
-        val current = pref?.getBoolean(PREF_USE_CLASSIC_UI, false) ?: false
-        pref?.edit()?.putBoolean(PREF_USE_CLASSIC_UI, !current)?.apply()
+        if (!canEditSettings()) return
+        val updated = updateSettings(setOf(PREF_USE_CLASSIC_UI)) { currentPrefs ->
+            val current = currentPrefs.getBoolean(PREF_USE_CLASSIC_UI, false)
+            currentPrefs.edit().putBoolean(PREF_USE_CLASSIC_UI, !current).apply()
+            true
+        }
+        if (!updated) return
         Toast.makeText(this, R.string.ui_mode_changed, Toast.LENGTH_SHORT).show()
         restartActivity()
     }
@@ -571,6 +804,7 @@ class ActivityMain : AppCompatActivity() {
      * Force-stop all packages within the active LSPosed scope using root privileges.
      */
     private fun forceStopScopedApps() {
+        if (!canEditSettings()) return
         val scopePackages = try {
             val service = App.mService
             if (service == null) {
@@ -646,6 +880,10 @@ class ActivityMain : AppCompatActivity() {
         } else {
             switchUiItem?.setTitle(R.string.switch_to_classic_ui)
         }
+        val mayEdit = canEditSettings()
+        menu?.findItem(R.id.menu_import)?.isEnabled = mayEdit
+        menu?.findItem(R.id.menu_reset)?.isEnabled = mayEdit
+        switchUiItem?.isEnabled = mayEdit
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -655,10 +893,9 @@ class ActivityMain : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_export -> showExportDialog()
-            R.id.menu_import -> showImportDialog()
+            R.id.menu_import -> if (canEditSettings()) showImportDialog()
             R.id.menu_reset -> {
-                val pref = getPrefs()
-                performResetSettings(pref)
+                performResetSettings()
             }
             R.id.menu_switch_ui -> toggleUiMode()
             R.id.menu_changelog -> showChangeLog()
@@ -728,7 +965,16 @@ class ActivityMain : AppCompatActivity() {
      * Export the current configuration to cache and launch the Android share sheet.
      */
     private fun shareConfFile() {
-        val pref = getPrefs()
+        val capture = captureAuthorizedConfigExport()
+        val export = capture.export
+        if (export == null) {
+            showConfigExportUnavailable(capture.failureReason)
+            return
+        }
+        if (!isCurrentAuthorizedConfigExport(export)) {
+            showConfigExportUnavailable(ConfigExportFailureReason.UNAVAILABLE)
+            return
+        }
         try {
             val configDir = File(cacheDir, "config_exports")
             configDir.mkdirs()
@@ -736,7 +982,7 @@ class ActivityMain : AppCompatActivity() {
             val uriFromFile = Uri.fromFile(confFile)
 
             confFile.delete()
-            utils.writeConfigFile(this, uriFromFile, pref)
+            utils.writeConfigFile(this, uriFromFile, JSONObject(export.json))
 
             val confFileShareUri = FileProvider.getUriForFile(
                 this,
@@ -760,38 +1006,265 @@ class ActivityMain : AppCompatActivity() {
      * Launch the Storage Access Framework document creation picker to save configuration JSON.
      */
     private fun saveConfFile() {
-        val openIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "application/json"
-            putExtra(Intent.EXTRA_TITLE, CONF_EXPORT_NAME)
+        if (pendingConfigExport.hasPending()) return
+        val capture = captureAuthorizedConfigExport()
+        val export = capture.export
+        if (export == null) {
+            showConfigExportUnavailable(capture.failureReason)
+            return
         }
-        Toast.makeText(this, R.string.select_a_location, Toast.LENGTH_SHORT).show()
-        configCreateLauncher.launch(openIntent)
-    }
-
-    /**
-     * ActivityResultLauncher handling SAF document creation result for configuration export.
-     */
-    private val configCreateLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
-        val pref = getPrefs()
-        try {
-            if (it.resultCode == Activity.RESULT_OK) {
-                val uri = it.data?.data ?: run {
-                    Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
-                    return@registerForActivityResult
-                }
-                utils.writeConfigFile(this, uri, pref)
-                Toast.makeText(this, R.string.export_complete, Toast.LENGTH_SHORT).show()
-            }
+        val requestId = java.util.UUID.randomUUID().toString()
+        val request = ConfigExportPendingRequest(
+            id = requestId,
+            source = ConfigExportSourceStamp.from(export.source, ConfigExportProcessEpoch.current),
+            json = export.json,
+        )
+        val launcher = try {
+            registerConfigCreateLauncher(requestId, lifecycleAware = false)
         } catch (_: Exception) {
             Toast.makeText(this, R.string.share_error, Toast.LENGTH_SHORT).show()
+            return
         }
+        if (!pendingConfigExport.begin(request)) {
+            pendingConfigExport.clear(requestId)
+            configCreateLaunchers.remove(requestId)?.unregister()
+            return
+        }
+        if (!isCurrentAuthorizedConfigExport(export)) {
+            clearConfigExportRequest(requestId)
+            configCreateLaunchers.remove(requestId)?.unregister()
+            showConfigExportUnavailable(ConfigExportFailureReason.UNAVAILABLE)
+            return
+        }
+        try {
+            val openIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, CONF_EXPORT_NAME)
+            }
+            Toast.makeText(this, R.string.select_a_location, Toast.LENGTH_SHORT).show()
+            launcher.launch(openIntent)
+        } catch (_: Exception) {
+            clearConfigExportRequest(requestId)
+            configCreateLaunchers.remove(requestId)?.unregister()
+            Toast.makeText(this, R.string.share_error, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Clears this launch's durable request and releases any deferred restart after cleanup. */
+    private fun clearConfigExportRequest(requestId: String) {
+        pendingConfigExport.clear(requestId)
+        if (!pendingConfigExport.hasAwaitingResult()) {
+            scheduleDeferredRestartAfterConfigExport(requestId, requestId)
+        }
+    }
+
+    /** Restores an outstanding request key before STARTED; the payload itself stays in app storage. */
+    private fun restorePendingConfigExportLauncher() {
+        val request = pendingConfigExport.restoreForProcess(ConfigExportProcessEpoch.current) ?: return
+        runCatching { registerConfigCreateLauncher(request.id, lifecycleAware = true) }
+    }
+
+    private fun registerConfigCreateLauncher(
+        requestId: String,
+        lifecycleAware: Boolean,
+    ): ActivityResultLauncher<Intent> {
+        configCreateLaunchers[requestId]?.let { return it }
+        val key = "config-create-$requestId"
+        val callback = ActivityResultCallback<ActivityResult> { result ->
+            configCreateLaunchers.remove(requestId)?.unregister()
+            handleConfigCreateResult(requestId, result)
+        }
+        val launcher = if (lifecycleAware) {
+            activityResultRegistry.register(
+                key,
+                this,
+                ActivityResultContracts.StartActivityForResult(),
+                callback,
+            )
+        } else {
+            activityResultRegistry.register(
+                key,
+                ActivityResultContracts.StartActivityForResult(),
+                callback,
+            )
+        }
+        configCreateLaunchers[requestId] = launcher
+        return launcher
+    }
+
+    /** Every callback consumes only its durable request ID, including cancellation and stale results. */
+    private fun handleConfigCreateResult(
+        requestId: String,
+        result: ActivityResult,
+    ) {
+        configExportCallbackInProgress = true
+        var consumedRequestId: String? = null
+        try {
+            val request = pendingConfigExport.consume(requestId) ?: return
+            consumedRequestId = request.id
+            if (result.resultCode != Activity.RESULT_OK) return
+            val uri = result.data?.data ?: run {
+                Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+                return
+            }
+            val current = App.serviceReadinessSnapshot()
+            val currentSource = ConfigExportSourceStamp.from(current, ConfigExportProcessEpoch.current)
+            val sourceStillAuthorized = ConfigExportPolicy.mayExport(
+                current,
+                frameworkBindingObserved || App.hasObservedFrameworkBinding(),
+                preferencesAvailable = true,
+            )
+            val authorizedWrite = ConfigExportRequestPolicy.authorizeWrite(
+                request = request,
+                callbackRequestId = requestId,
+                target = uri,
+                currentSource = currentSource,
+                sourceStillAuthorized = sourceStillAuthorized,
+            )
+            if (authorizedWrite == null) {
+                Toast.makeText(this, R.string.config_export_unavailable, Toast.LENGTH_LONG).show()
+                return
+            }
+            utils.writeConfigFile(this, authorizedWrite.target, JSONObject(authorizedWrite.json))
+            Toast.makeText(this, R.string.export_complete, Toast.LENGTH_SHORT).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, R.string.share_error, Toast.LENGTH_SHORT).show()
+        } finally {
+            configExportCallbackInProgress = false
+            // A delivered one-shot callback may be quarantined if exact-record removal failed.
+            // It may complete its own deferred restart, but cannot release a newer request.
+            if (consumedRequestId == null && pendingConfigExport.wasCallbackDelivered(requestId)) {
+                consumedRequestId = requestId
+            }
+            consumedRequestId?.let {
+                scheduleDeferredRestartAfterConfigExport(
+                    callbackRequestId = requestId,
+                    completedRequestId = it,
+                    deliveredCallbackId = requestId,
+                )
+            }
+        }
+    }
+
+    /** Runs after the callback/cleanup stack has completed and rechecks for a newer request. */
+    private fun scheduleDeferredRestartAfterConfigExport(
+        callbackRequestId: String,
+        completedRequestId: String?,
+        deliveredCallbackId: String? = null,
+    ) {
+        mainHandler.post {
+            val shouldRestart = deferredActivityRestart.completeRequest(
+                callbackRequestId = callbackRequestId,
+                completedRequestId = completedRequestId,
+                configExportPending = pendingConfigExport.hasAwaitingResult(
+                    deliveredCallbackId = deliveredCallbackId?.takeIf {
+                        it == callbackRequestId && it == completedRequestId
+                    },
+                ),
+            )
+            if (shouldRestart) performActivityRestart()
+        }
+    }
+
+    /** Reads one authorized, source-consistent allowlisted export snapshot. */
+    private data class ConfigExportOutcome(
+        val export: AuthorizedConfigExport? = null,
+        val failureReason: ConfigExportFailureReason? = null,
+    ) {
+        init {
+            require((export == null) == (failureReason != null))
+        }
+    }
+
+    private fun captureAuthorizedConfigExport(expectedVersion: Long? = null): ConfigExportOutcome {
+        val captured = ConfigExportCapturePolicy.capture(
+            readServiceState = App::serviceReadinessSnapshot,
+            readForState = { source ->
+                if (expectedVersion != null && expectedVersion != source.version) {
+                    ConfigExportAttempt.failure(ConfigExportFailureReason.UNAVAILABLE)
+                } else {
+                    val bindingObserved = frameworkBindingObserved || App.hasObservedFrameworkBinding()
+                    if (!ConfigExportPolicy.mayExport(source, bindingObserved, preferencesAvailable = true)) {
+                        ConfigExportAttempt.failure(ConfigExportFailureReason.UNAVAILABLE)
+                    } else {
+                        val preferences = PrefUtils.getPrefs(this, source)
+                        if (!ConfigExportPolicy.mayExport(
+                                source,
+                                bindingObserved,
+                                preferencesAvailable = preferences != null,
+                            )
+                        ) {
+                            ConfigExportAttempt.failure(ConfigExportFailureReason.UNAVAILABLE)
+                        } else {
+                            try {
+                                val json = ConfigExportPolicy.toJson(checkNotNull(preferences))
+                                if (ConfigExportPolicy.hasExportableSettings(json)) {
+                                    ConfigExportAttempt.success(json.toString())
+                                } else {
+                                    ConfigExportAttempt.failure(ConfigExportFailureReason.EMPTY)
+                                }
+                            } catch (_: ConfigExportPolicy.EmptyConfigurationException) {
+                                ConfigExportAttempt.failure(ConfigExportFailureReason.EMPTY)
+                            } catch (_: RuntimeException) {
+                                ConfigExportAttempt.failure(ConfigExportFailureReason.UNAVAILABLE)
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        val current = App.serviceReadinessSnapshot()
+        val sourceStillAuthorized = current.version == captured.serviceState.version &&
+            current.phase == captured.serviceState.phase &&
+            current.service === captured.serviceState.service &&
+            (expectedVersion == null || expectedVersion == current.version) &&
+            ConfigExportPolicy.mayExport(
+                current,
+                frameworkBindingObserved || App.hasObservedFrameworkBinding(),
+                preferencesAvailable = true,
+            )
+        if (!sourceStillAuthorized) {
+            return ConfigExportOutcome(failureReason = ConfigExportFailureReason.UNAVAILABLE)
+        }
+        val failureReason = captured.failureReason
+        if (failureReason != null) return ConfigExportOutcome(failureReason = failureReason)
+        val json = captured.value ?: return ConfigExportOutcome(
+            failureReason = ConfigExportFailureReason.UNAVAILABLE,
+        )
+        if (runCatching { JSONObject(json).length() > 0 }.getOrDefault(false).not()) {
+            return ConfigExportOutcome(failureReason = ConfigExportFailureReason.EMPTY)
+        }
+        return ConfigExportOutcome(export = AuthorizedConfigExport(captured.serviceState, json))
+    }
+
+    private fun isCurrentAuthorizedConfigExport(export: AuthorizedConfigExport): Boolean {
+        val current = App.serviceReadinessSnapshot()
+        return current.version == export.source.version &&
+            current.phase == export.source.phase &&
+            current.service === export.source.service &&
+            runCatching { JSONObject(export.json).length() > 0 }.getOrDefault(false) &&
+            ConfigExportPolicy.mayExport(
+                current,
+                frameworkBindingObserved || App.hasObservedFrameworkBinding(),
+                preferencesAvailable = true,
+            )
+    }
+
+    private fun showConfigExportUnavailable(reason: ConfigExportFailureReason?) {
+        val message = if (reason == ConfigExportFailureReason.EMPTY) {
+            R.string.config_export_empty
+        } else {
+            R.string.config_export_unavailable
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
     /**
      * Launch the Storage Access Framework document picker to select a configuration JSON for import.
      */
     private fun importConfFile() {
+        if (!canEditSettings()) return
         val openIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/json"
@@ -801,16 +1274,21 @@ class ActivityMain : AppCompatActivity() {
 
     /**
      * ActivityResultLauncher handling SAF document selection result for configuration import.
-     */
+    */
     private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
-        val pref = getPrefs()
         try {
             if (it.resultCode == Activity.RESULT_OK) {
                 val uri = it.data?.data ?: run {
                     Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
                     return@registerForActivityResult
                 }
-                utils.readConfigFile(this, uri, pref)
+                if (!canEditSettings()) return@registerForActivityResult
+                val importedKeys = mutableSetOf<String>()
+                val imported = updateSettings(editedKeys = importedKeys) { currentPrefs ->
+                    importedKeys += utils.readConfigFile(this, uri, currentPrefs)
+                    true
+                }
+                if (!imported) return@registerForActivityResult
                 Toast.makeText(this, R.string.import_complete, Toast.LENGTH_SHORT).show()
                 restartActivity()
             }
@@ -830,6 +1308,10 @@ class ActivityMain : AppCompatActivity() {
         // dispatched resolution post self-suppresses via the disposed flag. Null
         // when the enabled fast path never started a wait.
         moduleStateResolver?.dispose()
+        mainServiceStateListener?.let { App.removeOnServiceStateListener(it) }
+        mainServiceStateListener = null
+        readinessDialog?.dismiss()
+        readinessDialog = null
         updateExecutor.shutdownNow()
         super.onDestroy()
     }

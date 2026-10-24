@@ -47,6 +47,23 @@ class ConstantsTest {
             Constants.PREF_DIAG_VERIFY_FAILED,
             Constants.PREF_DIAG_VERIFY_NATIVE_READY,
             Constants.PREF_DIAG_VERIFY_SYSPROPS,
+            Constants.PREF_DIAG_FEATURE_HOOKS_AT,
+            Constants.PREF_DIAG_FEATURE_HOOK_STRING,
+            Constants.PREF_DIAG_FEATURE_HOOK_STRING_INT,
+            Constants.PREF_DIAG_FEATURE_HOOK_AVAILABLE,
+            Constants.PREF_DIAG_SYSPROPS_HOOKS_AT,
+            Constants.PREF_DIAG_SYSPROPS_HOOK_GET,
+            Constants.PREF_DIAG_SYSPROPS_HOOK_GET_DEFAULT,
+            Constants.PREF_DIAG_FEATURE_INTERCEPTOR_AT,
+            Constants.PREF_DIAG_SYSPROPS_INTERCEPTOR_AT,
+            Constants.PREF_DIAG_ACTIVE_PACKAGE,
+            Constants.PREF_DIAG_ACTIVE_RUN_ID,
+            Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT,
+            Constants.PREF_DIAG_ACTIVE_RUN_GENERATION,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH,
+            Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED,
+            Constants.PREF_DIAG_ACTIVE_BINDER_PID,
         )
         assertEquals(
             "Preference keys should all be unique",
@@ -78,6 +95,23 @@ class ConstantsTest {
             Constants.PREF_DIAG_VERIFY_FAILED,
             Constants.PREF_DIAG_VERIFY_NATIVE_READY,
             Constants.PREF_DIAG_VERIFY_SYSPROPS,
+            Constants.PREF_DIAG_FEATURE_HOOKS_AT,
+            Constants.PREF_DIAG_FEATURE_HOOK_STRING,
+            Constants.PREF_DIAG_FEATURE_HOOK_STRING_INT,
+            Constants.PREF_DIAG_FEATURE_HOOK_AVAILABLE,
+            Constants.PREF_DIAG_SYSPROPS_HOOKS_AT,
+            Constants.PREF_DIAG_SYSPROPS_HOOK_GET,
+            Constants.PREF_DIAG_SYSPROPS_HOOK_GET_DEFAULT,
+            Constants.PREF_DIAG_FEATURE_INTERCEPTOR_AT,
+            Constants.PREF_DIAG_SYSPROPS_INTERCEPTOR_AT,
+            Constants.PREF_DIAG_ACTIVE_PACKAGE,
+            Constants.PREF_DIAG_ACTIVE_RUN_ID,
+            Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT,
+            Constants.PREF_DIAG_ACTIVE_RUN_GENERATION,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH,
+            Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED,
+            Constants.PREF_DIAG_ACTIVE_BINDER_PID,
         )
         prefKeys.forEach { key ->
             assertTrue("Pref key '$key' should be non-empty", key.isNotEmpty())
@@ -135,7 +169,9 @@ class ConstantsTest {
         assertEquals("io.github.samson910022.pixelifyphotos.diagnostics", Constants.DIAGNOSTICS_AUTHORITY)
         assertEquals("recordDiagnostics", Constants.METHOD_RECORD_DIAGNOSTICS)
         assertEquals("recordVerify", Constants.METHOD_RECORD_VERIFY)
+        assertEquals("recordDiagnosticsBatch", Constants.METHOD_RECORD_DIAGNOSTICS_BATCH)
         assertEquals("clearVerify", Constants.METHOD_CLEAR_VERIFY)
+        assertEquals("diagnostics_event_sequence", Constants.EXTRA_DIAGNOSTICS_EVENT_SEQUENCE)
     }
 
     @Test
@@ -152,7 +188,67 @@ class ConstantsTest {
             Constants.PREF_DIAG_VERIFY_FAILED,
             Constants.PREF_DIAG_VERIFY_NATIVE_READY,
             Constants.PREF_DIAG_VERIFY_SYSPROPS,
+            Constants.PREF_DIAG_FEATURE_HOOKS_AT,
+            Constants.PREF_DIAG_FEATURE_HOOK_STRING,
+            Constants.PREF_DIAG_FEATURE_HOOK_STRING_INT,
+            Constants.PREF_DIAG_FEATURE_HOOK_AVAILABLE,
+            Constants.PREF_DIAG_SYSPROPS_HOOKS_AT,
+            Constants.PREF_DIAG_SYSPROPS_HOOK_GET,
+            Constants.PREF_DIAG_SYSPROPS_HOOK_GET_DEFAULT,
+            Constants.PREF_DIAG_FEATURE_INTERCEPTOR_AT,
+            Constants.PREF_DIAG_SYSPROPS_INTERCEPTOR_AT,
+            Constants.PREF_DIAG_ACTIVE_PACKAGE,
+            Constants.PREF_DIAG_ACTIVE_RUN_ID,
+            Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT,
+            Constants.PREF_DIAG_ACTIVE_RUN_GENERATION,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT,
+            Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH,
+            Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED,
+            Constants.PREF_DIAG_ACTIVE_BINDER_PID,
         )
         assertEquals(expectedKeys, DiagnosticsStore.ALLOWED_DIAG_KEYS)
+    }
+
+    @Test
+    fun `diagnostics resources keep required English and translated keys in parity`() {
+        val appRes = sequenceOf(
+            java.io.File("app/src/main/res"),
+            java.io.File("src/main/res"),
+        ).firstOrNull { it.isDirectory } ?: error("Cannot locate app/src/main/res")
+        val required = setOf(
+            "diagnostics_verify_no_package_ready",
+            "diagnostics_verify_no_record_prior_boot",
+            "diagnostics_verify_no_record_boot_unknown",
+            "diagnostics_verify_no_verified_run",
+            "diagnostics_verify_no_run_identity",
+            "diagnostics_verify_stale",
+            "diagnostics_milestone_no_record_prior_boot",
+            "diagnostics_milestone_no_package_prior_boot",
+            "diagnostics_milestone_package_not_ready",
+            "diagnostics_milestone_package_not_ready_prior_boot",
+            "diagnostics_milestone_verify_none_prior_boot",
+            "diagnostics_milestone_verify_stale",
+            "diagnostics_invocation_unknown",
+            "diagnostics_invocation_not_observed",
+            "diagnostics_origin_unverified",
+            "diagnostics_unverified",
+            "diagnostics_process_pid",
+            "diagnostics_build_column_real",
+            "diagnostics_build_column_target",
+            "diagnostics_service_disconnected",
+            "diagnostics_service_syncing",
+            "diagnostics_service_ready",
+            "diagnostics_service_error",
+            "diagnostics_connection_syncing",
+            "diagnostics_connection_error",
+        )
+        listOf("values", "values-ja", "values-zh-rCN", "values-zh-rTW").forEach { locale ->
+            val xml = java.io.File(appRes, "$locale/strings.xml").readText()
+            val names = Regex("""<string\s+name="([^"]+)"""")
+                .findAll(xml)
+                .map { it.groupValues[1] }
+                .toSet()
+            assertTrue("Missing diagnostics strings in $locale", names.containsAll(required))
+        }
     }
 }

@@ -23,7 +23,7 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 - Select individual feature flags through an advanced configuration screen.
 - Import, export, and share module configuration.
 - Modern Material 3 interface with dynamic color and an optional classic theme.
-- In-app **Diagnostics** screen: module-active state, hook milestones, and the last device-spoof VERIFY result without logcat; copy a sanitized report (no account data) for issue reports.
+- In-app **Diagnostics** screen: manager-service connection, lifecycle milestones, individual hook-registration results, and whether runtime interceptors were observed entering at least once; copy a sanitized report (no account data) for issue reports. An entry observation does not identify the caller or prove a spoofed value was returned.
 
 ## Device profiles and backup entitlements
 
@@ -60,7 +60,7 @@ Follow either of these two methods to verify that spoofing and free cloud backup
 ### Troubleshooting & Diagnostics
 
 If photos still consume account storage quota:
-1. Open the in-app **Diagnostics** screen in Pixelify Infinity (Module App → Diagnostics) and verify that the module is active and the last device-spoof result is **VERIFY OK**.
+1. Open the in-app **Diagnostics** screen in Pixelify Infinity (Module App → Diagnostics) and inspect the individual hook-registration results and runtime observations. The separate **Build-field VERIFY** only confirms Build readback; it does not prove Google Photos intercepted the relevant API.
 2. Verify that your Google Photos backup quality setting matches that profile's free conditions (e.g. **Storage saver** for Pixel 2–5).
 3. If Google Photos cached stale device properties, tap **Force-stop scoped apps** or clear Google Photos app cache and restart.
 4. Ensure you have not selected a Pixel 6 or newer profile (which does not provide free backup).
@@ -88,7 +88,7 @@ Verified combinations (maintainer-tested):
 | Android 17 | 7.84.0.949657053 | Pixel 6 Pro (`CP2A.260705.006`) | Working |
 | Android 16 | — | — | Not verified by the maintainer; reports welcome |
 
-If a Google Photos update changes behavior, the in-app **Diagnostics** screen (module app → Diagnostics) shows hook milestones and the last device-spoof VERIFY result; include the copied report when reporting an issue.
+If a Google Photos update changes behavior, the in-app **Diagnostics** screen (module app → Diagnostics) shows hook milestones, individual hook-registration results, runtime interceptor-entry observations, and the last device-spoof VERIFY result; include the copied report when reporting an issue. An interceptor observation does not identify its caller or prove a spoofed value was returned.
 
 ## Installation
 

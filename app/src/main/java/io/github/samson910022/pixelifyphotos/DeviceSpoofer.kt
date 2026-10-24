@@ -53,10 +53,40 @@ object DeviceSpoofer {
     private val failureUiShown = AtomicBoolean(false)
     private val hiddenApiExempted = AtomicBoolean(false)
     private val systemPropertiesHooked = AtomicBoolean(false)
+    private val systemPropertiesGetHooked = AtomicBoolean(false)
+    private val systemPropertiesGetWithDefaultHooked = AtomicBoolean(false)
+    private val systemPropertiesHookAttempted = AtomicBoolean(false)
+    private val systemPropertiesInvocationReported = AtomicBoolean(false)
     private val nativeLoadLock = Any()
     @Volatile private var nativeReady = false
     private val pendingFailureUi = mutableListOf<Runnable>()
     private val pendingFailureUiLock = Any()
+
+    internal data class SystemPropertiesRegistrationSnapshot(
+        val attempted: Boolean,
+        val get: Boolean,
+        val getWithDefault: Boolean,
+    )
+
+    internal data class SystemPropertiesRetryPlan(
+        val hookGet: Boolean,
+        val hookGetWithDefault: Boolean,
+    )
+
+    internal fun systemPropertiesRetryPlan(getRegistered: Boolean, getWithDefaultRegistered: Boolean) =
+        SystemPropertiesRetryPlan(
+            hookGet = !getRegistered,
+            hookGetWithDefault = !getWithDefaultRegistered,
+        )
+
+    internal fun allSystemPropertiesOverloadsRegistered(getRegistered: Boolean, getWithDefaultRegistered: Boolean) =
+        getRegistered && getWithDefaultRegistered
+
+    internal fun systemPropertiesRegistrationSnapshot() = SystemPropertiesRegistrationSnapshot(
+        attempted = systemPropertiesHookAttempted.get(),
+        get = systemPropertiesGetHooked.get(),
+        getWithDefault = systemPropertiesGetWithDefaultHooked.get(),
+    )
 
     private fun mainHandlerOrNull(): Handler? {
         return try {
@@ -77,6 +107,7 @@ object DeviceSpoofer {
         prefs: SharedPreferences?,
         allowFailureUi: Boolean = true,
         packageName: String? = null,
+        runHandle: DiagnosticsReporter.TargetRunHandle? = null,
     ) {
         if (prefs == null) {
             Log.w(TAG, "Remote preferences unavailable, using defaults")
@@ -90,7 +121,7 @@ object DeviceSpoofer {
         val deviceEntries = DeviceProps.getDeviceProps(deviceName)
         if (deviceEntries == null || deviceName == "None" || deviceEntries.props.isEmpty()) {
             Log.d(TAG, "No device spoofing configured, skipping")
-            clearVerifyDiagnostics()
+            clearVerifyDiagnostics(packageName, runHandle)
             return
         }
 
@@ -127,7 +158,7 @@ object DeviceSpoofer {
 
         if (module != null) {
             try {
-                hookSystemProperties(module, deviceEntries.props, verboseLog)
+                hookSystemProperties(module, deviceEntries.props, verboseLog, runHandle)
             } catch (t: Throwable) {
                 Log.e(TAG, "SystemProperties hooks failed", t)
             }
@@ -138,7 +169,7 @@ object DeviceSpoofer {
         // VERSION_* keys share names with Build fields; verify against Build.VERSION class via key set.
         verifyProps.putAll(versionProps)
         val failed = verifySpoof(verifyProps, verboseLog)
-        recordVerifyResult(deviceName, failed, packageName)
+        recordVerifyResult(deviceName, failed, packageName, runHandle)
         if (failed.isNotEmpty()) {
             Log.e(
                 TAG,
@@ -193,6 +224,7 @@ object DeviceSpoofer {
         deviceName: String,
         failed: List<String>,
         packageName: String?,
+        runHandle: DiagnosticsReporter.TargetRunHandle?,
     ) {
         val resolvedPackage = packageName
             ?: runCatching { currentApplication()?.packageName }.getOrNull()
@@ -203,6 +235,7 @@ object DeviceSpoofer {
             packageName = resolvedPackage,
             nativeReady = nativeReady,
             syspropsHooked = systemPropertiesHooked.get(),
+            runHandle = runHandle,
         )
     }
 
@@ -211,8 +244,15 @@ object DeviceSpoofer {
      * diagnostics screen never shows a stale "VERIFY passed" for a disabled
      * profile. Never throws.
      */
-    private fun clearVerifyDiagnostics() {
-        DiagnosticsReporter.clearVerify(context = currentApplication())
+    private fun clearVerifyDiagnostics(
+        packageName: String?,
+        runHandle: DiagnosticsReporter.TargetRunHandle?,
+    ) {
+        DiagnosticsReporter.clearVerify(
+            context = currentApplication(),
+            packageName = packageName,
+            runHandle = runHandle,
+        )
     }
 
     private fun targetClassForField(fieldName: String): Class<*> =
@@ -412,13 +452,16 @@ object DeviceSpoofer {
         }
     }
 
+    @Synchronized
     private fun hookSystemProperties(
         module: XposedModule,
         props: Map<String, String>,
         verboseLog: Boolean,
+        runHandle: DiagnosticsReporter.TargetRunHandle?,
     ) {
         val overrides = buildSystemPropertyOverrides(props)
         if (overrides.isEmpty()) return
+        systemPropertiesHookAttempted.set(true)
 
         val clazz = try {
             Class.forName("android.os.SystemProperties")
@@ -427,7 +470,7 @@ object DeviceSpoofer {
             return
         }
 
-        if (systemPropertiesHooked.get()) {
+        if (systemPropertiesGetHooked.get() && systemPropertiesGetWithDefaultHooked.get()) {
             Log.d(TAG, "SystemProperties hooks already registered")
             return
         }
@@ -435,45 +478,78 @@ object DeviceSpoofer {
         fun resolve(key: Any?): String? = if (key is String) overrides[key] else null
 
         var hooked = 0
-        try {
-            val m = clazz.getDeclaredMethod("get", String::class.java)
-            module.hook(m).intercept { chain ->
-                val spoofed = resolve(chain.getArg(0))
-                if (spoofed != null) {
-                    if (verboseLog) Log.v(TAG, "SystemProperties.get(${chain.getArg(0)}) -> $spoofed")
-                    spoofed
-                } else {
-                    chain.proceed()
-                }
-            }
-            hooked++
-        } catch (t: Throwable) {
-            Log.w(TAG, "Hook SystemProperties.get(String) failed: ${t.message}")
-        }
-
-        try {
-            val m = clazz.getDeclaredMethod("get", String::class.java, String::class.java)
-            module.hook(m).intercept { chain ->
-                val spoofed = resolve(chain.getArg(0))
-                if (spoofed != null) {
-                    if (verboseLog) {
-                        Log.v(TAG, "SystemProperties.get(${chain.getArg(0)}, def) -> $spoofed")
+        val retryPlan = systemPropertiesRetryPlan(
+            getRegistered = systemPropertiesGetHooked.get(),
+            getWithDefaultRegistered = systemPropertiesGetWithDefaultHooked.get(),
+        )
+        if (retryPlan.hookGet) {
+            try {
+                val m = clazz.getDeclaredMethod("get", String::class.java)
+                module.hook(m).intercept { chain ->
+                    reportSystemPropertiesInvocation(runHandle)
+                    val spoofed = resolve(chain.getArg(0))
+                    if (spoofed != null) {
+                        if (verboseLog) Log.v(TAG, "SystemProperties.get(${chain.getArg(0)}) -> $spoofed")
+                        spoofed
+                    } else {
+                        chain.proceed()
                     }
-                    spoofed
-                } else {
-                    chain.proceed()
                 }
+                hooked++
+                systemPropertiesGetHooked.set(true)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Hook SystemProperties.get(String) failed: ${t.message}")
             }
-            hooked++
-        } catch (t: Throwable) {
-            Log.w(TAG, "Hook SystemProperties.get(String,String) failed: ${t.message}")
         }
 
-        if (hooked > 0) {
-            systemPropertiesHooked.set(true)
-            Log.d(TAG, "SystemProperties hooks registered ($hooked methods, ${overrides.size} keys)")
+        if (retryPlan.hookGetWithDefault) {
+            try {
+                val m = clazz.getDeclaredMethod("get", String::class.java, String::class.java)
+                module.hook(m).intercept { chain ->
+                    reportSystemPropertiesInvocation(runHandle)
+                    val spoofed = resolve(chain.getArg(0))
+                    if (spoofed != null) {
+                        if (verboseLog) {
+                            Log.v(TAG, "SystemProperties.get(${chain.getArg(0)}, def) -> $spoofed")
+                        }
+                        spoofed
+                    } else {
+                        chain.proceed()
+                    }
+                }
+                hooked++
+                systemPropertiesGetWithDefaultHooked.set(true)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Hook SystemProperties.get(String,String) failed: ${t.message}")
+            }
+        }
+
+        val registeredCount = listOf(systemPropertiesGetHooked.get(), systemPropertiesGetWithDefaultHooked.get())
+            .count { it }
+        // The legacy aggregate is true only when both overloads registered; partial or
+        // zero registration remains visible solely through per-overload diagnostics.
+        systemPropertiesHooked.set(
+            allSystemPropertiesOverloadsRegistered(
+                systemPropertiesGetHooked.get(),
+                systemPropertiesGetWithDefaultHooked.get(),
+            )
+        )
+        if (registeredCount > 0) {
+            Log.d(TAG, "SystemProperties hooks registered ($registeredCount methods, ${overrides.size} keys)")
         } else {
             Log.w(TAG, "SystemProperties hooks failed for all overloads; will retry on re-apply")
+        }
+        if (hooked == 0 && registeredCount in 1..1) {
+            Log.w(TAG, "One SystemProperties overload remains unregistered; will retry on re-apply")
+        }
+    }
+
+    private fun reportSystemPropertiesInvocation(runHandle: DiagnosticsReporter.TargetRunHandle?) {
+        if (systemPropertiesInvocationReported.compareAndSet(false, true)) {
+            DiagnosticsReporter.recordInterceptorInvocation(
+                featureInterceptor = false,
+                runHandle = runHandle,
+            )
         }
     }
 

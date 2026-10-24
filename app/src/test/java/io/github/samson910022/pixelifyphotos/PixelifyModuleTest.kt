@@ -1,39 +1,35 @@
 package io.github.samson910022.pixelifyphotos
 
-import android.content.SharedPreferences
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModuleInterface
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.mockito.MockedStatic
 import org.mockito.Mockito
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
-import org.mockito.kotlin.argumentCaptor
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
-import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.util.UUID
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
- * Unit tests for [PixelifyModule.onModuleLoaded] remote-prefs broadcast token
- * provisioning, using the libxposed [io.github.libxposed.api.XposedModule.attachFramework]
- * seam with a mocked [XposedInterface] so no real Xposed framework is required on the JVM.
+ * Unit tests for [PixelifyModule.onModuleLoaded] lifecycle behavior, using the
+ * libxposed [io.github.libxposed.api.XposedModule.attachFramework] seam with a
+ * mocked [XposedInterface] so no real Xposed framework is required on the JVM.
  */
 class PixelifyModuleTest {
 
     private lateinit var mockedLog: MockedStatic<Log>
     private lateinit var mockFramework: XposedInterface
-    private lateinit var mockRemotePrefs: SharedPreferences
-    private lateinit var mockRemoteEditor: SharedPreferences.Editor
     private lateinit var module: PixelifyModule
 
     @Before
@@ -45,15 +41,13 @@ class PixelifyModuleTest {
         mockedLog.`when`<Int> { Log.e(any<String>(), any<String>()) }.thenReturn(0)
 
         mockFramework = mock()
-        mockRemotePrefs = mock()
-        mockRemoteEditor = mock()
-        whenever(mockRemotePrefs.edit()).thenReturn(mockRemoteEditor)
-        whenever(mockRemoteEditor.putString(any(), any())).thenReturn(mockRemoteEditor)
-        whenever(mockFramework.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME)))
-            .thenReturn(mockRemotePrefs)
 
         module = PixelifyModule()
         module.attachFramework(mockFramework)
+        DiagnosticsReporter.clearTargetRunForTests()
+        DiagnosticsReporter.testEnqueueObserver = null
+        DiagnosticsReporter.testBeforeDispatchLock = null
+        DiagnosticsReporter.testStartIfAbsentObserver = null
     }
 
     @After
@@ -63,6 +57,10 @@ class PixelifyModuleTest {
             // clear it so later suites never observe a stale framework-attached module.
             TestStatics.setStaticField(PixelifyModule::class.java, "instance", null)
         } finally {
+            DiagnosticsReporter.testEnqueueObserver = null
+            DiagnosticsReporter.testBeforeDispatchLock = null
+            DiagnosticsReporter.testStartIfAbsentObserver = null
+            DiagnosticsReporter.clearTargetRunForTests()
             mockedLog.close()
         }
     }
@@ -77,71 +75,21 @@ class PixelifyModuleTest {
     }
 
     // =========================================================================
-    // Token provisioning
+    // Token ownership
     // =========================================================================
 
     @Test
-    fun `onModuleLoaded provisions a fresh UUID token into remote prefs when absent`() {
-        whenever(mockRemotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)).thenReturn(null)
-
+    fun `onModuleLoaded never creates a competing per-target-process token`() {
         module.onModuleLoaded(fakeParam())
 
-        val tokenCaptor = argumentCaptor<String>()
-        verify(mockRemoteEditor).putString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), tokenCaptor.capture())
-        val provisioned = tokenCaptor.firstValue
-        val parsed = UUID.fromString(provisioned)
-        // Well-formed, non-nil, randomly generated (version 4) so receivers can
-        // constant-time compare an unpredictable per-install value.
-        assertEquals(provisioned, parsed.toString())
-        assertEquals(4, parsed.version())
-        assertNotEquals(UUID(0, 0), parsed)
-        verify(mockRemoteEditor).commit()
-        // Cross-process atomicity contract: apply() is asynchronous and forbidden here.
-        verify(mockRemoteEditor, never()).apply()
-    }
-
-    @Test
-    fun `onModuleLoaded keeps an existing remote token without overwriting`() {
-        whenever(mockRemotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null))
-            .thenReturn("00000000-1111-2222-3333-444444444444")
-
-        module.onModuleLoaded(fakeParam())
-
-        verify(mockRemoteEditor, never()).putString(any(), any())
-        verify(mockRemoteEditor, never()).commit()
-    }
-
-    @Test
-    fun `onModuleLoaded regenerates when remote prefs report a blank string token`() {
-        whenever(mockRemotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)).thenReturn("")
-        whenever(mockRemoteEditor.commit()).thenReturn(true)
-
-        module.onModuleLoaded(fakeParam())
-
-        verify(mockRemoteEditor, times(1)).putString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), any())
-        verify(mockRemoteEditor).commit()
-    }
-
-    @Test
-    fun `onModuleLoaded swallows provisioning failure without propagating`() {
-        whenever(mockFramework.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME))
-            .thenThrow(RuntimeException("remote prefs are read-only in target processes"))
-
-        // Must not propagate: the hook lifecycle must continue even without a writable store.
-        module.onModuleLoaded(fakeParam())
-
-        // Proves the throwing stub actually engaged (happy path would have reached edit()).
-        verify(mockRemotePrefs, never()).edit()
+        verify(mockFramework, never()).getRemotePreferences(any())
     }
 
     @Test
     fun `onModuleLoaded tolerates any process name and system server flag`() {
-        whenever(mockRemotePrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)).thenReturn(null)
-        whenever(mockRemoteEditor.commit()).thenReturn(true)
-
         module.onModuleLoaded(fakeParam(processName = "system", isSystemServer = true))
 
-        verify(mockRemoteEditor).putString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), any())
+        verify(mockFramework, never()).getRemotePreferences(any())
     }
 
     // =========================================================================
@@ -153,4 +101,55 @@ class PixelifyModuleTest {
         assertNotNull(PixelifyModule.instance)
         assertEquals(module, PixelifyModule.instance)
     }
+
+    @Test
+    fun `racing package-ready callbacks without a run retain one origin and reject secondary telemetry`() {
+        whenever(mockFramework.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME))
+            .thenThrow(IllegalStateException("test prevents hook setup"))
+
+        val startDispatchEntered = CountDownLatch(1)
+        val releaseStartDispatch = CountDownLatch(1)
+        val startAttempts = CountDownLatch(2)
+        val events = Collections.synchronizedList(mutableListOf<Pair<String, String?>>())
+        DiagnosticsReporter.testStartIfAbsentObserver = { startAttempts.countDown() }
+        DiagnosticsReporter.testBeforeDispatchLock = { method ->
+            if (method == Constants.METHOD_START_DIAGNOSTICS_RUN) {
+                startDispatchEntered.countDown()
+                check(releaseStartDispatch.await(5, TimeUnit.SECONDS))
+            }
+        }
+        DiagnosticsReporter.testEnqueueObserver = { method, runId, _ -> events += method to runId }
+
+        val photosCallback = Thread {
+            module.onPackageReady(fakeReadyParam(Constants.PACKAGE_NAME_GOOGLE_PHOTOS))
+        }
+        val secondaryCallback = Thread {
+            module.onPackageReady(fakeReadyParam("org.example.secondary"))
+        }
+
+        photosCallback.start()
+        assertTrue(startDispatchEntered.await(5, TimeUnit.SECONDS))
+        secondaryCallback.start()
+        assertTrue("both callbacks must reach atomic run acquisition", startAttempts.await(5, TimeUnit.SECONDS))
+        releaseStartDispatch.countDown()
+        photosCallback.join(5_000)
+        secondaryCallback.join(5_000)
+
+        assertTrue("callbacks must complete", !photosCallback.isAlive && !secondaryCallback.isAlive)
+        val activeRun = DiagnosticsReporter.currentTargetRunHandle()
+        assertNotNull(activeRun)
+        assertEquals(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, activeRun?.origin)
+        assertEquals(1, events.count { it.first == Constants.METHOD_START_DIAGNOSTICS_RUN })
+        assertTrue(events.isNotEmpty())
+        assertTrue(events.all { it.second == activeRun?.runId })
+        // The supported first package emits its registration/milestone; the secondary
+        // package still executes the existing hook path but adds no attributed telemetry.
+        assertTrue("only the supported callback may contribute run-bound telemetry", events.size in 3..4)
+    }
+
+    private fun fakeReadyParam(packageName: String): XposedModuleInterface.PackageReadyParam =
+        mock<XposedModuleInterface.PackageReadyParam>().also { param ->
+            whenever(param.packageName).thenReturn(packageName)
+            whenever(param.classLoader).thenReturn(javaClass.classLoader)
+        }
 }

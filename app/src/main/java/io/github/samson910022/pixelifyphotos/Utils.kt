@@ -11,11 +11,11 @@ import android.util.Log
 import android.widget.Toast
 import io.github.samson910022.pixelifyphotos.Constants.PREF_DEVICE_TO_SPOOF
 import io.github.samson910022.pixelifyphotos.Constants.PREF_ENABLE_VERBOSE_LOGS
-import io.github.samson910022.pixelifyphotos.Constants.PREF_LAST_VERSION
 import io.github.samson910022.pixelifyphotos.Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_FEATURES_LIST
+import io.github.samson910022.pixelifyphotos.Constants.PREF_USE_CLASSIC_UI
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedWriter
@@ -113,32 +113,15 @@ class Utils {
      * @param uri Uri of file to write to.
      * Using uri as it can be used to write a file in internal cache directory,
      * as well as an external location opened using [Intent.ACTION_CREATE_DOCUMENT].
-     * @param pref SharedPreference instance.
-     * Should be obtained via [android.content.Context.getSharedPreferences] for
-     * UI-side access, or via [io.github.libxposed.service.XposedService.getRemotePreferences]
-     * from the Xposed hook side.
+     * @param configuration A validated, source-authorized configuration snapshot.
      */
-    fun writeConfigFile(context: Context, uri: Uri, pref: SharedPreferences?) {
+    fun writeConfigFile(context: Context, uri: Uri, configuration: JSONObject) {
 
-        // List of keys from shared preference which need not be copied to file.
-        val fieldsNotToCopy = listOf(PREF_LAST_VERSION, PREF_SPOOF_FEATURES_LIST)
-
-        context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+        val outputStream = context.contentResolver.openOutputStream(uri)
+            ?: throw IOException("Unable to open configuration output")
+        outputStream.use {
             BufferedWriter(OutputStreamWriter(outputStream)).use { writer ->
-
-                val jsonObject = JSONObject()
-                pref?.all?.let { allPrefs ->
-                    for (key in allPrefs.keys) {
-                        if (key !in fieldsNotToCopy) jsonObject.put(key, allPrefs[key])
-                    }
-                }
-
-                // Store PREF_SPOOF_FEATURES_LIST
-                pref?.getStringSet(PREF_SPOOF_FEATURES_LIST, setOf())?.let {
-                    jsonObject.put(PREF_SPOOF_FEATURES_LIST, JSONArray(it.toTypedArray()))
-                }
-
-                writer.write(jsonObject.toString(4))
+                writer.write(configuration.toString(4))
             }
         }
     }
@@ -153,7 +136,7 @@ class Utils {
      * UI-side access, or via [io.github.libxposed.service.XposedService.getRemotePreferences]
      * from the Xposed hook side.
      */
-    fun readConfigFile(context: Context, uri: Uri, pref: SharedPreferences?) {
+    fun readConfigFile(context: Context, uri: Uri, pref: SharedPreferences?): Set<String> {
 
         val inputStream = context.contentResolver.openInputStream(uri)
             ?: throw IOException("Unable to open configuration file")
@@ -202,11 +185,13 @@ class Utils {
         /**
          * Check for field and store in shared prefs.
          */
+        val editedKeys = mutableSetOf<String>()
         pref?.edit()?.apply {
 
             PREF_SPOOF_FEATURES_LIST.let { key ->
                 jsonObject.optJSONArray(key)?.let {
                     putStringSet(key, convertJsonArrayToList(it).toSet())
+                    editedKeys += key
                 }
             }
 
@@ -214,12 +199,16 @@ class Utils {
                 val v = jsonObject.optString(key)
                 if (v.isNotEmpty() && deviceIsValid) {
                     putString(key, v)
+                    editedKeys += key
                 }
             }
 
             fun putBooleanIfPresent(key: String) {
                 val value = jsonObject.opt(key)
-                if (value is Boolean) putBoolean(key, value)
+                if (value is Boolean) {
+                    putBoolean(key, value)
+                    editedKeys += key
+                }
             }
 
             putBooleanIfPresent(PREF_OVERRIDE_ROM_FEATURE_LEVELS)
@@ -228,15 +217,18 @@ class Utils {
 
             putBooleanIfPresent(PREF_ENABLE_VERBOSE_LOGS)
             putBooleanIfPresent(PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE)
+            putBooleanIfPresent(PREF_USE_CLASSIC_UI)
 
             PREF_SPOOF_ANDROID_VERSION_MANUAL.let { key ->
                 val v = jsonObject.optString(key)
                 if (v.isNotEmpty() && versionIsValid) {
                     putString(key, v)
+                    editedKeys += key
                 }
             }
 
             apply()
         }
+        return editedKeys
     }
 }
