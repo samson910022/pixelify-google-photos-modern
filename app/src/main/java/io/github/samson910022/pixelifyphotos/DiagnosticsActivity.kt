@@ -76,9 +76,13 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
     private var activityResumed = false
 
     private var snapshotRefreshPending = false
+    private var consistencyRefreshAttempts = 0
     private val consistencyRefresh = Runnable {
         snapshotRefreshPending = false
-        if (activityResumed && !isFinishing && !isDestroyed) render()
+        if (activityResumed && !isFinishing && !isDestroyed) {
+            consistencyRefreshAttempts += 1
+            render(resetRefreshBudget = false)
+        }
     }
 
     private fun getPrefs(): SharedPreferences? = PrefUtils.getPrefs(this)
@@ -176,13 +180,26 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         return super.onOptionsItemSelected(item)
     }
 
-    private fun render() {
+    /**
+     * Renders one snapshot. A fresh (non-retry) render resets the consistency-refresh
+     * budget and cancels any pending retry, so service-state events and Activity
+     * resumes can always restart recovery after the budget was exhausted.
+     */
+    private fun render(resetRefreshBudget: Boolean = true) {
+        if (resetRefreshBudget) {
+            consistencyRefreshAttempts = 0
+            if (snapshotRefreshPending) {
+                mainHandler.removeCallbacks(consistencyRefresh)
+                snapshotRefreshPending = false
+            }
+        }
         val snapshot = collectSnapshot()
         if (!DiagnosticsSnapshotPresentation.mayRenderCapturedData(snapshot.consistent)) {
             renderInconsistentSnapshot()
             scheduleConsistencyRefresh()
             return
         }
+        consistencyRefreshAttempts = 0
 
         findViewById<View>(R.id.diagnostics_connection_banner)?.let { banner ->
             if (snapshot.serviceReady) {
@@ -295,11 +312,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         // Record what THIS render displayed, not a fresh re-read: readiness may
         // transition mid-render, and recording a newer value would wrongly suppress
         // the posted not-ready→ready refresh.
-        if (snapshot.consistent) {
-            renderCoordinator.onRendered(snapshot.serviceStateVersion)
-        } else {
-            scheduleConsistencyRefresh()
-        }
+        renderCoordinator.onRendered(snapshot.serviceStateVersion)
     }
 
     private fun collectSnapshot(): Snapshot {
@@ -393,8 +406,10 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
 
     private fun scheduleConsistencyRefresh() {
         if (!activityResumed || snapshotRefreshPending || isFinishing || isDestroyed) return
+        val delayMillis = DiagnosticsSnapshotRefreshPolicy.nextRetryDelayMillis(consistencyRefreshAttempts)
+            ?: return
         snapshotRefreshPending = true
-        mainHandler.post(consistencyRefresh)
+        mainHandler.postDelayed(consistencyRefresh, delayMillis)
     }
 
     private fun servicePhaseForReport(phase: ServicePhase): String = when (phase) {

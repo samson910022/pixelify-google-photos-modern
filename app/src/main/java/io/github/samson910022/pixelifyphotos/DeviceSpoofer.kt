@@ -56,7 +56,6 @@ object DeviceSpoofer {
     private val systemPropertiesGetHooked = AtomicBoolean(false)
     private val systemPropertiesGetWithDefaultHooked = AtomicBoolean(false)
     private val systemPropertiesHookAttempted = AtomicBoolean(false)
-    private val systemPropertiesInvocationReported = AtomicBoolean(false)
     private val nativeLoadLock = Any()
     @Volatile private var nativeReady = false
     private val pendingFailureUi = mutableListOf<Runnable>()
@@ -545,7 +544,10 @@ object DeviceSpoofer {
     }
 
     private fun reportSystemPropertiesInvocation(runHandle: DiagnosticsReporter.TargetRunHandle?) {
-        if (systemPropertiesInvocationReported.compareAndSet(false, true)) {
+        // Diagnostics are best-effort and must never change the spoofed property value
+        // returned by the interceptor. The reporter deduplicates per run and retries
+        // when persistence is not confirmed.
+        runCatching {
             DiagnosticsReporter.recordInterceptorInvocation(
                 featureInterceptor = false,
                 runHandle = runHandle,

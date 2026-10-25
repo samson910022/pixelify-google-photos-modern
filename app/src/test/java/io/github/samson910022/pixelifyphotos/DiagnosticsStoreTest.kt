@@ -1770,6 +1770,234 @@ class DiagnosticsStoreTest {
     }
 
     @Test
+    fun `token-only start upgrades to OS-verified when the same run is replayed by the provider`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        val startedAt = System.currentTimeMillis() - 1_500L
+        val generation = 901L
+        val start = authenticatedStartBundle(startedAt = startedAt, generation = generation)
+
+        assertTrue(
+            "token-only fallback may start a run when no verified run exists",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                start,
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+        assertEquals(false, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_BINDER_PID))
+        assertFalse(
+            "token-only start must not claim package-specific lifecycle observations",
+            preferenceValues.containsKey(Constants.PREF_DIAG_MODULE_LOADED_AT),
+        )
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_LAST_PACKAGE_LOADED))
+
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    sequence = 5L,
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+
+        assertTrue(
+            "the same run identity from the OS-verified provider must upgrade the run",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                start,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+                callingPid = 4321,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertEquals(4321, preferenceValues[Constants.PREF_DIAG_ACTIVE_BINDER_PID])
+        assertEquals(
+            "the verified replay seeds lifecycle observations the token-only start omitted",
+            startedAt,
+            preferenceValues[Constants.PREF_DIAG_MODULE_LOADED_AT],
+        )
+        assertEquals(
+            Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            preferenceValues[Constants.PREF_DIAG_LAST_PACKAGE_LOADED],
+        )
+        assertEquals(
+            "a verified replay of the same run must not reset event ordering",
+            5L,
+            preferenceValues["PREF_DIAG_EVENT_SEQUENCE:${Constants.PREF_DIAG_FEATURE_HOOK_STRING}"],
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+
+        assertTrue(
+            "a verified replay with a different PID stays idempotent",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                start,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+                callingPid = 8765,
+            ),
+        )
+        assertEquals(
+            "the first OS-observed sender PID must be preserved",
+            4321,
+            preferenceValues[Constants.PREF_DIAG_ACTIVE_BINDER_PID],
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertEquals(startedAt, preferenceValues[Constants.PREF_DIAG_MODULE_LOADED_AT])
+        assertEquals(
+            Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            preferenceValues[Constants.PREF_DIAG_LAST_PACKAGE_LOADED],
+        )
+    }
+
+    @Test
+    fun `verified batch upgrades a token-only run and applies its event atomically`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        val startedAt = System.currentTimeMillis() - 1_500L
+        val generation = 903L
+        val start = authenticatedStartBundle(startedAt = startedAt, generation = generation)
+
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                start,
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+        assertEquals(false, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+
+        val event = authenticatedEventBundle(
+            startedAt = startedAt,
+            generation = generation,
+            sequence = 7L,
+            diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+        )
+        assertEquals(
+            "the verified batch must accept both its start replay and dependent event",
+            true to true,
+            DiagnosticsStore.applyDiagnosticsBatch(
+                mockContext,
+                start,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                event,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+                callingPid = 2468,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertEquals(2468, preferenceValues[Constants.PREF_DIAG_ACTIVE_BINDER_PID])
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+        assertEquals(startedAt, preferenceValues[Constants.PREF_DIAG_MODULE_LOADED_AT])
+        assertEquals(7L, preferenceValues["PREF_DIAG_EVENT_SEQUENCE:${Constants.PREF_DIAG_FEATURE_HOOK_STRING}"])
+    }
+
+    @Test
+    fun `verified event cannot replace the first OS-observed sender PID`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        val startedAt = System.currentTimeMillis() - 1_500L
+        val generation = 905L
+
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(startedAt = startedAt, generation = generation),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+                callingPid = 1111,
+            ),
+        )
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    sequence = 1L,
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+                callingPid = 2222,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+        assertEquals(
+            "the first OS-observed sender PID must not be overwritten by later events",
+            1111,
+            preferenceValues[Constants.PREF_DIAG_ACTIVE_BINDER_PID],
+        )
+    }
+
+    @Test
+    fun `unverified replay of a verified same run is rejected and never downgrades state`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        val startedAt = System.currentTimeMillis() - 1_500L
+        val generation = 902L
+        val start = authenticatedStartBundle(startedAt = startedAt, generation = generation)
+
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                start,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+                callingPid = 5555,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertEquals(5555, preferenceValues[Constants.PREF_DIAG_ACTIVE_BINDER_PID])
+
+        assertFalse(
+            "token-only replay must not downgrade verified provenance",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                start,
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertEquals(5555, preferenceValues[Constants.PREF_DIAG_ACTIVE_BINDER_PID])
+    }
+
+    @Test
     fun `shared UID provider calls fail instead of claiming an unpersisted write succeeded`() {
         enablePersistedPrefs()
         preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "shared-token"

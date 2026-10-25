@@ -76,7 +76,6 @@ object FeatureSpoofer {
     private val hookHasSystemFeatureString = java.util.concurrent.atomic.AtomicBoolean(false)
     private val hookHasSystemFeatureStringInt = java.util.concurrent.atomic.AtomicBoolean(false)
     private val hookGetSystemAvailableFeatures = java.util.concurrent.atomic.AtomicBoolean(false)
-    private val featureInvocationReported = java.util.concurrent.atomic.AtomicBoolean(false)
 
     internal data class RegistrationSnapshot(
         val hasSystemFeature: Boolean,
@@ -177,15 +176,14 @@ object FeatureSpoofer {
     internal fun featureInvocationCallback(
         runHandle: DiagnosticsReporter.TargetRunHandle,
     ): () -> Unit = {
-        if (featureInvocationReported.compareAndSet(false, true)) {
-            // Diagnostics are best-effort and must never change the feature
-            // spoof result returned by the interceptor.
-            runCatching {
-                DiagnosticsReporter.recordInterceptorInvocation(
-                    featureInterceptor = true,
-                    runHandle = runHandle,
-                )
-            }
+        // Diagnostics are best-effort and must never change the feature spoof
+        // result returned by the interceptor. The reporter deduplicates per run
+        // and retries when persistence is not confirmed.
+        runCatching {
+            DiagnosticsReporter.recordInterceptorInvocation(
+                featureInterceptor = true,
+                runHandle = runHandle,
+            )
         }
     }
 
@@ -397,6 +395,5 @@ object FeatureSpoofer {
         hookHasSystemFeatureString.set(false)
         hookHasSystemFeatureStringInt.set(false)
         hookGetSystemAvailableFeatures.set(false)
-        featureInvocationReported.set(false)
     }
 }

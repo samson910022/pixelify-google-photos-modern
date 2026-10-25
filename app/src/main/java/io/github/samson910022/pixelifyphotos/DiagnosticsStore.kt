@@ -552,6 +552,12 @@ object DiagnosticsStore {
         if (activeOriginVerified && !incomingOriginVerified &&
             !(allowPriorBootUnverifiedReplacement && tokenOnlyBroadcastAllowed && knownPriorEpoch)
         ) {
+            // Deliberate tradeoff: a token-only successor run in the same boot cannot
+            // replace verified diagnostics, because token-only attribution cannot
+            // prove which package produced it. The cost is that if the manager dies
+            // after a run was upgraded and the target process restarts, the previous
+            // (now dead) same-boot run can stay active until the next boot. That is
+            // preferred over letting an unverifiable sender erase current evidence.
             Log.w(TAG, "Rejecting unverified run start to preserve active verified diagnostics")
             return false
         }
@@ -562,25 +568,26 @@ object DiagnosticsStore {
             activeGeneration == generation && activeGeneration > 0L &&
             (activeId != runId || activeOrigin != origin ||
                 prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L) != startedAt)
-        if (incomingIsOlder || sameGenerationDifferentRun) {
-            val sameRun = sameEpoch && activeGeneration == generation &&
-                activeId == runId && activeOrigin == origin &&
-                prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L) == startedAt
-            if (sameRun && incomingOriginVerified) {
-                editor.putBoolean(Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED, true)
-                if (callingPid != null && callingPid > 0) {
-                    editor.putInt(Constants.PREF_DIAG_ACTIVE_BINDER_PID, callingPid)
-                }
-                for (key in listOf(Constants.PREF_DIAG_MODULE_LOADED_AT, Constants.PREF_DIAG_LAST_PACKAGE_LOADED)) {
-                    if (key in extras.keySet()) applyExtra(editor, key, extras.get(key))
-                }
-            }
-            return sameRun
-        }
+        // A same-run replay is handled below; these predicates describe a different
+        // (older or conflicting) run and must never upgrade the active run.
+        if (incomingIsOlder || sameGenerationDifferentRun) return false
         if (sameEpoch && activeGeneration == generation &&
             activeId == runId && activeOrigin == origin &&
             prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L) == startedAt
-        ) return true
+        ) {
+            // Idempotent start replay. A start first accepted through the token-only
+            // fallback can later be re-sent by the OS-verified Provider with the exact
+            // same run identity; that evidence must upgrade the run one way. An
+            // unverified replay must never downgrade an already verified run (that is
+            // rejected above), and event sequencing is left untouched.
+            if (incomingOriginVerified) {
+                markActiveRunVerified(prefs, editor, activeOriginVerified, callingPid)
+                // The token-only start path deliberately does not seed package-specific
+                // lifecycle observations. The verified replay of the same run may.
+                seedStartDiagnostics(editor, extras)
+            }
+            return true
+        }
 
         RUN_STATE_KEYS_TO_CLEAR.forEach { editor.remove(it) }
         EVENT_SEQUENCE_PREF_KEYS.forEach { editor.remove(it) }
@@ -600,11 +607,38 @@ object DiagnosticsStore {
 
         // Only an OS-bound origin may seed package-specific lifecycle observations.
         if (incomingOriginVerified) {
-            for (key in listOf(Constants.PREF_DIAG_MODULE_LOADED_AT, Constants.PREF_DIAG_LAST_PACKAGE_LOADED)) {
-                    if (key in extras.keySet()) applyExtra(editor, key, extras.get(key))
-            }
+            seedStartDiagnostics(editor, extras)
         }
         return true
+    }
+
+    /** Seeds the start-only lifecycle observations shared by new and upgraded runs. */
+    private fun seedStartDiagnostics(editor: SharedPreferences.Editor, extras: DiagnosticPayload) {
+        for (key in START_DIAGNOSTIC_KEYS) {
+            if (key in extras.keySet()) applyExtra(editor, key, extras.get(key))
+        }
+    }
+
+    /**
+     * Applies the one-way OS-verified provenance upgrade for the active run. Never
+     * clears the verified flag or an existing Binder PID.
+     */
+    private fun markActiveRunVerified(
+        prefs: PreferenceReader,
+        editor: SharedPreferences.Editor,
+        alreadyVerified: Boolean,
+        callingPid: Int?,
+    ) {
+        if (!alreadyVerified) {
+            editor.putBoolean(Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED, true)
+        }
+        // Preserve the first OS-observed sender PID for an already verified run;
+        // only fill a missing PID when verified evidence arrives later.
+        if (callingPid != null && callingPid > 0 &&
+            (!alreadyVerified || prefs.getInt(Constants.PREF_DIAG_ACTIVE_BINDER_PID, 0) <= 0)
+        ) {
+            editor.putInt(Constants.PREF_DIAG_ACTIVE_BINDER_PID, callingPid)
+        }
     }
 
     /**
@@ -1112,10 +1146,9 @@ object DiagnosticsStore {
                         return false
                     }
                     if (!sameUid && verifiedOrigin == claimedOrigin) {
-                        editor.putBoolean(Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED, true)
-                        if (callingPid != null && callingPid > 0) {
-                            editor.putInt(Constants.PREF_DIAG_ACTIVE_BINDER_PID, callingPid)
-                        }
+                        // Same one-way provenance rule as a start replay: never clear
+                        // verification and preserve the first OS-observed sender PID.
+                        markActiveRunVerified(prefs, editor, activeOriginVerified, callingPid)
                     }
                     var anySequencedValueApplied = false
                     var hasSequencedValues = false

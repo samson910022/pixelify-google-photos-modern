@@ -249,6 +249,19 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
          * a death/rebind transition cannot make a cached remote handle authorize a
          * later mutation. Local preferences are writable only before this process
          * has ever observed a framework binding.
+         *
+         * Lock contract: callers run on the main thread, operations must stay short,
+         * must not call back into [App] service-state APIs, and operations must not
+         * dispatch listeners that wait for this thread. [onOfflinePersistenceUncertain]
+         * is invoked synchronously while both [serviceStateLock] and (on the offline
+         * path) [OfflineSettingsHandoff.recoveryLock] are held, so it must only flip
+         * flags.
+         * The offline path takes [OfflineSettingsHandoff.recoveryLock] inside this lock;
+         * that ordering (serviceStateLock -> recoveryLock) must never be reversed.
+         * Holding the lock through the operation is intentional because an `apply()`
+         * write offers no failure signal to roll back after a rebind. Known exception
+         * to "keep it short": configuration import currently opens and parses the
+         * selected document inside the operation; do not add more blocking work here.
          */
         internal fun withGuardedSettingsPreferences(
             context: android.content.Context,

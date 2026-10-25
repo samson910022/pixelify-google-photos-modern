@@ -243,10 +243,11 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
 
     private fun setEnabledRecursively(view: View, enabled: Boolean) {
         view.isEnabled = enabled
-        if (view is ViewGroup) view.childrenRecursive().forEach { setEnabledRecursively(it, enabled) }
+        if (view is ViewGroup) view.directChildren().forEach { setEnabledRecursively(it, enabled) }
     }
 
-    private fun ViewGroup.childrenRecursive(): Sequence<View> =
+    /** Direct children only; [setEnabledRecursively] recurses into each one. */
+    private fun ViewGroup.directChildren(): Sequence<View> =
         (0 until childCount).asSequence().map(::getChildAt)
 
     override fun onDestroy() {

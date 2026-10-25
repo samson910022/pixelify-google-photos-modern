@@ -12,6 +12,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Dispatches diagnostic milestones and device-spoof VERIFY telemetry from hooked
@@ -30,6 +31,28 @@ object DiagnosticsReporter {
     private const val RETRY_DELAY_MS = 150L
     private const val MAX_QUEUED_EVENTS = 64
     private const val MAX_FALLBACK_ATTEMPTS = 3
+
+    /**
+     * Retry spacing after an interceptor observation could not be confirmed as
+     * persisted. One failed attempt can spend ~0.9 s in provider plus fallback
+     * retries on the single-thread dispatcher, so a short interval would keep that
+     * thread saturated. Ten seconds leaves >10x headroom while still repairing a
+     * transient outage within a session.
+     */
+    private const val INTERCEPTOR_REARM_INTERVAL_MS = 10_000L
+
+    /**
+     * Extra retries allowed when a fallback dispatch returned but persistence cannot
+     * be confirmed. Some transports (API 30-33 token-only broadcasts) can never
+     * confirm, so an unbounded retry would dispatch forever; a few attempts repair a
+     * transient outage without turning every session into a periodic heartbeat.
+     * Known failures keep retrying (bounded only by the interval).
+     */
+    private const val MAX_UNCONFIRMED_REARMS = 2
+
+    /** Delivery outcome for one queued diagnostics event. */
+    internal enum class DispatchDelivery { CONFIRMED, UNCONFIRMED, FAILED }
+
     internal data class BroadcastDispatchResult(
         /** The sendBroadcast call returned; this is not receiver acceptance or persistence. */
         val callReturned: Boolean,
@@ -51,6 +74,14 @@ object DiagnosticsReporter {
         var lastEventSequence: Long = 0L,
     ) {
         val handle = TargetRunHandle(runId = id, origin = origin, generation = generation)
+
+        /**
+         * Per-run first-entry state. Keeping it on the run (rather than in a map keyed
+         * by a freshly allocated string) removes the per-call allocation from the
+         * intercepted framework hot path and makes a run transition inherently safe.
+         */
+        val featureObservation = InterceptorObservation()
+        val syspropsObservation = InterceptorObservation()
     }
 
     /** Immutable identity captured by a lifecycle callback and all its telemetry. */
@@ -65,6 +96,29 @@ object DiagnosticsReporter {
     private var lastRunGeneration = 0L
     private var providerConfirmedRunId: String? = null
 
+    /**
+     * First-entry state for one interceptor of one run. A run transition cannot
+     * consume the next run's evidence, and a failed or unconfirmed delivery re-arms
+     * the latch after a retry interval (unconfirmed retries are capped) so a later
+     * interceptor call can try again.
+     */
+    private class InterceptorObservation {
+        val reported = AtomicBoolean(false)
+
+        /** Wall-clock time of the first entry observed for this run, preserved on retry. */
+        @Volatile
+        var firstObservedWallClockMs = 0L
+
+        /** Elapsed-realtime gate that prevents a failed dispatch from hot-looping. */
+        @Volatile
+        var rearmNotBeforeElapsedMs = 0L
+
+        /** Number of retries already spent on structurally unconfirmable delivery. */
+        val unconfirmedRearms = java.util.concurrent.atomic.AtomicInteger(0)
+    }
+
+    private val unmatchedInterceptorHandleLogged = AtomicBoolean(false)
+
     private val runLock = Any()
     @Volatile
     internal var testEnqueueObserver: ((String, String?, Long?) -> Unit)? = null
@@ -76,6 +130,12 @@ object DiagnosticsReporter {
     internal var testEventSequenceObserver: ((String, String?, Long?) -> Unit)? = null
     @Volatile
     internal var testFallbackDispatchOverride: ((String, Bundle, Bundle?) -> BroadcastDispatchResult)? = null
+    @Volatile
+    internal var testInterceptorRearmObserver: ((String) -> Unit)? = null
+    @Volatile
+    internal var testInterceptorObservationObserver: ((String, Long) -> Unit)? = null
+    @Volatile
+    internal var testInterceptorRearmIntervalMs: Long? = null
     @Volatile
     internal var testStartIfAbsentObserver: (() -> Unit)? = null
     internal var testProviderUri: Uri? = null
@@ -256,6 +316,7 @@ object DiagnosticsReporter {
             targetRun = null
             lastRunGeneration = 0L
             providerConfirmedRunId = null
+            unmatchedInterceptorHandleLogged.set(false)
         }
     }
 
@@ -329,23 +390,101 @@ object DiagnosticsReporter {
         dispatch(null, Constants.METHOD_RECORD_DIAGNOSTICS, bundle, runHandle = runHandle)
     }
 
-    /** Records only the first interceptor entry, attributed to its captured target run. */
+    /**
+     * Records the first observed entry into an interceptor for one run.
+     *
+     * The first-entry latch lives on the run, so a same-process successor run can
+     * still produce its own observation. The latch is released after a known failure
+     * or an unconfirmed fallback dispatch and the next report is gated by
+     * [INTERCEPTOR_REARM_INTERVAL_MS]; unconfirmed retries are additionally capped at
+     * [MAX_UNCONFIRMED_REARMS]. A provider-confirmed write keeps the latch consumed.
+     * Retries report the first observed wall-clock time, not the retry time.
+     *
+     * @return true when recorded, already recorded, or the bounded retry budget is
+     * exhausted; false when dropped (no matching run) or currently inside a
+     * retry-throttle window.
+     */
     fun recordInterceptorInvocation(
         featureInterceptor: Boolean,
         runHandle: TargetRunHandle? = null,
-    ) {
-        if (runHandle == null) {
-            Log.w(TAG, "Interceptor invocation has no captured target run; dropping diagnostics event")
-            return
+    ): Boolean {
+        val target = resolveInterceptorRun(runHandle)
+        if (target == null) {
+            // This runs on every intercepted framework call; log once instead of
+            // flooding logcat while no matching run exists.
+            if (unmatchedInterceptorHandleLogged.compareAndSet(false, true)) {
+                Log.w(TAG, "Interceptor invocation has no active matching target run; dropping diagnostics events")
+            }
+            return false
         }
-        val key = if (featureInterceptor) {
+        if (unmatchedInterceptorHandleLogged.get()) unmatchedInterceptorHandleLogged.set(false)
+        val observation = if (featureInterceptor) {
+            target.featureObservation
+        } else {
+            target.syspropsObservation
+        }
+        // Steady-state fast path: no clock read and no CAS once the run is recorded.
+        if (observation.reported.get()) return true
+        if (SystemClock.elapsedRealtime() < observation.rearmNotBeforeElapsedMs) return false
+        if (!observation.reported.compareAndSet(false, true)) return true
+        if (observation.firstObservedWallClockMs == 0L) {
+            observation.firstObservedWallClockMs = System.currentTimeMillis()
+        }
+        val observedAt = observation.firstObservedWallClockMs
+        val reportedKey = if (featureInterceptor) {
             Constants.PREF_DIAG_FEATURE_INTERCEPTOR_AT
         } else {
             Constants.PREF_DIAG_SYSPROPS_INTERCEPTOR_AT
         }
-        dispatch(null, Constants.METHOD_RECORD_DIAGNOSTICS, Bundle().apply {
-            putLong(key, System.currentTimeMillis())
-        }, runHandle = runHandle)
+        val rearmInterval = testInterceptorRearmIntervalMs ?: INTERCEPTOR_REARM_INTERVAL_MS
+        fun rearm(unconfirmed: Boolean = false) {
+            if (unconfirmed && observation.unconfirmedRearms.incrementAndGet() > MAX_UNCONFIRMED_REARMS) {
+                return
+            }
+            // Publish the gate before releasing the latch so a concurrent caller
+            // cannot dispatch once more through an already-expired window.
+            observation.rearmNotBeforeElapsedMs = SystemClock.elapsedRealtime() + rearmInterval
+            if (observation.reported.compareAndSet(true, false)) {
+                testInterceptorRearmObserver?.invoke(target.id)
+            }
+        }
+        testInterceptorObservationObserver?.invoke(target.id, observedAt)
+        val enqueued = dispatch(
+            explicitContext = null,
+            method = Constants.METHOD_RECORD_DIAGNOSTICS,
+            extras = Bundle().apply { putLong(reportedKey, observedAt) },
+            runHandle = target.handle,
+            onDeliveryResult = { outcome ->
+                when (outcome) {
+                    DispatchDelivery.CONFIRMED -> Unit
+                    DispatchDelivery.FAILED -> rearm()
+                    DispatchDelivery.UNCONFIRMED -> rearm(unconfirmed = true)
+                }
+            },
+        )
+        if (!enqueued) rearm()
+        return enqueued
+    }
+
+    /**
+     * Keeps a hook callback attributed to its registration run, but lets a successor
+     * run of the same origin receive first-entry evidence from still-installed hooks.
+     * A different-origin successor stays unattributed and is dropped.
+     *
+     * Deliberately lock-free: [targetRun] is volatile and swapped whole, and
+     * [dispatch] re-validates the handle under [runLock] before enqueueing. A
+     * concurrent run transition can therefore only drop the event (which re-arms the
+     * latch), never misattribute it to the wrong run.
+     */
+    private fun resolveInterceptorRun(runHandle: TargetRunHandle?): TargetRun? {
+        if (runHandle == null) return null
+        val current = targetRun ?: return null
+        return when {
+            runHandle == current.handle -> current
+            runHandle.origin == current.origin && current.generation >= runHandle.generation ->
+                current
+            else -> null
+        }
     }
 
     /**
@@ -457,13 +596,14 @@ object DiagnosticsReporter {
         extras: Bundle,
         runSnapshot: TargetRun? = null,
         runHandle: TargetRunHandle? = null,
-    ) {
+        onDeliveryResult: ((DispatchDelivery) -> Unit)? = null,
+    ): Boolean {
         try {
             testBeforeDispatchLock?.invoke(method)
             synchronized(runLock) {
                 if (runHandle != null && targetRun?.handle != runHandle) {
                     Log.w(TAG, "Dropping stale diagnostics event '$method' for inactive target run")
-                    return
+                    return false
                 }
                 // Capture the active run and enqueue while holding the same lock used
                 // by startTargetRun, preserving start-before-event queue order.
@@ -471,7 +611,7 @@ object DiagnosticsReporter {
                 val eventSequence = if (method != Constants.METHOD_START_DIAGNOSTICS_RUN && run != null) {
                     if (run.lastEventSequence >= DiagnosticsStore.MAX_EVENT_SEQUENCE) {
                         Log.w(TAG, "Diagnostics event sequence exhausted; run-bound event remains unknown")
-                        return
+                        return false
                     }
                     (++run.lastEventSequence)
                 } else {
@@ -501,18 +641,29 @@ object DiagnosticsReporter {
                 }
                 testEnqueueObserver?.let { observer ->
                     observer(method, run?.id, run?.generation)
-                    return
+                    return true
                 }
-                executor.execute {
-                    try {
-                        dispatchQueued(explicitContext, method, payload, run)
-                    } catch (t: Throwable) {
-                        Log.d(TAG, "Diagnostics dispatch skipped or failed: ${t.message}")
+                return try {
+                    executor.execute {
+                        val outcome = try {
+                            dispatchQueued(explicitContext, method, payload, run)
+                        } catch (t: Throwable) {
+                            Log.d(TAG, "Diagnostics dispatch skipped or failed: ${t.message}")
+                            DispatchDelivery.FAILED
+                        }
+                        onDeliveryResult?.invoke(outcome)
                     }
+                    true
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Diagnostics dispatch queue rejected; result remains unknown", t)
+                    onDeliveryResult?.invoke(DispatchDelivery.FAILED)
+                    false
                 }
             }
         } catch (t: Throwable) {
             Log.w(TAG, "Failed to schedule diagnostics dispatch; result remains unknown", t)
+            onDeliveryResult?.invoke(DispatchDelivery.FAILED)
+            return false
         }
     }
 
@@ -527,19 +678,24 @@ object DiagnosticsReporter {
         }
     }
 
+    /**
+     * @return [DispatchDelivery.CONFIRMED] only when the provider acknowledged the
+     * write. A returned fallback call is [DispatchDelivery.UNCONFIRMED]; a missing
+     * context/token or a failed fallback is [DispatchDelivery.FAILED].
+     */
     private fun dispatchQueued(
         explicitContext: Context?,
         method: String,
         payload: Bundle,
         run: TargetRun?,
-    ) {
+    ): DispatchDelivery {
         val context = resolveContextWithRetries(explicitContext) ?: run {
             Log.w(TAG, "Diagnostics report not dispatched: process context unavailable; persistence is unknown")
-            return
+            return DispatchDelivery.FAILED
         }
         val token = resolveBroadcastToken() ?: run {
             Log.w(TAG, "Diagnostics report not dispatched: no synchronized auth token; persistence is unknown")
-            return
+            return DispatchDelivery.FAILED
         }
         val bootCount = resolveBootCount(context)
 
@@ -555,13 +711,12 @@ object DiagnosticsReporter {
             }
             if (!providerWriteWithRetries(context, Constants.METHOD_START_DIAGNOSTICS_RUN, replayPayload)) {
                 Log.w(TAG, "Target run start remains unconfirmed; retrying start plus dependent telemetry in one receiver batch")
-                dispatchFallbackWithRetries(
+                return dispatchFallbackWithRetries(
                     context = context,
                     method = method,
                     payload = eventPayload,
                     batchStartPayload = replayPayload,
                 )
-                return
             }
             markProviderConfirmed(run.id)
         }
@@ -570,10 +725,10 @@ object DiagnosticsReporter {
             if (method == Constants.METHOD_START_DIAGNOSTICS_RUN && run != null) {
                 markProviderConfirmed(run.id)
             }
-            return
+            return DispatchDelivery.CONFIRMED
         }
 
-        dispatchFallbackWithRetries(context, method, eventPayload)
+        return dispatchFallbackWithRetries(context, method, eventPayload)
     }
 
     private fun resolveContextWithRetries(explicitContext: Context?): Context? {
@@ -599,27 +754,39 @@ object DiagnosticsReporter {
         return false
     }
 
+    /**
+     * @return [DispatchDelivery.UNCONFIRMED] when at least one fallback send call
+     * returned (receiver acceptance and persistence remain unknown), otherwise
+     * [DispatchDelivery.FAILED].
+     */
     private fun dispatchFallbackWithRetries(
         context: Context,
         method: String,
         payload: Bundle,
         batchStartPayload: Bundle? = null,
-    ) {
+    ): DispatchDelivery {
         val wireMethod = if (batchStartPayload != null) {
             Constants.METHOD_RECORD_DIAGNOSTICS_BATCH
         } else {
             method
         }
+        var callReturned = false
         repeat(MAX_FALLBACK_ATTEMPTS) { attempt ->
             val outcome = dispatchFallback(context, method, payload, batchStartPayload)
                 ?: BroadcastDispatchResult(callReturned = false, identityPath = Build.VERSION.SDK_INT >= 34)
             logFallbackOutcome(wireMethod, outcome, attempt + 1)
-            if (attempt < MAX_FALLBACK_ATTEMPTS - 1 && !sleepBeforeRetry()) return
+            if (outcome.callReturned) callReturned = true
+            if (attempt < MAX_FALLBACK_ATTEMPTS - 1 && !sleepBeforeRetry()) {
+                return if (callReturned) DispatchDelivery.UNCONFIRMED else DispatchDelivery.FAILED
+            }
         }
-        Log.w(
-            TAG,
-            "Diagnostics fallback retry budget exhausted for '$wireMethod'; receiver acceptance and persistence remain unknown",
-        )
+        if (!callReturned) {
+            Log.w(
+                TAG,
+                "Diagnostics fallback retry budget exhausted for '$wireMethod'; receiver acceptance and persistence remain unknown",
+            )
+        }
+        return if (callReturned) DispatchDelivery.UNCONFIRMED else DispatchDelivery.FAILED
     }
 
     private fun dispatchFallback(

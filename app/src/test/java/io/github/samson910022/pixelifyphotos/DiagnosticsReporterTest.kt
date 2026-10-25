@@ -58,6 +58,9 @@ class DiagnosticsReporterTest {
         DiagnosticsReporter.testFallbackOutcomeObserver = null
         DiagnosticsReporter.testEventSequenceObserver = null
         DiagnosticsReporter.testFallbackDispatchOverride = null
+        DiagnosticsReporter.testInterceptorRearmObserver = null
+        DiagnosticsReporter.testInterceptorObservationObserver = null
+        DiagnosticsReporter.testInterceptorRearmIntervalMs = null
         DiagnosticsReporter.testStartIfAbsentObserver = null
         DiagnosticsReporter.clearTargetRunForTests()
     }
@@ -76,6 +79,9 @@ class DiagnosticsReporterTest {
         DiagnosticsReporter.testFallbackOutcomeObserver = null
         DiagnosticsReporter.testEventSequenceObserver = null
         DiagnosticsReporter.testFallbackDispatchOverride = null
+        DiagnosticsReporter.testInterceptorRearmObserver = null
+        DiagnosticsReporter.testInterceptorObservationObserver = null
+        DiagnosticsReporter.testInterceptorRearmIntervalMs = null
         DiagnosticsReporter.testStartIfAbsentObserver = null
         DiagnosticsReporter.clearTargetRunForTests()
         FeatureSpoofer.resetForTesting()
@@ -315,10 +321,8 @@ class DiagnosticsReporterTest {
             events.toList(),
         )
 
-        // The same registered callback must not silently adopt a newer active run.
-        // Reset only the process-wide first-invocation gate so the stale reporter
-        // dispatch is exercised instead of being suppressed by that gate.
-        FeatureSpoofer.resetForTesting()
+        // The same registered callback must not silently adopt a newer run with a
+        // different origin.
         val runB = checkNotNull(
             DiagnosticsReporter.startTargetRun("org.example.new-run", moduleLoadedAt = 2L),
         )
@@ -327,6 +331,10 @@ class DiagnosticsReporterTest {
 
         assertEquals(runB, DiagnosticsReporter.currentTargetRunHandle())
         assertTrue("stale callback must not record an invocation under run B", events.isEmpty())
+        assertFalse(
+            "a different-origin successor must also report the drop",
+            DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = runA),
+        )
     }
 
     @Test
@@ -336,12 +344,250 @@ class DiagnosticsReporterTest {
         DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L)
         events.clear()
 
-        DiagnosticsReporter.recordInterceptorInvocation(
-            featureInterceptor = true,
-            runHandle = null,
+        assertTrue(
+            "unattributed interceptor invocation must not adopt the active run",
+            events.isEmpty(),
+        )
+        assertFalse(
+            "an unattributed invocation is reported as not recorded",
+            DiagnosticsReporter.recordInterceptorInvocation(
+                featureInterceptor = true,
+                runHandle = null,
+            ),
+        )
+    }
+
+    @Test
+    fun `interceptor first-entry is deduped per run and rearmed for a same-origin successor`() {
+        val events = Collections.synchronizedList(mutableListOf<Pair<String, String?>>())
+        DiagnosticsReporter.testEnqueueObserver = { method, runId, _ -> events += method to runId }
+        val runA = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        events.clear()
+
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = runA))
+        assertTrue(
+            "the same run's first-entry latch stays consumed",
+            DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = runA),
+        )
+        assertEquals(
+            listOf(Constants.METHOD_RECORD_DIAGNOSTICS to runA.runId),
+            events.toList(),
         )
 
-        assertTrue("unattributed interceptor invocation must not adopt the active run", events.isEmpty())
+        val runB = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 2L),
+        )
+        events.clear()
+        // Hooks installed for run A remain live; their callback must still produce
+        // first-entry evidence for the same-origin successor run.
+        FeatureSpoofer.featureInvocationCallback(runA)()
+
+        assertEquals(
+            listOf(Constants.METHOD_RECORD_DIAGNOSTICS to runB.runId),
+            events.toList(),
+        )
+    }
+
+    @Test
+    fun `interceptor latch re-arms after a known synchronous dispatch failure`() {
+        val handle = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        DiagnosticsReporter.testInterceptorRearmIntervalMs = 0L
+        var recordDispatches = 0
+        DiagnosticsReporter.testBeforeDispatchLock = { method ->
+            if (method == Constants.METHOD_RECORD_DIAGNOSTICS) {
+                recordDispatches += 1
+                throw IllegalStateException("injected dispatch failure")
+            }
+        }
+
+        assertFalse(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertFalse(
+            "a failed first attempt must be retried, not consumed forever",
+            DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle),
+        )
+        assertEquals(2, recordDispatches)
+
+        DiagnosticsReporter.testBeforeDispatchLock = null
+        DiagnosticsReporter.testEnqueueObserver = { _, _, _ -> }
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+    }
+
+    @Test
+    fun `re-armed interceptor latch is throttled instead of pumping the dispatch queue`() {
+        val handle = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        DiagnosticsReporter.testInterceptorRearmIntervalMs = 60_000L
+        var recordDispatches = 0
+        DiagnosticsReporter.testBeforeDispatchLock = { method ->
+            if (method == Constants.METHOD_RECORD_DIAGNOSTICS) {
+                recordDispatches += 1
+                throw IllegalStateException("injected dispatch failure")
+            }
+        }
+
+        assertFalse(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertFalse(
+            "a retry inside the throttle window is skipped without dispatching",
+            DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle),
+        )
+        assertEquals(1, recordDispatches)
+    }
+
+    @Test
+    fun `interceptor latch re-arms after an asynchronous transport failure`() {
+        val rejected = mock<Bundle>()
+        whenever(rejected.getBoolean(eq("success"), eq(false))).thenReturn(false)
+        whenever(rejected.getBoolean(eq("success"), eq(true))).thenReturn(false)
+        whenever(mockResolver.call(any<Uri>(), any<String>(), isNull(), anyOrNull<Bundle>()))
+            .thenReturn(rejected)
+        DiagnosticsReporter.testResolvedContext = mockContext
+        DiagnosticsReporter.testInterceptorRearmIntervalMs = 0L
+        DiagnosticsReporter.testFallbackDispatchOverride = { _, _, _ ->
+            DiagnosticsReporter.BroadcastDispatchResult(callReturned = false, identityPath = false)
+        }
+        val handle = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        val recordDispatches = AtomicInteger()
+        DiagnosticsReporter.testBeforeDispatchLock = { method ->
+            if (method == Constants.METHOD_RECORD_DIAGNOSTICS) recordDispatches.incrementAndGet()
+        }
+        val rearmed = java.util.concurrent.LinkedBlockingQueue<String>()
+        DiagnosticsReporter.testInterceptorRearmObserver = { runId -> rearmed.add(runId) }
+        val observations = java.util.concurrent.LinkedBlockingQueue<Long>()
+        DiagnosticsReporter.testInterceptorObservationObserver = { runId, observedAt ->
+            if (runId == handle.runId) observations.add(observedAt)
+        }
+
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        val firstObservedAt = checkNotNull(observations.poll(10, TimeUnit.SECONDS)) {
+            "the first entry must be observed with a timestamp"
+        }
+        assertTrue("the first observation must be a real wall-clock time", firstObservedAt > 0L)
+        assertEquals(handle.runId, rearmed.poll(10, TimeUnit.SECONDS))
+        Thread.sleep(5L)
+        assertTrue(
+            "after a known transport failure the next interceptor entry is reported again",
+            DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle),
+        )
+        val retriedObservedAt = checkNotNull(observations.poll(10, TimeUnit.SECONDS)) {
+            "the retry must be observed"
+        }
+        assertEquals(
+            "a retry reports the first observed entry time, not the retry time",
+            firstObservedAt,
+            retriedObservedAt,
+        )
+        assertEquals(handle.runId, rearmed.poll(10, TimeUnit.SECONDS))
+        assertEquals(2, recordDispatches.get())
+    }
+
+    @Test
+    fun `interceptor latch re-arms after an unconfirmed fallback dispatch`() {
+        val rejected = mock<Bundle>()
+        whenever(rejected.getBoolean(eq("success"), eq(false))).thenReturn(false)
+        whenever(rejected.getBoolean(eq("success"), eq(true))).thenReturn(false)
+        whenever(mockResolver.call(any<Uri>(), any<String>(), isNull(), anyOrNull<Bundle>()))
+            .thenReturn(rejected)
+        DiagnosticsReporter.testResolvedContext = mockContext
+        DiagnosticsReporter.testInterceptorRearmIntervalMs = 0L
+        // A returned broadcast call proves nothing: it must not be treated as persisted.
+        DiagnosticsReporter.testFallbackDispatchOverride = { _, _, _ ->
+            DiagnosticsReporter.BroadcastDispatchResult(callReturned = true, identityPath = false)
+        }
+        val handle = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        val rearmed = java.util.concurrent.LinkedBlockingQueue<String>()
+        DiagnosticsReporter.testInterceptorRearmObserver = { runId -> rearmed.add(runId) }
+
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertEquals(
+            "an unconfirmed fallback dispatch must re-arm the first-entry latch",
+            handle.runId,
+            rearmed.poll(10, TimeUnit.SECONDS),
+        )
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertEquals(handle.runId, rearmed.poll(10, TimeUnit.SECONDS))
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertNull(
+            "a structurally unconfirmable transport must not retry forever",
+            rearmed.poll(5, TimeUnit.SECONDS),
+        )
+    }
+
+    @Test
+    fun `provider-confirmed interceptor report keeps the latch consumed`() {
+        // The default resolver mock answers provider calls with success.
+        DiagnosticsReporter.testResolvedContext = mockContext
+        val handle = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        val recordDispatches = AtomicInteger()
+        DiagnosticsReporter.testBeforeDispatchLock = { method ->
+            if (method == Constants.METHOD_RECORD_DIAGNOSTICS) recordDispatches.incrementAndGet()
+        }
+        val rearmed = java.util.concurrent.LinkedBlockingQueue<String>()
+        DiagnosticsReporter.testInterceptorRearmObserver = { runId -> rearmed.add(runId) }
+
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertNull(
+            "a provider-confirmed report is not re-armed",
+            rearmed.poll(5, TimeUnit.SECONDS),
+        )
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertEquals("a confirmed first entry stays deduped", 1, recordDispatches.get())
+    }
+
+    @Test
+    fun `feature and system-properties interceptor latches are independent`() {
+        val events = Collections.synchronizedList(mutableListOf<Pair<String, String?>>())
+        val handle = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        DiagnosticsReporter.testEnqueueObserver = { method, runId, _ -> events += method to runId }
+        events.clear()
+
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = true, runHandle = handle))
+        assertTrue(DiagnosticsReporter.recordInterceptorInvocation(featureInterceptor = false, runHandle = handle))
+
+        assertEquals(
+            "each interceptor owns its own first-entry latch",
+            2,
+            events.size,
+        )
+    }
+
+    @Test
+    fun `concurrent first-entry reports enqueue exactly one event`() {
+        val enqueued = AtomicInteger()
+        val handle = checkNotNull(
+            DiagnosticsReporter.startTargetRun(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, moduleLoadedAt = 1L),
+        )
+        DiagnosticsReporter.testEnqueueObserver = { _, _, _ -> enqueued.incrementAndGet() }
+        val workers = 8
+        val barrier = java.util.concurrent.CyclicBarrier(workers)
+        val results = Collections.synchronizedList(mutableListOf<Boolean>())
+        val threads = (0 until workers).map {
+            Thread {
+                barrier.await()
+                results += DiagnosticsReporter.recordInterceptorInvocation(
+                    featureInterceptor = true,
+                    runHandle = handle,
+                )
+            }
+        }
+        threads.forEach(Thread::start)
+        threads.forEach { it.join(10_000L) }
+
+        assertEquals("only the first concurrent entry may enqueue", 1, enqueued.get())
+        assertEquals(workers, results.size)
+        assertTrue("a deduped report is not a failure", results.all { it })
     }
 
     @Test
