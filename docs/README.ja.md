@@ -17,7 +17,7 @@ Pixelify Infinity は、一部の Google Pixel 端末プロパティとシステ
 
 - 一部の Google Pixel 端末プロファイルを偽装。
 - Pixel 関連のシステム機能フラグを偽装。
-- Pixel XL から Pixel 10 シリーズまでの複数の端末プロファイルを選択可能（スピナー表示 **Pixel 10 Pro Fold (experimental)**／**Pixel 10a (experimental)** の identity-only エントリを含む）。
+- Pixel XL から Pixel 11 シリーズまでの複数の端末プロファイルを選択可能（スピナー表示 **Pixel 10 Pro Fold (experimental)**／**Pixel 10a (experimental)** の identity-only エントリを含む）。
 - 初回起動時の既定は **Pixel XL**（保存済み設定は自動移行しません）。
 - Pixel 2025 の機能偽装には高信頼の experience フラグが含まれます。`PIXEL_2025_PRELOAD` は **MED/LOW** 信頼（歴史的 PRELOAD 組み合わせ・工場確認なし）で、効果がない場合があります。
 - 互換性のある Android バージョンを任意で偽装。
@@ -35,7 +35,7 @@ Google のクラウド ストレージ ポリシーに基づき、Pixel の世�
 | --- | --- | --- | --- | --- |
 | **無制限オリジナル品質** | **Pixel XL** *(既定)* | **元の画質および保存容量の節約画質で無制限無料バックアップ**（容量消費 0 バイト） | **元の画質** または **保存容量の節約画質** | Pixel 2016 基本階層（最も安定して無制限容量を享受可能。Tensor AI 編集ツールは非対応） |
 | **無制限保存容量節約画質のみ** | **Pixel 2**, **Pixel 3 XL**, **Pixel 3a XL**, **Pixel 4 XL**, **Pixel 4a**, **Pixel 5**, **Pixel 5a** | **「保存容量の節約画質（高画質）」のみ無制限無料バックアップ** | **「保存容量の節約画質」が必須**<br>*(「元の画質」を選択するとアカウント容量を消費します)* | 中位 Pixel 機能フラグ |
-| **写真編集機能のみ** *(無料特典なし)* | **Pixel 6 / 6 Pro / 6a**, **Pixel 7 / 7 Pro / 7a**, **Pixel Fold**, **Pixel Tablet**, **Pixel 8 / 8 Pro / 8a**, **Pixel 9 / 9 Pro / XL / Fold / 9a**, **Pixel 10 シリーズ** | **無料の無制限バックアップ特典はありません**（すべてのアップロードで Google アカウント容量を消費します） | すべての画質設定で容量を消費 | 最新の Pixel カメラおよび AI 写真編集機能（消しゴムマジック、Ultra HDR、ポートレート ライト、ボケ補正など） |
+| **写真編集機能のみ** *(無料特典なし)* | **Pixel 6 / 6 Pro / 6a**, **Pixel 7 / 7 Pro / 7a**, **Pixel Fold**, **Pixel Tablet**, **Pixel 8 / 8 Pro / 8a**, **Pixel 9 / 9 Pro / XL / Fold / 9a**, **Pixel 10 シリーズ**, **Pixel 11 シリーズ** | **無料の無制限バックアップ特典はありません**（すべてのアップロードで Google アカウント容量を消費します） | すべての画質設定で容量を消費 | 最新の Pixel カメラおよび AI 写真編集機能（消しゴムマジック、Ultra HDR、ポートレート ライト、ボケ補正など） |
 
 > [!WARNING]
 > 主な目的が**無料の無制限フォト バックアップ容量の獲得**である場合は、必ず **Pixel XL**（元の画質）または **Pixel 2 〜 Pixel 5a**（画質設定を**保存容量の節約画質**に設定）を選択してください。Pixel 6 以降のモデルを選択しても無料クラウド容量は付与されません。

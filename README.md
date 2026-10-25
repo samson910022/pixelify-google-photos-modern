@@ -15,7 +15,7 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 
 - Spoof selected Google Pixel device profiles.
 - Spoof Pixel-related system feature flags.
-- Choose from device profiles spanning Pixel XL through the Pixel 10 series (including spinner labels **Pixel 10 Pro Fold (experimental)** / **Pixel 10a (experimental)** identity-only entries).
+- Choose from device profiles spanning Pixel XL through the Pixel 11 series (including spinner labels **Pixel 10 Pro Fold (experimental)** / **Pixel 10a (experimental)** identity-only entries).
 - First open defaults to **Pixel XL** (existing saved preferences are not migrated).
 - Pixel 2025 feature spoof includes high-confidence experience flags; `PIXEL_2025_PRELOAD` is **MED/LOW** confidence (historical pairing, not factory-confirmed) and may be a no-op.
 - Optionally spoof a compatible Android version.
@@ -33,7 +33,7 @@ Different Pixel hardware generations receive different Google Photos backup enti
 | --- | --- | --- | --- | --- |
 | **Unlimited Original Quality** | **Pixel XL** *(Default)* | **Unlimited free backup at Original Quality & Storage Saver** (0 bytes quota used) | **Original quality** or **Storage saver** | Pixel 2016 base tier (stable unlimited backup; no Tensor AI editing tools) |
 | **Unlimited Storage Saver Only** | **Pixel 2**, **Pixel 3 XL**, **Pixel 3a XL**, **Pixel 4 XL**, **Pixel 4a**, **Pixel 5**, **Pixel 5a** | **Unlimited free backup at Storage Saver quality ONLY** | **Storage saver ONLY**<br>*(Original quality consumes Google Account storage!)* | Mid-tier Pixel features |
-| **Editing Features Only** *(No Free Backup)* | **Pixel 6 / 6 Pro / 6a**, **Pixel 7 / 7 Pro / 7a**, **Pixel Fold**, **Pixel Tablet**, **Pixel 8 / 8 Pro / 8a**, **Pixel 9 / 9 Pro / XL / Fold / 9a**, **Pixel 10 series** | **NO free unlimited backup** (All uploads consume Google Account storage quota) | Google Account storage quota is consumed for all quality settings | Modern Pixel camera and AI editing tools (e.g. Magic Eraser, Ultra HDR, Portrait Light, Photo Unblur) |
+| **Editing Features Only** *(No Free Backup)* | **Pixel 6 / 6 Pro / 6a**, **Pixel 7 / 7 Pro / 7a**, **Pixel Fold**, **Pixel Tablet**, **Pixel 8 / 8 Pro / 8a**, **Pixel 9 / 9 Pro / XL / Fold / 9a**, **Pixel 10 series**, **Pixel 11 series** | **NO free unlimited backup** (All uploads consume Google Account storage quota) | Google Account storage quota is consumed for all quality settings | Modern Pixel camera and AI editing tools (e.g. Magic Eraser, Ultra HDR, Portrait Light, Photo Unblur) |
 
 > [!WARNING]
 > If your goal is **free unlimited Google Photos cloud storage**, you must select **Pixel XL** (for Original Quality) or **Pixel 2 through Pixel 5a** (with backup quality set to **Storage saver**). Selecting Pixel 6 or newer models will **not** grant free cloud storage.

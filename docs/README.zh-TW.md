@@ -17,7 +17,7 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可模擬特定 Google Pixe
 
 - 模擬特定 Google Pixel 裝置設定檔。
 - 模擬與 Pixel 相關的系統功能旗標。
-- 提供從 Pixel XL 到 Pixel 10 系列的多種裝置設定檔（含 Spinner 標籤 **Pixel 10 Pro Fold (experimental)**／**Pixel 10a (experimental)** 身分-only 項目）。
+- 提供從 Pixel XL 到 Pixel 11 系列的多種裝置設定檔（含 Spinner 標籤 **Pixel 10 Pro Fold (experimental)**／**Pixel 10a (experimental)** 身分-only 項目）。
 - 首次開啟預設為 **Pixel XL**（已儲存的偏好設定不會自動遷移）。
 - Pixel 2025 功能模擬含高信心 experience 旗標；`PIXEL_2025_PRELOAD` 為 **MED/LOW** 信心（歷史 PRELOAD 配對、非工廠確認），可能無效。
 - 可選擇模擬相容的 Android 版本。
@@ -35,7 +35,7 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可模擬特定 Google Pixe
 | --- | --- | --- | --- | --- |
 | **無限制原始畫質** | **Pixel XL** *(預設)* | **永久免費無限制備份（原始畫質與省儲存空間皆不佔空間）** | **原始畫質** 或 **省儲存空間** | Pixel 2016 基礎層級（最穩定享有無限空間；無 Tensor AI 編輯工具） |
 | **僅限無限制省儲存空間** | **Pixel 2**, **Pixel 3 XL**, **Pixel 3a XL**, **Pixel 4 XL**, **Pixel 4a**, **Pixel 5**, **Pixel 5a** | **僅限「省儲存空間（高畫質）」享有免費無限制備份** | **必須設定為「省儲存空間」**<br>*(若設為原始畫質會扣除帳號空間！)* | 中階 Pixel 功能旗標 |
-| **僅解鎖相片編輯功能** *(無免費備份)* | **Pixel 6 / 6 Pro / 6a**, **Pixel 7 / 7 Pro / 7a**, **Pixel Fold**, **Pixel Tablet**, **Pixel 8 / 8 Pro / 8a**, **Pixel 9 / 9 Pro / XL / Fold / 9a**, **Pixel 10 系列** | **無免費無限制備份**（所有上傳皆正常扣除 Google 帳號空間） | 無論設定何種畫質皆會扣除雲端空間 | 最新 Pixel 相機與 AI 相片編輯功能（如魔術橡皮擦、Ultra HDR、肖像光影、修復模糊等） |
+| **僅解鎖相片編輯功能** *(無免費備份)* | **Pixel 6 / 6 Pro / 6a**, **Pixel 7 / 7 Pro / 7a**, **Pixel Fold**, **Pixel Tablet**, **Pixel 8 / 8 Pro / 8a**, **Pixel 9 / 9 Pro / XL / Fold / 9a**, **Pixel 10 系列**, **Pixel 11 系列** | **無免費無限制備份**（所有上傳皆正常扣除 Google 帳號空間） | 無論設定何種畫質皆會扣除雲端空間 | 最新 Pixel 相機與 AI 相片編輯功能（如魔術橡皮擦、Ultra HDR、肖像光影、修復模糊等） |
 
 > [!WARNING]
 > 若您的主要目的是**獲得免費無限制的相簿備份空間**，請務必選擇 **Pixel XL**（原始畫質）或 **Pixel 2 至 Pixel 5a**（備份畫質設為**省儲存空間**）。選擇 Pixel 6 或更新的機型將**不會**享有免費相簿空間。
