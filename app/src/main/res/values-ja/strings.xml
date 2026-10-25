@@ -6,6 +6,7 @@
     <string name="device_to_spoof">偽装する端末</string>
     <string name="spoofs_build_and_features">選択した端末プロパティと機能フラグを偽装します。LSPosed の推奨スコープは Google フォトです。他のアプリへの適用は高度な設定でありサポート対象外です。Play 開発者サービス、Play ストア、システム UI、銀行・決済アプリをスコープに含めないでください。</string>
     <string name="customize_feature_flags">機能フラグのカスタマイズ</string>
+    <string name="feature_level_without_flags">%1$s（新しい機能フラグなし）</string>
     <string name="feature_flags_changed">機能フラグが変更されました</string>
     <string name="override_rom_feature_levels">ROM の機能レベルを上書き</string>
     <string name="override_rom_feature_levels_desc">より旧型の Pixel プロファイルを選択した場合、ROM がすでに提供している上位の機能レベルを無視します。<b>（推奨）</b></string>

@@ -141,6 +141,80 @@ class FeatureSpoofLogicTest {
         )
     }
 
+    @Test
+    fun `Pixel 2026-only selection passes through known flags when override is enabled`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel 11",
+            selectedNames = setOf("Pixel 2026"),
+            overrideROM = true,
+        )
+
+        val knownFlags = DeviceProps.allFeatures
+            .filter { it.displayName != "Pixel 2026" }
+            .flatMap { it.featureFlags }
+
+        knownFlags.forEach { flag ->
+            assertNull(
+                "Flag '$flag' must pass through when the selection resolves to no flags",
+                FeatureSpoofer.decideSpoofForFeature(flag)
+            )
+        }
+    }
+
+    @Test
+    fun `Pixel 2026-only selection passes through known flags when override is disabled`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel 11",
+            selectedNames = setOf("Pixel 2026"),
+            overrideROM = false,
+        )
+
+        val knownFlags = DeviceProps.allFeatures
+            .filter { it.displayName != "Pixel 2026" }
+            .flatMap { it.featureFlags }
+
+        knownFlags.forEach { flag ->
+            assertNull(
+                "Flag '$flag' must pass through when the selection resolves to no flags",
+                FeatureSpoofer.decideSpoofForFeature(flag)
+            )
+        }
+    }
+
+    @Test
+    fun `mixed selection with Pixel 2026 still spoofs and hides other flags`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel 11",
+            selectedNames = setOf("Pixel 2016", "Pixel 2026"),
+            overrideROM = true,
+        )
+
+        assertEquals(
+            true,
+            FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_EXPERIENCE")
+        )
+        assertEquals(
+            false,
+            FeatureSpoofer.decideSpoofForFeature("com.google.android.feature.PIXEL_2024_EXPERIENCE")
+        )
+    }
+
+    @Test
+    fun `filterAndAugmentFeatures returns null for Pixel 2026-only selection`() {
+        FeatureSpoofer.initFromValues(
+            deviceName = "Pixel 11",
+            selectedNames = setOf("Pixel 2026"),
+            overrideROM = true,
+        )
+
+        val original = arrayOf(
+            FeatureInfo().apply { name = "android.hardware.camera" },
+            FeatureInfo().apply { name = "com.google.android.feature.PIXEL_2025_EXPERIENCE" },
+        )
+
+        assertNull(FeatureSpoofer.filterAndAugmentFeatures(original))
+    }
+
     // =========================================================================
     // Multi-level combinations
     // =========================================================================

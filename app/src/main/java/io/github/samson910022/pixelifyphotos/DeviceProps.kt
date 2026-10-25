@@ -121,6 +121,8 @@ object DeviceProps {
         ),
 
         // Pixel 11 series: Pixel-Props/build.prop build-20261011. No new Photos flags are asserted.
+        // Selecting this tier alone resolves to no flags, which FeatureSpoofer treats as pass-through.
+        // FeatureCustomize therefore lists it as information instead of a checkbox.
         Features("Pixel 2026", emptyList()),
     )
 
@@ -650,6 +652,7 @@ object DeviceProps {
 
         // Pixel-Props/build.prop build-20261011: https://github.com/Pixel-Props/build.prop/releases/tag/build-20261011
         // These values come from each device's ro.product.build.fingerprint in its system.prop archive, not the generic ro.build.fingerprint.
+        // TYPE/TAGS match the fingerprint's :user/release-keys suffix so Build.TYPE/Build.TAGS stay consistent on non-stock ROMs.
         // DeviceSpoofer applies this normalized FINGERPRINT identity to Build.FINGERPRINT and partition-specific fingerprint keys.
         DeviceEntries(
             "Pixel 11", hashMapOf(
@@ -662,6 +665,8 @@ object DeviceProps {
                 Pair("ID", "CD1A.261005.003"),
                 Pair("INCREMENTAL", "16262255"),
                 Pair("SECURITY_PATCH", "2026-10-05"),
+                Pair("TYPE", "user"),
+                Pair("TAGS", "release-keys"),
             ),
             "Pixel 2026",
             getAndroidVersionFromLabel("Android 17"),
@@ -678,6 +683,8 @@ object DeviceProps {
                 Pair("ID", "CD1A.261005.003"),
                 Pair("INCREMENTAL", "16262255"),
                 Pair("SECURITY_PATCH", "2026-10-05"),
+                Pair("TYPE", "user"),
+                Pair("TAGS", "release-keys"),
             ),
             "Pixel 2026",
             getAndroidVersionFromLabel("Android 17"),
@@ -694,6 +701,8 @@ object DeviceProps {
                 Pair("ID", "CD1A.261005.003"),
                 Pair("INCREMENTAL", "16262255"),
                 Pair("SECURITY_PATCH", "2026-10-05"),
+                Pair("TYPE", "user"),
+                Pair("TAGS", "release-keys"),
             ),
             "Pixel 2026",
             getAndroidVersionFromLabel("Android 17"),
@@ -710,6 +719,8 @@ object DeviceProps {
                 Pair("ID", "CD1A.261005.003"),
                 Pair("INCREMENTAL", "16262255"),
                 Pair("SECURITY_PATCH", "2026-10-05"),
+                Pair("TYPE", "user"),
+                Pair("TAGS", "release-keys"),
             ),
             "Pixel 2026",
             getAndroidVersionFromLabel("Android 17"),

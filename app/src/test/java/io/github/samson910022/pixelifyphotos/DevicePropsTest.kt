@@ -435,6 +435,8 @@ class DevicePropsTest {
             assertEquals("CD1A.261005.003", device.props["ID"])
             assertEquals("16262255", device.props["INCREMENTAL"])
             assertEquals("2026-10-05", device.props["SECURITY_PATCH"])
+            assertEquals("user", device.props["TYPE"])
+            assertEquals("release-keys", device.props["TAGS"])
             assertEquals("Pixel 2026", device.featureLevelName)
             assertEquals("Android 17", device.androidVersion?.label)
             assertEquals(37, device.androidVersion?.sdk)

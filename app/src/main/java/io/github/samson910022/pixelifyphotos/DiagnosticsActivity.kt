@@ -283,6 +283,8 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             "ID" -> Build.ID
             "INCREMENTAL" -> Build.VERSION.INCREMENTAL
             "SECURITY_PATCH" -> Build.VERSION.SECURITY_PATCH
+            "TYPE" -> Build.TYPE
+            "TAGS" -> Build.TAGS
             "RELEASE" -> Build.VERSION.RELEASE
             "SDK" -> Build.VERSION.SDK_INT.toString()
             "SDK_INT" -> Build.VERSION.SDK_INT.toString()

@@ -17,7 +17,8 @@ import io.github.libxposed.api.XposedModule
  * - `android.app.ApplicationPackageManager.hasSystemFeature(String, int)`
  *
  * ### Spoofing logic
- * 1. If pass-through mode (device "None" or empty feature selection) → always
+ * 1. If pass-through mode (device "None", empty feature selection, or a
+ *    selection that resolves to no flags) → always
  *    [XposedInterface.Chain.proceed] (same as module disabled for features)
  * 2. If the queried feature name is in [finalFeaturesToSpoof] → return `true`
  * 3. If [overrideCustomROMLevels] is true and the feature is in [featuresNotToSpoof]
@@ -42,8 +43,8 @@ object FeatureSpoofer {
 
     /**
      * When true, do not force TRUE or FALSE for any feature flag — behave like
-     * the module is not intercepting features. Used for device "None" and empty
-     * feature selection.
+     * the module is not intercepting features. Used for device "None", an empty
+     * feature selection, or a selection that resolves to no flags.
      */
     private var passThroughAll = false
 
@@ -206,7 +207,22 @@ object FeatureSpoofer {
             else -> DeviceProps.allFeatures.filter { it.displayName in selectedNames }
         }
 
-        finalFeaturesToSpoof = eligibleFeatures.flatMap { it.featureFlags }.toSet()
+        val resolvedFlags = eligibleFeatures.flatMap { it.featureFlags }.toSet()
+
+        // A non-empty selection can still resolve to no flags (for example the
+        // empty "Pixel 2026" tier). Treat that like an empty selection instead of
+        // hiding every known Pixel flag, which contradicts the pass-through rule
+        // above and surprises users on real Pixel hardware.
+        if (resolvedFlags.isEmpty()) {
+            passThroughAll = true
+            finalFeaturesToSpoof = emptySet()
+            featuresNotToSpoof = emptySet()
+            initialized = true
+            Log.d(TAG, "Feature spoof pass-through (no flags resolved for selection=$selectedNames)")
+            return
+        }
+
+        finalFeaturesToSpoof = resolvedFlags
 
         // --- Build the "not-to-spoof" list ---
         val allFlags = DeviceProps.allFeatures.flatMap { it.featureFlags }

@@ -6,6 +6,7 @@
     <string name="device_to_spoof">Device to spoof</string>
     <string name="spoofs_build_and_features">Spoofs selected device properties and feature flags. Google Photos is the recommended LSPosed scope; extra apps are advanced and unsupported. Never scope Play Services, Play Store, system UI, or banking/payment apps.</string>
     <string name="customize_feature_flags">Customize feature flags</string>
+    <string name="feature_level_without_flags">%1$s (no new feature flags)</string>
     <string name="feature_flags_changed">Feature flags changed</string>
     <string name="override_rom_feature_levels">Override ROM feature levels</string>
     <string name="override_rom_feature_levels_desc">When a lower Pixel profile is selected, ignore higher feature levels already supplied by the ROM. <b>(Recommended)</b></string>
