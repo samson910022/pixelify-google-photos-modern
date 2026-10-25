@@ -121,7 +121,7 @@ public final class TrustStoreTool {
                 TrustStoreTool - harden and verify a Java JKS/PKCS12 truststore.
 
                 Usage:
-                  java TrustStoreTool.java harden --store FILE --pins FILE [--canary-cert FILE] [--canary-alias ALIAS] [--min-certs N]
+                  java TrustStoreTool.java harden --store FILE --pins FILE [--canary-cert FILE] [--canary-alias ALIAS] [--min-certs N] [--report-store FILE]
                   java TrustStoreTool.java verify --store FILE --pins FILE [--min-certs N]
                   java TrustStoreTool.java verify-effective --pins FILE --canary-cert FILE [--min-issuers N]
                   java TrustStoreTool.java fingerprint --cert FILE
@@ -132,6 +132,9 @@ public final class TrustStoreTool {
                   harden            Remove every certificate entry whose SPKI SHA-256 is pinned,
                                     optionally add a public canary trust anchor, and atomically
                                     replace the target store with the hardened copy.
+                                    --report-store overrides only the path printed in the
+                                    harden JSON (display-only; the file actually hardened
+                                    is still --store).
                   verify            Fail if any pinned SPKI remains in a store and enforce a
                                     minimum certificate count.
                   verify-effective  Inspect the default JSSE TrustManagerFactory, fail if any
@@ -164,7 +167,8 @@ public final class TrustStoreTool {
 
     private static void harden(List<String> args) {
         Options options = parseOptions(args,
-                Set.of("--store", "--pins", "--canary-cert", "--canary-alias", "--min-certs"),
+                Set.of("--store", "--pins", "--canary-cert", "--canary-alias", "--min-certs",
+                        "--report-store"),
                 Set.of());
         Path storePath = requireFile(options, "--store");
         // Replacing a symlink with an atomically-moved regular file would
@@ -183,6 +187,20 @@ public final class TrustStoreTool {
                     + ": " + e.getMessage(), e);
         }
         refuseMultipleHardLinks(storePath);
+        // The wrapper hardens a staging file and then installs it at the final
+        // path. --report-store lets the JSON describe that final path without
+        // changing which file is actually hardened.
+        Path reportStorePath = storePath;
+        String reportStoreOption = options.get("--report-store");
+        if (reportStoreOption != null) {
+            if (reportStoreOption.isBlank()) {
+                fail("--report-store must not be blank");
+            }
+            reportStorePath = Path.of(reportStoreOption);
+            if (Files.isDirectory(reportStorePath)) {
+                fail("--report-store must not be a directory: " + reportStorePath);
+            }
+        }
         Path pinsPath = requireFile(options, "--pins");
         int minCerts = parsePositiveInt(
                 options.getOrDefault("--min-certs", Integer.toString(DEFAULT_MIN_CERTS)),
@@ -399,7 +417,7 @@ public final class TrustStoreTool {
         JsonWriter json = new JsonWriter();
         json.beginObject();
         json.name("command").value("harden");
-        json.name("store").value(storePath.toString());
+        json.name("store").value(reportStorePath.toString());
         json.name("storeType").value(reloaded.type());
         json.name("beforeCertCount").value(loaded.certificateCount());
         json.name("afterCertCount").value(reloaded.certificateCount());

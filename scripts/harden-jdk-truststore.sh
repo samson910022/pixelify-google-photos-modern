@@ -603,7 +603,8 @@ run_harden() {
     --pins "$PINS" \
     --canary-cert "$CANARY" \
     --canary-alias "$DEFAULT_CANARY_ALIAS" \
-    --min-certs "$MIN_CERTS")"
+    --min-certs "$MIN_CERTS" \
+    --report-store "$out_abs")"
   # GNU mv -T treats the destination as a normal file: a directory (or a
   # symlink to one) swapped in after the checks fails instead of receiving the
   # hardened store. Re-check both the canonical path and the pinned directory so

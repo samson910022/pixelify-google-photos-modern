@@ -47,6 +47,12 @@ Agent shells often lack `JAVA_HOME` even when the machine has a JDK under `$HOME
   test lintDebug lintRelease assembleDebug assembleRelease bundleRelease
 ```
 
+Run the JDK truststore hardening tests separately; they need JDK 17 with `javac` and `keytool`:
+
+```bash
+./scripts/with-android-env.sh python3 -m unittest tests.test_jdk_truststore -v
+```
+
 Optional machine-local paths: copy `scripts/env.local.sh.example` → `scripts/env.local.sh` (gitignored). Do not commit absolute home paths or signing secrets into tracked files.
 
 For a maintainer-authorized signed build, supply signing configuration from outside the repository and run the fail-closed release task:

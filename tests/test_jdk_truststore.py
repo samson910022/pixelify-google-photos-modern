@@ -1243,6 +1243,40 @@ class JdkTrustStoreTests(unittest.TestCase):
         listed = self.success_json(self.run_tool("list", "--store", store))
         self.assertEqual(listed["certificateCount"], 1)
 
+    def test_harden_report_store_is_display_only(self) -> None:
+        store = self.copy_shared("vulnerable_store.jks", self.tmp / "report.jks")
+        before = sha256_file(store)
+        for label, report in (("blank", " "), ("directory", str(self.tmp))):
+            with self.subTest(case=label):
+                result = self.run_tool(
+                    "harden",
+                    "--store",
+                    store,
+                    "--pins",
+                    PINS_PATH,
+                    "--report-store",
+                    report,
+                )
+                self.assert_failure(result, "--report-store")
+                self.assertEqual(sha256_file(store), before)
+
+        reported = self.tmp / "reported" / "cacerts"
+        hardened = self.success_json(
+            self.run_tool(
+                "harden",
+                "--store",
+                store,
+                "--pins",
+                PINS_PATH,
+                "--report-store",
+                reported,
+            )
+        )
+        self.assertEqual(hardened["store"], str(reported))
+        self.assertEqual(hardened["storeSha256"], sha256_file(store))
+        self.assertFalse(reported.exists(), "--report-store created a file")
+        self.assert_no_tool_temp_files()
+
     def test_harden_rejects_zero_min_certs_without_modifying_store(self) -> None:
         store = self.copy_shared("vulnerable_store.jks", self.tmp / "zero.jks")
         before = sha256_file(store)
@@ -1889,6 +1923,7 @@ class JdkTrustStoreTests(unittest.TestCase):
     def test_wrapper_harden_and_verify_only_round_trip(self) -> None:
         fake = self.make_fake_jdk()
         out_store = self.out_store_path("out", "cacerts")
+        resolved_out_store = out_store.resolve()
         env_file = self.tmp / "github-env"
         result = self.run_wrapper(
             "--java-home",
@@ -1904,12 +1939,18 @@ class JdkTrustStoreTests(unittest.TestCase):
 
         expected_type = store_type(out_store)
         options = self.read_env_file(env_file)
-        self.assertIn(f'-Djavax.net.ssl.trustStore="{out_store}"', options)
+        self.assertIn(f'-Djavax.net.ssl.trustStore="{resolved_out_store}"', options)
         self.assertIn(f"-Djavax.net.ssl.trustStorePassword={PASSWORD}", options)
         self.assertIn(f"-Djavax.net.ssl.trustStoreType={expected_type}", options)
 
         hardened = self.json_from(result)
         self.assertEqual(hardened["command"], "harden")
+        self.assertEqual(
+            hardened["store"],
+            str(resolved_out_store),
+            "harden JSON reported the staging path instead of the installed store",
+        )
+        self.assertEqual(hardened["storeSha256"], sha256_file(out_store))
         self.assertTrue(hardened["canaryPresent"])
         self.assertEqual(
             hardened["canarySha256"], self.__class__.canary_info["certSha256"]
@@ -1922,7 +1963,7 @@ class JdkTrustStoreTests(unittest.TestCase):
         verify = self.run_wrapper("--verify-only", env=env)
         effective = self.success_json(verify)
         self.assertEqual(effective["command"], "verify-effective")
-        self.assertEqual(effective["store"], str(out_store))
+        self.assertEqual(effective["store"], str(resolved_out_store))
         self.assertEqual(effective["storeType"], expected_type)
         self.assertEqual(effective["storeSha256"], sha256_file(out_store))
         self.assertTrue(effective["canaryPresent"])
@@ -1972,6 +2013,7 @@ class JdkTrustStoreTests(unittest.TestCase):
     def test_wrapper_out_store_with_spaces(self) -> None:
         fake = self.make_fake_jdk()
         out_store = self.out_store_path("dir with spaces", "out", "cacerts")
+        resolved_out_store = out_store.resolve()
         env_file = self.tmp / "env file with spaces"
         result = self.run_wrapper(
             "--java-home",
@@ -1983,13 +2025,13 @@ class JdkTrustStoreTests(unittest.TestCase):
         )
         self.assert_success(result)
         options = self.read_env_file(env_file)
-        self.assertIn(f'-Djavax.net.ssl.trustStore="{out_store}"', options)
+        self.assertIn(f'-Djavax.net.ssl.trustStore="{resolved_out_store}"', options)
 
         env = self.__class__.base_env.copy()
         env["JAVA_TOOL_OPTIONS"] = options
         verify = self.run_wrapper("--verify-only", env=env)
         effective = self.success_json(verify)
-        self.assertEqual(effective["store"], str(out_store))
+        self.assertEqual(effective["store"], str(resolved_out_store))
         self.assertTrue(effective["canaryPresent"])
         self.assertEqual(effective["forbiddenRemaining"], [])
 
@@ -2416,6 +2458,7 @@ class JdkTrustStoreTests(unittest.TestCase):
     def test_wrapper_print_env_stdout_is_eval_safe(self) -> None:
         fake = self.make_fake_jdk()
         out_store = self.out_store_path("print-env", "cacerts")
+        resolved_out_store = out_store.resolve()
         result = self.run_wrapper(
             "--java-home", fake, "--out-store", out_store, "--print-env"
         )
@@ -2425,7 +2468,7 @@ class JdkTrustStoreTests(unittest.TestCase):
         for line in lines:
             self.assertTrue(line.startswith("export "), msg=line)
         self.assertIn('"command":"harden"', result.stderr)
-        self.assertIn(str(out_store), result.stderr)
+        self.assertIn(str(resolved_out_store), result.stderr)
 
         eval_env = self.__class__.base_env.copy()
         eval_env["EXPORT_LINE"] = lines[0]
@@ -2435,7 +2478,7 @@ class JdkTrustStoreTests(unittest.TestCase):
         )
         self.assert_success(evaluated)
         options = evaluated.stdout
-        self.assertIn(f'-Djavax.net.ssl.trustStore="{out_store}"', options)
+        self.assertIn(f'-Djavax.net.ssl.trustStore="{resolved_out_store}"', options)
         self.assertIn(
             f"-Djavax.net.ssl.trustStoreType={store_type(out_store)}", options
         )
@@ -2464,6 +2507,7 @@ class JdkTrustStoreTests(unittest.TestCase):
     def test_wrapper_out_env_is_staged_and_replaced_atomically(self) -> None:
         fake = self.make_fake_jdk()
         out_store = self.out_store_path("out", "cacerts")
+        resolved_out_store = out_store.resolve()
         env_file = self.tmp / "github-env"
         env_file.write_text("EXISTING=1\n", encoding="ascii")
         result = self.run_wrapper(
@@ -2484,7 +2528,7 @@ class JdkTrustStoreTests(unittest.TestCase):
         lines = data.decode("utf-8").splitlines()
         self.assertEqual(len(lines), 2)
         self.assertEqual(lines[0], "EXISTING=1")
-        self.assertIn(f'-Djavax.net.ssl.trustStore="{out_store}"', lines[1])
+        self.assertIn(f'-Djavax.net.ssl.trustStore="{resolved_out_store}"', lines[1])
         self.assert_no_staging_leftovers(self.tmp)
         self.assert_no_tool_temp_files()
 

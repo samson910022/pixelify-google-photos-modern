@@ -24,138 +24,61 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up JDK 17
+      # Pin the exact JDK release: the truststore policy below is verified
+      # against Temurin 17.0.21+9, and a moving "17" could silently reintroduce
+      # the incident anchors or change cacerts contents.
+      - name: Set up JDK 17 (Temurin 17.0.21+9)
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
         with:
           distribution: temurin
-          java-version: "17"
-          check-latest: true
+          java-version: "17.0.21+9"
+          check-latest: false
 
-      - name: Remove impacted roots from CI JDK truststore
+      - name: Verify pinned JDK toolchain
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in java javac keytool; do
+            if [[ ! -x "$JAVA_HOME/bin/$tool" ]]; then
+              echo "::error::$JAVA_HOME/bin/$tool is missing; the tests must not skip"
+              exit 1
+            fi
+          done
+          cacerts="$JAVA_HOME/lib/security/cacerts"
+          if [[ ! -f "$cacerts" || ! -r "$cacerts" ]]; then
+            echo "::error::$cacerts is missing or unreadable; the tests must not skip"
+            exit 1
+          fi
+          runtime="$("$JAVA_HOME/bin/java" -XshowSettings:properties -version 2>&1 \
+            | sed -n 's/^ *java.runtime.version = //p')"
+          if [[ "$runtime" != "17.0.21+9" ]]; then
+            echo "::error::expected Temurin runtime 17.0.21+9, found ${runtime:-<unknown>}"
+            exit 1
+          fi
+
+      - name: Test JDK truststore hardening tool
+        timeout-minutes: 15
+        run: python3 -m unittest tests.test_jdk_truststore -v
+
+      - name: Harden CI JDK truststore
+        timeout-minutes: 10
         shell: bash
         run: |
           set -euo pipefail
           : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
           : "${GITHUB_ENV:?GITHUB_ENV is required}"
-          source_store="$JAVA_HOME/lib/security/cacerts"
-          test -x "$JAVA_HOME/bin/java"
-          test -x "$JAVA_HOME/bin/javac"
-          test -f "$source_store"
-          test -r "$source_store"
+          ./scripts/harden-jdk-truststore.sh \
+            --out-store "$RUNNER_TEMP/ci-cacerts" \
+            --out-env "$GITHUB_ENV"
 
-          # Modify only a private, writable copy; this is runner-local Java TLS hardening
-          # and does not alter Android app trust or the runner's cached JDK.
-          truststore="$(mktemp "$RUNNER_TEMP/ci-cacerts.XXXXXX")"
-          cp -- "$source_store" "$truststore"
-          chmod u+rw "$truststore"
+      - name: Verify hardened truststore is the effective JSSE store
+        timeout-minutes: 5
+        run: ./scripts/harden-jdk-truststore.sh --verify-only
 
-          cat >"$RUNNER_TEMP/RemoveImpactedTrustAnchors.java" <<'JAVA'
-          import java.io.IOException;
-          import java.io.InputStream;
-          import java.io.OutputStream;
-          import java.nio.file.Files;
-          import java.nio.file.Path;
-          import java.security.KeyStore;
-          import java.security.cert.Certificate;
-          import java.security.cert.X509Certificate;
-          import java.util.ArrayList;
-          import java.util.Enumeration;
-          import java.util.List;
-          import java.util.Set;
-          import javax.security.auth.x500.X500Principal;
-
-          public final class RemoveImpactedTrustAnchors {
-              private static final char[] PASSWORD = "changeit".toCharArray();
-              private static final Set<String> TARGET_SUBJECTS = Set.of(
-                  "cn=emsign ecc root ca - g3,o=emudhra technologies limited,ou=emsign pki,c=in",
-                  "cn=aaa certificate services,o=comodo ca limited,l=salford,st=greater manchester,c=gb"
-              );
-
-              private static String storeType(Path path) throws IOException {
-                  try (InputStream input = Files.newInputStream(path)) {
-                      byte[] header = input.readNBytes(4);
-                      if (header.length == 4
-                              && header[0] == (byte) 0xfe && header[1] == (byte) 0xed
-                              && header[2] == (byte) 0xfe && header[3] == (byte) 0xed) {
-                          return "JKS";
-                      }
-                      if (header.length > 0 && (header[0] & 0xff) == 0x30) {
-                          return "PKCS12";
-                      }
-                      throw new IOException("Unsupported or corrupt Java truststore format");
-                  }
-              }
-
-              private static KeyStore load(Path path, String type) throws Exception {
-                  KeyStore store = KeyStore.getInstance(type);
-                  try (InputStream input = Files.newInputStream(path)) {
-                      store.load(input, PASSWORD);
-                  }
-                  int certificates = 0;
-                  for (Enumeration<String> aliases = store.aliases(); aliases.hasMoreElements();) {
-                      if (store.getCertificate(aliases.nextElement()) != null) certificates++;
-                  }
-                  if (certificates == 0) throw new IOException("Truststore contains no certificates");
-                  return store;
-              }
-
-              private static boolean isTarget(Certificate certificate) {
-                  return certificate instanceof X509Certificate x509
-                      && TARGET_SUBJECTS.contains(x509.getSubjectX500Principal()
-                          .getName(X500Principal.CANONICAL));
-              }
-
-              private static int removeTargets(KeyStore store) throws Exception {
-                  int removed = 0;
-                  List<String> aliasesToRemove = new ArrayList<>();
-                  for (Enumeration<String> aliases = store.aliases(); aliases.hasMoreElements();) {
-                      String alias = aliases.nextElement();
-                      if (isTarget(store.getCertificate(alias))) aliasesToRemove.add(alias);
-                  }
-                  for (String alias : aliasesToRemove) {
-                      store.deleteEntry(alias);
-                      removed++;
-                  }
-                  return removed;
-              }
-
-              private static void verifyAbsent(KeyStore store) throws Exception {
-                  for (Enumeration<String> aliases = store.aliases(); aliases.hasMoreElements();) {
-                      if (isTarget(store.getCertificate(aliases.nextElement()))) {
-                          throw new IOException("An impacted trust anchor remains in the truststore");
-                      }
-                  }
-              }
-
-              public static void main(String[] args) throws Exception {
-                  if (args.length != 1) throw new IllegalArgumentException("Expected truststore path");
-                  Path path = Path.of(args[0]);
-                  String type = storeType(path);
-                  KeyStore store = load(path, type);
-                  int removed = removeTargets(store);
-                  verifyAbsent(store);
-                  try (OutputStream output = Files.newOutputStream(path)) {
-                      store.store(output, PASSWORD);
-                  }
-
-                  // Reload the written bytes so write/format errors cannot be mistaken for success.
-                  verifyAbsent(load(path, type));
-                  System.err.println("Removed " + removed + " impacted certificate(s); both target subjects are absent.");
-                  System.out.println(type);
-              }
-          }
-          JAVA
-
-          "$JAVA_HOME/bin/javac" -d "$RUNNER_TEMP" "$RUNNER_TEMP/RemoveImpactedTrustAnchors.java"
-          store_type="$("$JAVA_HOME/bin/java" -cp "$RUNNER_TEMP" RemoveImpactedTrustAnchors "$truststore")"
-          case "$store_type" in
-            JKS|PKCS12) ;;
-            *) echo "::error::Truststore helper returned an unsupported format" >&2; exit 1 ;;
-          esac
-
-          tool_options="${JAVA_TOOL_OPTIONS-}"
-          tool_options="${tool_options:+$tool_options }-Djavax.net.ssl.trustStore=$truststore -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=$store_type"
-          printf 'JAVA_TOOL_OPTIONS=%s\n' "$tool_options" >>"$GITHUB_ENV"
+      - name: Probe public TLS with the hardened truststore
+        timeout-minutes: 5
+        run: ./scripts/harden-jdk-truststore.sh --probe-tls
 
       - name: Validate wrapper and configure Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
