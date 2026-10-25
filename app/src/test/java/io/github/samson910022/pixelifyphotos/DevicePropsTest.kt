@@ -23,8 +23,8 @@ class DevicePropsTest {
     // =========================================================================
 
     @Test
-    fun `allFeatures contains 13 feature levels`() {
-        assertEquals(13, DeviceProps.allFeatures.size)
+    fun `allFeatures contains 14 feature levels`() {
+        assertEquals(14, DeviceProps.allFeatures.size)
     }
 
     @Test
@@ -45,6 +45,7 @@ class DevicePropsTest {
                 "Pixel 2023",
                 "Pixel 2024",
                 "Pixel 2025",
+                "Pixel 2026",
             ),
             names
         )
@@ -63,8 +64,8 @@ class DevicePropsTest {
     }
 
     @Test
-    fun `each feature level has at least one feature flag`() {
-        DeviceProps.allFeatures.forEach { features ->
+    fun `each established feature level has at least one feature flag`() {
+        DeviceProps.allFeatures.filter { it.displayName != "Pixel 2026" }.forEach { features ->
             assertTrue(
                 "Feature level '${features.displayName}' should have at least one flag",
                 features.featureFlags.isNotEmpty()
@@ -79,14 +80,17 @@ class DevicePropsTest {
     }
 
     @Test
-    fun `Pixel 2017 and later have exactly 2 feature flags each`() {
-        DeviceProps.allFeatures.drop(1).forEach { features ->
-            assertEquals(
-                "Feature level '${features.displayName}' should have exactly 2 flags",
-                2,
-                features.featureFlags.size
-            )
-        }
+    fun `Pixel 2017 through Pixel 2025 have exactly 2 feature flags each`() {
+        DeviceProps.allFeatures
+            .drop(1)
+            .filter { it.displayName != "Pixel 2026" }
+            .forEach { features ->
+                assertEquals(
+                    "Feature level '${features.displayName}' should have exactly 2 flags",
+                    2,
+                    features.featureFlags.size
+                )
+            }
     }
 
     @Test
@@ -104,6 +108,22 @@ class DevicePropsTest {
         val pixel2025 = DeviceProps.allFeatures.first { it.displayName == "Pixel 2025" }
         assertTrue(pixel2025.featureFlags.contains("com.google.android.feature.PIXEL_2025_EXPERIENCE"))
         assertTrue(pixel2025.featureFlags.contains("com.google.android.apps.photos.PIXEL_2025_PRELOAD"))
+    }
+
+    @Test
+    fun `Pixel 2026 has no asserted flags and inherits only known historical flags`() {
+        val pixel2026 = DeviceProps.allFeatures.first { it.displayName == "Pixel 2026" }
+        assertTrue(pixel2026.featureFlags.isEmpty())
+
+        val selectedLevels = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 11")
+        assertEquals(DeviceProps.allFeatures.map { it.displayName }.toSet(), selectedLevels)
+        val selectedFlags = DeviceProps.allFeatures
+            .filter { it.displayName in selectedLevels }
+            .flatMap { it.featureFlags }
+        val knownHistoricalFlags = DeviceProps.allFeatures
+            .filter { it.displayName != "Pixel 2026" }
+            .flatMap { it.featureFlags }
+        assertEquals(knownHistoricalFlags, selectedFlags)
     }
 
     // =========================================================================
@@ -208,9 +228,9 @@ class DevicePropsTest {
     }
 
     @Test
-    fun `all devices have allDevices count of 30`() {
-        // 1 "None" + 29 actual devices
-        assertEquals(30, DeviceProps.allDevices.size)
+    fun `all devices have allDevices count of 34`() {
+        // 1 "None" + 33 actual devices
+        assertEquals(34, DeviceProps.allDevices.size)
     }
 
     @Test
@@ -393,6 +413,41 @@ class DevicePropsTest {
     }
 
     @Test
+    fun `Pixel 11 series profiles have pinned Android 17 build properties`() {
+        // Fingerprints are sourced from each archive's device-specific ro.product.build.fingerprint.
+        val expectedProfiles = listOf(
+            Triple("Pixel 11", "cubs", "google/cubs/cubs:17/CD1A.261005.003/16262255:user/release-keys"),
+            Triple("Pixel 11 Pro", "grizzly", "google/grizzly/grizzly:17/CD1A.261005.003/16262255:user/release-keys"),
+            Triple("Pixel 11 Pro XL", "kodiak", "google/kodiak/kodiak:17/CD1A.261005.003/16262255:user/release-keys"),
+            Triple("Pixel 11 Pro Fold", "yogi", "google/yogi/yogi:17/CD1A.261005.003/16262255:user/release-keys"),
+        )
+
+        expectedProfiles.forEach { (name, codename, fingerprint) ->
+            val device = DeviceProps.getDeviceProps(name)
+            assertNotNull("Missing profile: $name", device)
+            assertEquals(name, device!!.deviceName)
+            assertEquals("google", device.props["BRAND"])
+            assertEquals("Google", device.props["MANUFACTURER"])
+            assertEquals(codename, device.props["DEVICE"])
+            assertEquals(codename, device.props["PRODUCT"])
+            assertEquals(name, device.props["MODEL"])
+            assertEquals(fingerprint, device.props["FINGERPRINT"])
+            assertEquals("CD1A.261005.003", device.props["ID"])
+            assertEquals("16262255", device.props["INCREMENTAL"])
+            assertEquals("2026-10-05", device.props["SECURITY_PATCH"])
+            assertEquals("Pixel 2026", device.featureLevelName)
+            assertEquals("Android 17", device.androidVersion?.label)
+            assertEquals(37, device.androidVersion?.sdk)
+        }
+    }
+
+    @Test
+    fun `Pixel 11a is absent`() {
+        assertNull(DeviceProps.getDeviceProps("Pixel 11a"))
+        assertNull(DeviceProps.getDeviceProps("Pixel 11a (experimental)"))
+    }
+
+    @Test
     fun `Pixel 10 Pro Fold is experimental identity-only rango`() {
         val device = DeviceProps.getDeviceProps("Pixel 10 Pro Fold (experimental)")
         assertNotNull(device)
@@ -455,6 +510,14 @@ class DevicePropsTest {
         val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 10")
         assertEquals(13, result.size)
         assertTrue(result.contains("Pixel 2025"))
+    }
+
+    @Test
+    fun `getFeaturesUpToFromDeviceName for Pixel 11 returns all 14 display names`() {
+        val result = DeviceProps.getFeaturesUpToFromDeviceName("Pixel 11")
+        assertEquals(14, result.size)
+        assertTrue(result.contains("Pixel 2025"))
+        assertTrue(result.contains("Pixel 2026"))
     }
 
     @Test

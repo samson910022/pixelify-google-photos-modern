@@ -119,6 +119,9 @@ object DeviceProps {
             // MED/LOW confidence: historical PRELOAD pairing; not factory-confirmed
             "com.google.android.apps.photos.PIXEL_2025_PRELOAD",
         ),
+
+        // Pixel 11 series: Pixel-Props/build.prop build-20261011. No new Photos flags are asserted.
+        Features("Pixel 2026", emptyList()),
     )
 
     /**
@@ -643,6 +646,73 @@ object DeviceProps {
             ),
             "Pixel 2025",
             getAndroidVersionFromLabel("Android 16"),
+        ),
+
+        // Pixel-Props/build.prop build-20261011: https://github.com/Pixel-Props/build.prop/releases/tag/build-20261011
+        // These values come from each device's ro.product.build.fingerprint in its system.prop archive, not the generic ro.build.fingerprint.
+        // DeviceSpoofer applies this normalized FINGERPRINT identity to Build.FINGERPRINT and partition-specific fingerprint keys.
+        DeviceEntries(
+            "Pixel 11", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "cubs"),
+                Pair("PRODUCT", "cubs"),
+                Pair("MODEL", "Pixel 11"),
+                Pair("FINGERPRINT", "google/cubs/cubs:17/CD1A.261005.003/16262255:user/release-keys"),
+                Pair("ID", "CD1A.261005.003"),
+                Pair("INCREMENTAL", "16262255"),
+                Pair("SECURITY_PATCH", "2026-10-05"),
+            ),
+            "Pixel 2026",
+            getAndroidVersionFromLabel("Android 17"),
+        ),
+
+        DeviceEntries(
+            "Pixel 11 Pro", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "grizzly"),
+                Pair("PRODUCT", "grizzly"),
+                Pair("MODEL", "Pixel 11 Pro"),
+                Pair("FINGERPRINT", "google/grizzly/grizzly:17/CD1A.261005.003/16262255:user/release-keys"),
+                Pair("ID", "CD1A.261005.003"),
+                Pair("INCREMENTAL", "16262255"),
+                Pair("SECURITY_PATCH", "2026-10-05"),
+            ),
+            "Pixel 2026",
+            getAndroidVersionFromLabel("Android 17"),
+        ),
+
+        DeviceEntries(
+            "Pixel 11 Pro XL", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "kodiak"),
+                Pair("PRODUCT", "kodiak"),
+                Pair("MODEL", "Pixel 11 Pro XL"),
+                Pair("FINGERPRINT", "google/kodiak/kodiak:17/CD1A.261005.003/16262255:user/release-keys"),
+                Pair("ID", "CD1A.261005.003"),
+                Pair("INCREMENTAL", "16262255"),
+                Pair("SECURITY_PATCH", "2026-10-05"),
+            ),
+            "Pixel 2026",
+            getAndroidVersionFromLabel("Android 17"),
+        ),
+
+        DeviceEntries(
+            "Pixel 11 Pro Fold", hashMapOf(
+                Pair("BRAND", "google"),
+                Pair("MANUFACTURER", "Google"),
+                Pair("DEVICE", "yogi"),
+                Pair("PRODUCT", "yogi"),
+                Pair("MODEL", "Pixel 11 Pro Fold"),
+                Pair("FINGERPRINT", "google/yogi/yogi:17/CD1A.261005.003/16262255:user/release-keys"),
+                Pair("ID", "CD1A.261005.003"),
+                Pair("INCREMENTAL", "16262255"),
+                Pair("SECURITY_PATCH", "2026-10-05"),
+            ),
+            "Pixel 2026",
+            getAndroidVersionFromLabel("Android 17"),
         ),
     )
 
