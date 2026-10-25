@@ -1,6 +1,9 @@
 # Public SPKI pins for JDK truststore hardening.
 #
-# Source: Oracle CVE-2026-91403 / https://openjdk.org/emudhra /
+# Source: Oracle CVE-2026-91403 and OpenJDK JDK-8395690 / CVE-2026-114820
+#         https://openjdk.org/emudhra /
+#         https://ops.java/emudhra /
+#         https://adoptium.net/news/2026/10/temurin-october-2026-emudhra/ /
 #         https://emudhra.we-have-a-problem.com/
 # Retrieved: 2026-10-25
 #
@@ -16,9 +19,11 @@
 # spaces. SPKI pins are unique and must not be repeated.
 #
 # Scope: 4 incident roots and 8 compromised intermediate CA keys (16
-# certificates, because some keys appear in more than one certificate). Pin
-# matching is by public key identity, not by subject DN, so cross-signed
-# certificates with the same key are covered automatically.
+# intermediate certificates, because some keys appear in more than one
+# certificate). The TLS G3 cross-certificate below is covered by the same SPKI
+# pin and is documented separately. Pin matching is by public key identity, not
+# by subject DN, so cross-signed certificates with the same key are covered
+# automatically.
 #
 # Why emSign Root CA G1/G2 are intentionally not pinned:
 # OpenJDK's CheckCerts notes that the emSign Root CA G1/G2 roots are unrelated

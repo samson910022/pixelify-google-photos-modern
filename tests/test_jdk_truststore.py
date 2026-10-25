@@ -508,6 +508,7 @@ class JdkTrustStoreTests(unittest.TestCase):
 
         cls.vulnerable_jdk_cacerts = cls.shared_dir / "vulnerable-jdk-cacerts"
         shutil.copy(cls.real_cacerts, cls.vulnerable_jdk_cacerts)
+        cls.vulnerable_jdk_cacerts.chmod(0o600)
         for index, path in enumerate(cls.root_pems):
             cls._import_cert(
                 cls.vulnerable_jdk_cacerts, f"incident-root-{index}", path
@@ -604,6 +605,7 @@ class JdkTrustStoreTests(unittest.TestCase):
         target = destination if destination is not None else self.tmp / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(source, target)
+        target.chmod(0o600)
         return target
 
     def write_text(self, path: Path, text: str) -> Path:
@@ -673,11 +675,56 @@ class JdkTrustStoreTests(unittest.TestCase):
         (fake / "bin").mkdir(parents=True)
         (fake / "lib" / "security").mkdir(parents=True)
         os.symlink(self.__class__.java.resolve(), fake / "bin" / "java")
+        fake_cacerts = fake / "lib" / "security" / "cacerts"
         shutil.copy(
             source if source is not None else self.__class__.vulnerable_jdk_cacerts,
-            fake / "lib" / "security" / "cacerts",
+            fake_cacerts,
         )
+        fake_cacerts.chmod(0o600)
         return fake
+
+    def make_realpath_swap_shim(
+        self, swap_path: Path, swap_target: Path, trigger: Path | None = None
+    ) -> dict:
+        """Return an env whose realpath creates a symlink at swap_path.
+
+        This deterministically exercises the window between the wrapper's
+        pre-check and canonicalization. The shim fires only when realpath is
+        invoked for swap_path itself (old behavior) or for its parent (the
+        parent-only resolution used now), so it cannot fire during an unrelated
+        earlier canonicalization. A correct wrapper keeps the final component
+        literal, so the -L check sees the symlink and refuses instead of
+        following it to swap_target. The real realpath is captured before the
+        shim is placed on PATH, so the shim cannot recurse.
+        """
+        real_realpath = shutil.which("realpath")
+        self.assertIsNotNone(real_realpath, "realpath is required for this test")
+        shim_dir = self.tmp / "realpath-shim"
+        shim_dir.mkdir()
+        shim = shim_dir / "realpath"
+        shim.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            'if [[ ! -e "$SWAP_DONE" ]]; then\n'
+            '  last=""\n'
+            '  for arg in "$@"; do last="$arg"; done\n'
+            '  if [[ "$last" == "$SWAP_PATH" || "$last" == "$SWAP_TRIGGER" ]]; then\n'
+            '    : >"$SWAP_DONE"\n'
+            '    ln -sfn -- "$SWAP_TARGET" "$SWAP_PATH"\n'
+            "  fi\n"
+            "fi\n"
+            'exec "$REAL_REALPATH" "$@"\n',
+            encoding="ascii",
+        )
+        shim.chmod(0o755)
+        env = self.__class__.base_env.copy()
+        env["PATH"] = f"{shim_dir}{os.pathsep}{env.get('PATH', '')}"
+        env["REAL_REALPATH"] = str(real_realpath)
+        env["SWAP_DONE"] = str(self.tmp / "realpath-swap-done")
+        env["SWAP_PATH"] = str(swap_path)
+        env["SWAP_TRIGGER"] = str(trigger if trigger is not None else swap_path)
+        env["SWAP_TARGET"] = str(swap_target)
+        return env
 
     def add_parent_swap_java(self, fake: Path, parent: Path, target: Path) -> dict:
         """Make the fake java rename a parent directory during harden.
@@ -1107,6 +1154,7 @@ class JdkTrustStoreTests(unittest.TestCase):
     def test_harden_real_cacerts_preserves_unpinned_entries(self) -> None:
         store = self.tmp / "real-cacerts"
         shutil.copy(self.__class__.real_cacerts, store)
+        store.chmod(0o600)
         before = self._list_store(store)
         before_spkis = {entry["spkiSha256"] for entry in before["entries"]}
         unpinned_before = before_spkis - self.pin_spkis
@@ -2108,6 +2156,33 @@ class JdkTrustStoreTests(unittest.TestCase):
         leftovers = sorted(out_store.parent.glob(out_store.name + ".tmp.*"))
         self.assertEqual(leftovers, [], f"staging files left behind: {leftovers}")
 
+    def test_wrapper_rejects_hostile_java_tool_options_before_hardening(self) -> None:
+        fake = self.make_fake_jdk()
+        out_store = self.out_store_path("out", "cacerts")
+        original = b"previously hardened store bytes\n"
+        out_store.write_bytes(original)
+        for label, value in (
+            ("newline", "-Dfoo=1\nJAVA_TOOL_OPTIONS=evil"),
+            ("carriage-return", "-Dfoo=1\rJAVA_TOOL_OPTIONS=evil"),
+        ):
+            with self.subTest(case=label):
+                env = self.__class__.base_env.copy()
+                env["JAVA_TOOL_OPTIONS"] = value
+                result = self.run_wrapper(
+                    "--java-home", fake, "--out-store", out_store, env=env
+                )
+                self.assert_failure(
+                    result,
+                    "JAVA_TOOL_OPTIONS must not contain newlines or carriage returns",
+                )
+                self.assertEqual(
+                    out_store.read_bytes(),
+                    original,
+                    "hostile JAVA_TOOL_OPTIONS changed the existing out-store",
+                )
+        self.assert_no_staging_leftovers(self.tmp)
+        self.assert_no_tool_temp_files()
+
     def test_wrapper_refuses_out_env_inside_repository(self) -> None:
         fake = self.make_fake_jdk()
         relative_pins = os.path.relpath(PINS_PATH, Path.cwd())
@@ -2157,6 +2232,68 @@ class JdkTrustStoreTests(unittest.TestCase):
         self.assert_failure(result, "refusing to write to a symlink path")
         self.assertTrue(link.is_symlink())
         self.assertEqual(target.read_text(encoding="ascii"), "EXISTING=1\n")
+
+    def test_wrapper_refuses_out_store_symlink_created_during_realpath(self) -> None:
+        """A symlink swapped in during canonicalization must not be followed."""
+        fake = self.make_fake_jdk()
+        out_store = self.out_store_path("out", "cacerts")
+        victim = self.tmp / "realpath-victim-store"
+        victim.write_bytes(b"DO NOT TOUCH\n")
+        before = sha256_file(victim)
+        env = self.make_realpath_swap_shim(out_store, victim, trigger=out_store.parent)
+
+        result = self.run_wrapper(
+            "--java-home", fake, "--out-store", out_store, env=env
+        )
+
+        self.assert_failure(result, "refusing to write to a symlink path")
+        self.assertTrue(out_store.is_symlink(), "the realpath swap was not exercised")
+        self.assertEqual(
+            sha256_file(victim), before, "the wrapper followed the swapped symlink"
+        )
+        self.assert_no_staging_leftovers(self.tmp)
+
+    def test_wrapper_refuses_out_env_symlink_created_during_realpath(self) -> None:
+        """An env-file symlink swapped in during canonicalization is refused."""
+        fake = self.make_fake_jdk()
+        out_store = self.out_store_path("out", "cacerts")
+        env_file = self.tmp / "github-env"
+        victim = self.tmp / "realpath-victim-env"
+        victim.write_text("DO NOT TOUCH\n", encoding="ascii")
+        before = victim.read_bytes()
+        env = self.make_realpath_swap_shim(env_file, victim, trigger=env_file.parent)
+
+        result = self.run_wrapper(
+            "--java-home",
+            fake,
+            "--out-store",
+            out_store,
+            "--out-env",
+            env_file,
+            env=env,
+        )
+
+        self.assert_failure(result, "refusing to write to a symlink path")
+        self.assertTrue(env_file.is_symlink(), "the realpath swap was not exercised")
+        self.assertEqual(
+            victim.read_bytes(), before, "the wrapper wrote through the swapped symlink"
+        )
+        self.assertFalse(
+            out_store.exists(), "the wrapper hardened before validating out-env"
+        )
+        self.assert_no_staging_leftovers(self.tmp)
+
+    def test_wrapper_rejects_directory_shaped_output_paths(self) -> None:
+        fake = self.make_fake_jdk()
+        for option in ("--out-store", "--out-env"):
+            for suffix in (".", "..", ""):
+                path = f"{self.tmp}/out/{suffix}"
+                with self.subTest(option=option, path=path):
+                    result = self.run_wrapper("--java-home", fake, option, path)
+                    self.assert_failure(
+                        result, "must name a file, not a directory path"
+                    )
+        self.assertFalse((self.tmp / "out").exists())
 
     def test_wrapper_refuses_out_env_hardlink_to_repository_file(self) -> None:
         fake = self.make_fake_jdk()
@@ -2617,6 +2754,7 @@ class JdkTrustStoreTests(unittest.TestCase):
             "--print-env",
         ):
             self.assertIn(token, result.stdout, f"help text is missing {token!r}")
+        normalized_help = " ".join(result.stdout.split())
         for phrase in (
             "inspects only the selected JDK's cacerts and ignores",
             "same requirements as --verify-only",
@@ -2634,7 +2772,7 @@ class JdkTrustStoreTests(unittest.TestCase):
             "not for shell sourcing",
             "eval-safe",
         ):
-            self.assertIn(phrase, result.stdout, f"help text is missing {phrase!r}")
+            self.assertIn(phrase, normalized_help, f"help text is missing {phrase!r}")
 
         short = self.run_wrapper("-h")
         self.assert_success(short)

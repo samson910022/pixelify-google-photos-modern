@@ -99,20 +99,20 @@ Harden options:
   --help             Show this help.
 
 Safety:
-  --out-store and --out-env are resolved with realpath, including parent
-  directories, and must be outside the repository and outside JAVA_HOME.
-  Their parent directories must already exist; the wrapper does not create
-  them. --out-env must name a regular file; a directory, FIFO, socket, device,
-  or symlink is refused, and it must not be the JDK cacerts or the same file as
-  --out-store. The final path component must not be a symlink, and an existing
-  output must not be a hardlink to a repository file. Both destinations are
-  staged beside the final path and are only replaced after the hardening tool
-  succeeds, using GNU mv -T so a symlink swapped in mid-run is replaced instead
-  of followed. Their parent directories are pinned with a directory file
-  descriptor and all staging and installation goes through /proc/self/fd, so
-  renaming or replacing a parent directory during hardening cannot redirect a
-  write. This requires Linux /proc/self/fd;
-  the wrapper fails closed where it is unavailable.
+  --out-store and --out-env must be outside the repository and outside
+  JAVA_HOME. Their parent directories are resolved with realpath, but the final
+  path component is kept literal and must not be a symlink. Their parent
+  directories must already exist because the wrapper does not create them.
+  --out-env must name a regular file; a directory, FIFO, socket, or device is
+  refused, and it must not be the JDK cacerts or the same file as --out-store.
+  An existing output must not be a hardlink to a repository file. Both
+  destinations are staged beside the final path and are only replaced after the
+  hardening tool succeeds, using GNU mv -T so a symlink swapped in mid-run is
+  replaced instead of followed. Their parent directories are pinned with a
+  directory file descriptor and all staging and installation goes through
+  /proc/self/fd, so renaming or replacing a parent directory during hardening
+  cannot redirect a write. This requires Linux /proc/self/fd; the wrapper fails
+  closed where it is unavailable.
 
 Output:
   Without --out-env or --print-env, stdout receives the tool JSON followed by
@@ -141,6 +141,40 @@ require_file() {
 same_file() {
   [[ -e "$1" && -e "$2" ]] || return 1
   [[ "$(stat -c '%d:%i' -- "$1")" == "$(stat -c '%d:%i' -- "$2")" ]]
+}
+
+# Canonicalize a destination path without following a symlink in its final
+# component. A plain "realpath -m" resolves every component, so a symlink
+# created at the final component after a pre-check would be followed and all
+# later checks would inspect the target instead of the path the caller named.
+# Resolving only the parent keeps the final component literal for the -L
+# checks; installation still goes through a pinned parent fd and GNU mv -T, so
+# a late symlink swap is replaced rather than followed.
+resolve_destination_path() {
+  local description="$1"
+  local path="$2"
+  local parent
+  local base
+  if [[ "$path" != */* ]]; then
+    parent="."
+  else
+    parent="${path%/*}"
+    [[ -n "$parent" ]] || parent="/"
+  fi
+  base="${path##*/}"
+  case "$base" in
+    "" | . | ..)
+      error "$description must name a file, not a directory path: $path"
+      ;;
+  esac
+  local parent_abs
+  parent_abs="$(realpath -m -- "$parent")" \
+    || error "cannot resolve $description parent directory: $parent"
+  if [[ "$parent_abs" == "/" ]]; then
+    printf '/%s\n' "$base"
+  else
+    printf '%s/%s\n' "$parent_abs" "$base"
+  fi
 }
 
 # Verify that an open directory file descriptor still names the canonical
@@ -400,7 +434,9 @@ install_out_env() {
     || error "cannot create staging file for out-env: $destination"
   ENV_STAGING_FILE="$env_staging"
   if [[ -f "$dir_path/$base" && ! -L "$dir_path/$base" && -s "$dir_path/$base" ]]; then
-    cat -- "$dir_path/$base" > "$env_staging" \
+    # Bound the read: a regular file swapped to a FIFO between the checks
+    # above and this open would otherwise block forever.
+    timeout 10 cat -- "$dir_path/$base" > "$env_staging" \
       || error "cannot read existing out-env: $destination"
     local last_byte
     last_byte="$(tail -c 1 -- "$env_staging" | od -An -tx1 | tr -d ' \n')" \
@@ -430,8 +466,10 @@ run_check_only() {
     cat >&2 <<'EOF'
 ERROR: the selected JDK truststore still contains one or more incident trust anchors.
 Update to a JDK release whose cacerts has the eMudhra incident anchors removed,
-or follow OpenJDK's guidance:
+or follow OpenJDK's and Oracle's guidance:
   https://openjdk.org/emudhra
+  https://ops.java/emudhra
+  https://adoptium.net/news/2026/10/temurin-october-2026-emudhra/
   https://emudhra.we-have-a-problem.com/
 This check did not modify the JDK installation.
 EOF
@@ -470,6 +508,15 @@ run_harden() {
   require_file "$PINS" "pin file"
   require_file "$CANARY" "canary certificate"
 
+  # Validate an existing JAVA_TOOL_OPTIONS before any staging or install: the
+  # wrapper appends to it, and a newline or carriage return would inject extra
+  # env-file lines or split the assignment. Doing this after hardening could
+  # leave a hardened store installed even though the env update is unusable.
+  local existing_options="${JAVA_TOOL_OPTIONS:-}"
+  if [[ "$existing_options" == *$'\n'* || "$existing_options" == *$'\r'* ]]; then
+    error "JAVA_TOOL_OPTIONS must not contain newlines or carriage returns"
+  fi
+
   local out_store
   local out_store_was_default=0
   if [[ -n "$out_store_arg" ]]; then
@@ -481,10 +528,7 @@ run_harden() {
 
   local out_abs
   local jdk_abs
-  if [[ -L "$out_store" ]]; then
-    error "refusing to write to a symlink path: $out_store"
-  fi
-  out_abs="$(realpath -m -- "$out_store")" || error "cannot resolve out-store path: $out_store"
+  out_abs="$(resolve_destination_path "out-store" "$out_store")"
   jdk_abs="$(realpath -m -- "$jdk_home")" || error "cannot resolve JAVA_HOME: $jdk_home"
 
   if [[ "$out_abs" == "$jdk_abs" || "$out_abs" == "$jdk_abs/"* ]]; then
@@ -519,10 +563,7 @@ run_harden() {
   local out_env_base=""
   local env_dir_path=""
   if [[ "$out_env_set" -eq 1 ]]; then
-    if [[ -L "$out_env" ]]; then
-      error "refusing to write to a symlink path: $out_env"
-    fi
-    out_env_abs="$(realpath -m -- "$out_env")" || error "cannot resolve out-env path: $out_env"
+    out_env_abs="$(resolve_destination_path "out-env" "$out_env")"
     refuse_inside_repo "out-env" "$out_env_abs"
     if [[ "$out_env_abs" == "$jdk_abs" || "$out_env_abs" == "$jdk_abs/"* ]]; then
       error "refusing to write inside JAVA_HOME ($jdk_abs): $out_env_abs"
@@ -628,13 +669,8 @@ run_harden() {
   store_type="$(detect_store_type "$out_store")"
 
   local truststore_options
-  local existing_options
   local new_tool_options
   truststore_options="-Djavax.net.ssl.trustStore=\"$out_store\" -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.trustStoreType=$store_type"
-  existing_options="${JAVA_TOOL_OPTIONS:-}"
-  if [[ "$existing_options" == *$'\n'* || "$existing_options" == *$'\r'* ]]; then
-    error "JAVA_TOOL_OPTIONS must not contain newlines or carriage returns"
-  fi
   if [[ -n "$existing_options" ]]; then
     new_tool_options="$existing_options $truststore_options"
   else

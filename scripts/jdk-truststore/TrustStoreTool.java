@@ -171,20 +171,32 @@ public final class TrustStoreTool {
                         "--report-store"),
                 Set.of());
         Path storePath = requireFile(options, "--store");
-        // Replacing a symlink with an atomically-moved regular file would
-        // harden a different path than the caller named while leaving the
-        // real store vulnerable. Refuse the final-component symlink, then
-        // canonicalize so parent-directory symlinks cannot make the checked
-        // path differ from the replaced path.
+        // Resolve only the parent directory. A full toRealPath() here would
+        // follow a final-component symlink created between the check and the
+        // call, and the later atomic replace would then overwrite the link
+        // target instead of the path the caller named. Keep the final
+        // component literal for the symlink check; the atomic move below
+        // replaces that directory entry, never a symlink target.
+        Path storeName = storePath.getFileName();
+        if (storeName == null
+                || storeName.toString().equals(".")
+                || storeName.toString().equals("..")) {
+            fail("refusing to harden a path that does not name a file: " + storePath);
+        }
+        Path storeParent = storePath.getParent();
+        if (storeParent == null) {
+            storeParent = Path.of(".");
+        }
+        try {
+            storeParent = storeParent.toRealPath();
+        } catch (IOException e) {
+            throw new ToolException("cannot resolve truststore parent directory " + storeParent
+                    + ": " + e.getMessage(), e);
+        }
+        storePath = storeParent.resolve(storeName);
         if (Files.isSymbolicLink(storePath)) {
             fail("refusing to harden a symlinked truststore: " + storePath
                     + " (resolve the link explicitly)");
-        }
-        try {
-            storePath = storePath.toRealPath();
-        } catch (IOException e) {
-            throw new ToolException("cannot resolve truststore path " + storePath
-                    + ": " + e.getMessage(), e);
         }
         refuseMultipleHardLinks(storePath);
         // The wrapper hardens a staging file and then installs it at the final
