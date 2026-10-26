@@ -7,6 +7,10 @@ import com.google.android.material.color.DynamicColorsOptions
 import io.github.libxposed.service.XposedService
 import io.github.libxposed.service.XposedServiceHelper
 
+/**
+ * Service lifecycle phase. [READY] means remote settings are usable; diagnostics
+ * token convergence is telemetry-only and its failure can coexist with [READY].
+ */
 internal enum class ServicePhase { DISCONNECTED, CONNECTED_SYNCING, READY, ERROR }
 
 internal data class ServiceReadinessSnapshot(
@@ -21,7 +25,7 @@ internal data class ServiceReadinessSnapshot(
 class App : Application(), XposedServiceHelper.OnServiceListener {
 
     @VisibleForTesting
-    internal var testAfterTokenConvergence: (() -> Unit)? = null
+    internal var testAfterConvergence: (() -> Unit)? = null
 
     @VisibleForTesting
     internal var testTokenConvergenceOverride: ((XposedService) -> Boolean)? = null
@@ -71,6 +75,10 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         // deliberate ordering, not an accident; only an anomalously slow LSPosed
         // provider could push past the window, and ModuleStateResolver's host-disposed
         // suppression already tolerates late bind events.
+        //
+        // Diagnostics token convergence and offline-settings convergence are
+        // independent: a token failure only degrades diagnostics/telemetry and must
+        // never block settings readiness, listener draining, or the settings UI.
         val tokenConverged = runCatching {
             testTokenConvergenceOverride?.invoke(service)
                 ?: DiagnosticsStore.convergeBroadcastToken(this, service)
@@ -81,25 +89,27 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
                 "Diagnostics IPC token stores did not converge; remote diagnostic results will remain unknown",
             )
         }
-        val settingsConverged = tokenConverged && runCatching {
+        val settingsConverged = runCatching {
             testSettingsHandoffOverride?.invoke(service)
                 ?: OfflineSettingsHandoff.converge(this, service)
         }.getOrDefault(false)
-        if (tokenConverged && !settingsConverged) {
-            android.util.Log.w(TAG, "Pending offline settings could not be merged into manager preferences")
+        if (!settingsConverged) {
+            android.util.Log.w(TAG, "Remote settings are not usable; offline handoff did not converge")
         }
-        testAfterTokenConvergence?.invoke()
+        testAfterConvergence?.invoke()
         var readyState: ServiceReadinessSnapshot? = null
         var stateObservers: List<(ServiceReadinessSnapshot) -> Unit> = emptyList()
         val listeners = synchronized(serviceStateLock) {
             if (App.mService !== service || serviceAttemptGeneration != attemptGeneration) {
                 emptyList()
             } else {
-                servicePhase = if (tokenConverged && settingsConverged) ServicePhase.READY else ServicePhase.ERROR
+                // READY means "remote settings are usable". Diagnostics token state is
+                // deliberately excluded so telemetry degradation cannot disable settings.
+                servicePhase = if (settingsConverged) ServicePhase.READY else ServicePhase.ERROR
                 serviceStateVersion += 1L
                 readyState = readinessSnapshotLocked()
                 stateObservers = serviceStateListeners.toList()
-                if (tokenConverged && settingsConverged) {
+                if (settingsConverged) {
                     serviceBoundListeners.toList().also { serviceBoundListeners.clear() }
                 } else {
                     emptyList()
@@ -115,7 +125,12 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         }
     }
 
-    /** Retries failed convergence on the already-bound Binder; does not reconnect. */
+    /**
+     * Retries convergence on the already-bound Binder; does not reconnect. Both
+     * diagnostics token and offline-settings convergence run again, but the retry
+     * succeeds (and the service becomes READY) only when settings convergence
+     * succeeds; a still-failing diagnostics token is telemetry degradation only.
+     */
     internal fun retryServiceConvergence(): Boolean {
         val service: XposedService
         val generation: Long
@@ -218,9 +233,10 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
 
         /**
          * Registers a one-shot callback notified exactly once when the Xposed service
-         * binds. If the service is already bound, the callback runs synchronously on
-         * the caller's thread; otherwise it is invoked after [onServiceBind] completes
-         * token convergence. UI callers must marshal to the main thread themselves.
+         * binds and its remote settings are ready. If the service is already ready,
+         * the callback runs synchronously on the caller's thread; otherwise it is
+         * invoked after [onServiceBind] completes settings convergence. UI callers
+         * must marshal to the main thread themselves.
          */
         fun addOnServiceBoundListener(listener: () -> Unit) {
             var invokeNow = false
@@ -238,7 +254,7 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
             }
         }
 
-        /** Returns only a service whose remote preferences have completed token convergence. */
+        /** Returns only a service whose remote settings finished convergence ([ServicePhase.READY]). */
         internal fun readyService(): XposedService? = synchronized(serviceStateLock) {
             mService.takeIf { servicePhase == ServicePhase.READY }
         }
@@ -259,9 +275,10 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
          * The offline path takes [OfflineSettingsHandoff.recoveryLock] inside this lock;
          * that ordering (serviceStateLock -> recoveryLock) must never be reversed.
          * Holding the lock through the operation is intentional because an `apply()`
-         * write offers no failure signal to roll back after a rebind. Known exception
-         * to "keep it short": configuration import currently opens and parses the
-         * selected document inside the operation; do not add more blocking work here.
+         * write offers no failure signal to roll back after a rebind. Callers must
+         * finish any document I/O, parsing, and validation before calling (for
+         * example the staged [ConfigImportPlan]); only short in-memory writes belong
+         * inside the operation.
          */
         internal fun withGuardedSettingsPreferences(
             context: android.content.Context,
@@ -379,11 +396,11 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         }
 
         /**
-         * Re-runs token convergence for the current Binder after a prior failure.
-         * This does not request or create a new Xposed Binder connection. The
-         * synchronous work should be called off the UI thread.
+         * Safe UI entry point; retries convergence on the current Binder on a daemon
+         * worker, never the main thread. A missing or already-READY service is a no-op.
+         * Token-only degradation cannot block settings readiness, so it is repaired by
+         * the next bind rather than by this settings-oriented retry.
          */
-        /** Safe UI entry point; convergence runs on a daemon worker, never the main thread. */
         fun requestServiceConvergenceRetry() {
             applicationInstance?.requestServiceConvergenceRetry()
         }

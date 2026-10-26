@@ -36,6 +36,7 @@
     <string name="share_error">Unable to share or export the configuration.</string>
     <string name="config_export_unavailable">Configuration export is unavailable until the settings source can be read. No configuration was shared or saved.</string>
     <string name="config_export_empty">There are no saved user settings to export. No configuration was shared or saved.</string>
+    <string name="config_export_in_progress">A configuration export is already waiting for the document picker. Finish or cancel it before starting another export.</string>
     <string name="read_error">Unable to read the selected configuration file.</string>
     <string name="import_complete">Import complete</string>
     <string name="invalid_imported_device">The imported device profile is unsupported and was skipped.</string>
@@ -125,7 +126,7 @@
     <string name="diagnostics_service_disconnected">disconnected</string>
     <string name="diagnostics_service_syncing">connected · syncing preferences</string>
     <string name="diagnostics_service_ready">ready</string>
-    <string name="diagnostics_service_error">connected · diagnostics sync failed</string>
+    <string name="diagnostics_service_error">connected · settings sync failed</string>
     <string name="diagnostics_scope">Scope: %1$s</string>
     <string name="diagnostics_scope_empty">none</string>
     <string name="diagnostics_source_availability">Profile settings: %1$s · Hook telemetry: %2$s</string>
@@ -169,7 +170,7 @@
     <string name="diagnostics_connection_banner">Xposed manager service is not connected. This only describes this app\'s manager connection and does not establish whether hooks ran in Google Photos. Enable this module in LSPosed, open Google Photos, then reopen this screen.</string>
     <string name="diagnostics_snapshot_refreshing">Refreshing diagnostics because the service state changed. Captured values are temporarily unavailable.</string>
     <string name="diagnostics_connection_syncing">Connected to the Xposed manager; preferences and the diagnostics token are syncing. Diagnostics may be temporarily unavailable. This does not indicate whether hooks ran.</string>
-    <string name="diagnostics_connection_error">Connected to the Xposed manager, but settings or diagnostics synchronization failed. Remote writes remain disabled; check the manager connection and retry.</string>
+    <string name="diagnostics_connection_error">Connected to the Xposed manager, but settings synchronization failed. Remote writes remain disabled; check the manager connection and retry.</string>
     <string name="diagnostics_connection_disconnected">The Xposed manager connection was lost. Settings are read-only until the service reconnects and preferences are ready.</string>
     <string name="settings_write_unavailable">Settings cannot be saved until the Xposed service is ready again. Your changes were not saved.</string>
     <string name="settings_offline_memory_only">Saved for this process, but disk persistence is uncertain. Keep the app open until the Xposed service syncs your changes.</string>

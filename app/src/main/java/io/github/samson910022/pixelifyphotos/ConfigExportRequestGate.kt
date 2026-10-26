@@ -5,7 +5,11 @@ import android.content.SharedPreferences
 import org.json.JSONObject
 import java.util.UUID
 
-/** A process-local epoch prevents a persisted service version from authorizing an old export. */
+/**
+ * A process-local epoch separates two authorization modes for a persisted export request:
+ * the same process requires exact source equality, while a restored cross-process request is
+ * re-authorized against current settings access instead of the dead source stamp.
+ */
 internal object ConfigExportProcessEpoch {
     val current: String = UUID.randomUUID().toString()
 }
@@ -27,11 +31,16 @@ internal data class ConfigExportSourceStamp(
     }
 }
 
-/** Durable association between one picker callback ID, its source, and allowlisted JSON. */
+/**
+ * Durable association between one picker callback ID, its source, its allowlisted JSON, and the
+ * wall-clock creation time that bounds cross-process restores of a possibly orphaned record.
+ */
 internal data class ConfigExportPendingRequest(
     val id: String,
     val source: ConfigExportSourceStamp,
     val json: String,
+    /** Wall-clock creation time; bounds how long a failed durable removal can block exports. */
+    val createdAtMillis: Long,
 )
 
 /** Minimal persistence boundary so request transitions can be tested without Android storage. */
@@ -43,12 +52,23 @@ internal interface ConfigExportRequestPersistence {
 /** One pending request is persisted before launching SAF; callbacks only consume their own ID. */
 internal class ConfigExportRequestGate(
     private val persistence: ConfigExportRequestPersistence,
+    /** Injectable wall clock used to bound stale cross-process records in tests. */
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     companion object {
         private val storageLock = Any()
         /** A one-shot result has no channel to be restored after its callback was delivered. */
         private val deliveredRequestIds = mutableSetOf<String>()
-        private const val FORMAT_VERSION = 1
+        private const val FORMAT_VERSION = 2
+
+        /**
+         * Upper bound, measured from request creation, on how long a cross-process pending record
+         * may be restored. A durable record left behind by a failed removal otherwise blocks
+         * every future export forever; one hour covers a realistic document-picker session across
+         * process death. A picker kept open longer than this across a process boundary is treated
+         * as abandoned on the next Activity creation; same-process recreation never ages out.
+         */
+        internal const val CROSS_PROCESS_PENDING_TTL_MILLIS = 60 * 60 * 1000L
 
         fun from(context: Context): ConfigExportRequestGate {
             val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -84,16 +104,29 @@ internal class ConfigExportRequestGate(
         committed
     }
 
-    /** Returns null for a corrupt record; [hasPending] still fails closed in that case. */
+    /**
+     * Raw persisted record for tests. Unlike [restorePending] this does not apply
+     * delivered-ID or cross-process TTL filtering; production launch decisions use
+     * [restorePending] and [reconcile].
+     */
     fun pending(): ConfigExportPendingRequest? = synchronized(storageLock) {
         runCatching { persistence.read()?.let(::decode) }.getOrNull()
     }
 
     /**
-     * Restores a same-process request, abandons a stale-epoch request by ID, and removes corrupt
-     * records that have no usable ID/key to receive a callback. Read/commit failures remain closed.
+     * Restores an in-flight request for the current process so the exact ActivityResult key can
+     * be re-registered. Corrupt records and requests whose one-shot result was already delivered
+     * in this process are cleared. A record from a different process epoch survives only while it
+     * is younger than [CROSS_PROCESS_PENDING_TTL_MILLIS]; the same-process Activity recreation path
+     * never ages out a picker that is still open. When [canReceiveResult] is false the Activity has
+     * no restored ActivityResultRegistry mapping (for example a fresh task), so the record is
+     * cleared instead of registering a key that can never receive the picker result. Read/commit
+     * failures remain closed.
      */
-    fun restoreForProcess(processEpoch: String): ConfigExportPendingRequest? = synchronized(storageLock) {
+    fun restorePending(
+        currentProcessEpoch: String,
+        canReceiveResult: Boolean = true,
+    ): ConfigExportPendingRequest? = synchronized(storageLock) {
         val raw = try {
             persistence.read()
         } catch (_: Exception) {
@@ -105,7 +138,9 @@ internal class ConfigExportRequestGate(
             clearCorruptRecordLocked(raw)
             return@synchronized null
         }
-        if (request.source.processEpoch != processEpoch) {
+        if (!canReceiveResult) {
+            // No saved registry state means no future callback can be routed to this key. Clearing
+            // avoids an orphan that silently blocks save-export and deferred restarts.
             clearMatchingLocked(request.id, abandonIfStillPending = true)
             return@synchronized null
         }
@@ -115,7 +150,47 @@ internal class ConfigExportRequestGate(
             clearMatchingLocked(request.id, abandonIfStillPending = true)
             return@synchronized null
         }
+        if (isExpiredCrossProcessRequest(request, currentProcessEpoch)) {
+            clearMatchingLocked(request.id, abandonIfStillPending = true)
+            return@synchronized null
+        }
         request
+    }
+
+    /**
+     * Applies the same delivery/expiry cleanup as [restorePending] without returning a request.
+     * Save-export calls this before its [hasPending] guard so a stale cross-process record cannot
+     * keep blocking in a long-lived Activity that is never recreated.
+     */
+    fun reconcile(currentProcessEpoch: String) = synchronized(storageLock) {
+        val raw = try {
+            persistence.read()
+        } catch (_: Exception) {
+            return@synchronized
+        } ?: return@synchronized
+
+        val request = decode(raw)
+        if (request == null) {
+            clearCorruptRecordLocked(raw)
+            return@synchronized
+        }
+        if (request.id in deliveredRequestIds || isExpiredCrossProcessRequest(request, currentProcessEpoch)) {
+            clearMatchingLocked(request.id, abandonIfStillPending = true)
+        }
+    }
+
+    /**
+     * Only a record from an earlier process can be stale: a same-process request may legitimately
+     * stay pending for as long as its picker is open. A future timestamp (clock moved backwards or
+     * a corrupt record) is also treated as expired so it cannot block exports indefinitely.
+     */
+    private fun isExpiredCrossProcessRequest(
+        request: ConfigExportPendingRequest,
+        currentProcessEpoch: String,
+    ): Boolean {
+        if (request.source.processEpoch == currentProcessEpoch) return false
+        val age = now() - request.createdAtMillis
+        return age < 0L || age >= CROSS_PROCESS_PENDING_TTL_MILLIS
     }
 
     fun hasPending(): Boolean = synchronized(storageLock) {
@@ -170,7 +245,8 @@ internal class ConfigExportRequestGate(
 
         // SharedPreferences.commit() updates its live in-process map even when disk persistence
         // fails. Read that map back before deciding whether this one-shot callback was consumed;
-        // a stale on-disk record belongs to this process epoch and is abandoned after process death.
+        // if a stale on-disk record survives, a later process may restore it only within the
+        // bounded cross-process TTL and must re-authorize the allowlisted snapshot.
         val afterRemoval = try {
             persistence.read()
         } catch (_: Exception) {
@@ -239,6 +315,7 @@ internal class ConfigExportRequestGate(
         request.id.isNotBlank() &&
             request.source.processEpoch.isNotBlank() &&
             request.source.serviceVersion >= 0L &&
+            request.createdAtMillis >= 0L &&
             ConfigExportPolicy.isAllowlistedExportJson(request.json)
 
     private fun encode(request: ConfigExportPendingRequest): String = JSONObject().apply {
@@ -248,6 +325,7 @@ internal class ConfigExportRequestGate(
         put("service_version", request.source.serviceVersion)
         put("service_phase", request.source.servicePhase.name)
         put("connected", request.source.connected)
+        put("created_at_millis", request.createdAtMillis)
         // This payload is validated against ConfigExportPolicy's explicit settings allowlist.
         put("json", request.json)
     }.toString()
@@ -268,13 +346,14 @@ internal class ConfigExportRequestGate(
                     id = value.getString("id"),
                     source = source,
                     json = value.getString("json"),
+                    createdAtMillis = value.getLong("created_at_millis"),
                 ).takeIf(::isValid)
             }
         }.getOrNull()
     }
 }
 
-/** Callback validation kept separate from persistence so stale IDs/epochs are directly testable. */
+/** Callback validation kept separate from persistence so stale IDs and source mismatches are directly testable. */
 internal object ConfigExportRequestPolicy {
     data class AuthorizedWrite<T : Any>(
         val requestId: String,
@@ -282,16 +361,28 @@ internal object ConfigExportRequestPolicy {
         val json: String,
     )
 
+    /**
+     * Callback authorization for an already-persisted allowlisted snapshot.
+     *
+     * The callback ID must match exactly and settings access must still be authorized now. When
+     * the request came from this process ([ConfigExportSourceStamp.processEpoch] matches), the
+     * full source stamp must be unchanged, so a settings/service transition while the picker is
+     * open fails closed. A request restored from an earlier process cannot satisfy that equality;
+     * it skips only the dead stamp and relies on current authorization plus allowlist validation.
+     */
     fun mayWrite(
         request: ConfigExportPendingRequest,
         callbackRequestId: String,
         currentSource: ConfigExportSourceStamp,
         sourceStillAuthorized: Boolean,
-    ): Boolean = callbackRequestId == request.id &&
-        request.source.processEpoch == currentSource.processEpoch &&
-        request.source == currentSource &&
-        sourceStillAuthorized &&
-        ConfigExportPolicy.isAllowlistedExportJson(request.json)
+    ): Boolean {
+        if (callbackRequestId != request.id) return false
+        if (!sourceStillAuthorized) return false
+        if (request.source.processEpoch == currentSource.processEpoch && request.source != currentSource) {
+            return false
+        }
+        return ConfigExportPolicy.isAllowlistedExportJson(request.json)
+    }
 
     fun <T : Any> authorizeWrite(
         request: ConfigExportPendingRequest,

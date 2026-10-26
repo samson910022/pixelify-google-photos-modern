@@ -222,6 +222,9 @@ class ActivityMain : AppCompatActivity() {
      */
     private fun restartActivity() {
         if (isFinishing || isDestroyed) return
+        // Expire a stale cross-process record before deciding to defer; otherwise it can block
+        // this restart (and every later one) for the lifetime of a long-lived Activity.
+        pendingConfigExport.reconcile(ConfigExportProcessEpoch.current)
         if (!deferredActivityRestart.requestRestart(
                 configExportPending = pendingConfigExport.hasAwaitingResult() || configExportCallbackInProgress,
             )
@@ -270,7 +273,9 @@ class ActivityMain : AppCompatActivity() {
 
         // Re-register the durable request's unique key before STARTED so ActivityResultRegistry
         // can restore/deliver an in-flight SAF result after rotation or process recreation.
-        restorePendingConfigExportLauncher()
+        // A fresh task has no saved registry mapping, so no result can ever reach a restored key;
+        // discard the record instead of creating an orphan that blocks future exports.
+        restorePendingConfigExportLauncher(savedStatePresent = savedInstanceState != null)
         ensureMainServiceStateListener()
         updateSettingsControls()
         val currentState = App.serviceReadinessSnapshot()
@@ -349,7 +354,7 @@ class ActivityMain : AppCompatActivity() {
             restartActivity()
             return
         }
-        initializeUi(preferences)
+        initializeUi(preferences, versionMarkerAuthoritative = true)
     }
 
     private fun initializeForOfflineService() {
@@ -363,7 +368,10 @@ class ActivityMain : AppCompatActivity() {
         if (latestState.version != state.version || latestState.connected || App.hasObservedFrameworkBinding()) return
         initializedServiceStateVersion = state.version
         updateSettingsControls()
-        initializeUi(preferences)
+        // Local settings are not authoritative for app metadata: PREF_LAST_VERSION is not a
+        // portable user setting, so deferring the changelog until the remote source is ready
+        // avoids showing it again after the first framework bind.
+        initializeUi(preferences, versionMarkerAuthoritative = false)
     }
 
     private fun showServiceNotReadyDialog(state: ServiceReadinessSnapshot) {
@@ -408,8 +416,10 @@ class ActivityMain : AppCompatActivity() {
      * resolved as enabled.
      *
      * @param pref SharedPreferences instance containing user settings.
+     * @param versionMarkerAuthoritative True only for the remote/ready settings source.
+     *   Local cold-start preferences are not a safe home for app version metadata.
      */
-    private fun initializeUi(pref: SharedPreferences?) {
+    private fun initializeUi(pref: SharedPreferences?, versionMarkerAuthoritative: Boolean) {
         if (isClassicUi) {
             setupClassicUi(pref)
         } else {
@@ -418,9 +428,11 @@ class ActivityMain : AppCompatActivity() {
 
         checkFirstRunOnboarding(pref)
 
-        // Check if changelogs need to be shown when upgrading from older version.
+        // Show/record the changelog marker only from authoritative remote settings. The marker is
+        // deliberately outside OfflineSettingsHandoff's user-setting allowlist, so a local write
+        // would never converge and would replay the same changelog after the first bind.
         val thisVersion = BuildConfig.VERSION_CODE
-        if ((pref?.getInt(PREF_LAST_VERSION, 0) ?: thisVersion) < thisVersion) {
+        if (AppVersionMarkerPolicy.shouldRecordVersion(pref, versionMarkerAuthoritative, thisVersion)) {
             showChangeLog()
             updateSettings { currentPrefs ->
                 currentPrefs.edit().putInt(PREF_LAST_VERSION, thisVersion).apply()
@@ -1006,7 +1018,13 @@ class ActivityMain : AppCompatActivity() {
      * Launch the Storage Access Framework document creation picker to save configuration JSON.
      */
     private fun saveConfFile() {
-        if (pendingConfigExport.hasPending()) return
+        // A long-lived Activity is not recreated, so reconcile here as well as in onCreate;
+        // otherwise an expired cross-process record blocks export until the task restarts.
+        pendingConfigExport.reconcile(ConfigExportProcessEpoch.current)
+        if (pendingConfigExport.hasPending()) {
+            Toast.makeText(this, R.string.config_export_in_progress, Toast.LENGTH_LONG).show()
+            return
+        }
         val capture = captureAuthorizedConfigExport()
         val export = capture.export
         if (export == null) {
@@ -1018,6 +1036,7 @@ class ActivityMain : AppCompatActivity() {
             id = requestId,
             source = ConfigExportSourceStamp.from(export.source, ConfigExportProcessEpoch.current),
             json = export.json,
+            createdAtMillis = System.currentTimeMillis(),
         )
         val launcher = try {
             registerConfigCreateLauncher(requestId, lifecycleAware = false)
@@ -1060,8 +1079,11 @@ class ActivityMain : AppCompatActivity() {
     }
 
     /** Restores an outstanding request key before STARTED; the payload itself stays in app storage. */
-    private fun restorePendingConfigExportLauncher() {
-        val request = pendingConfigExport.restoreForProcess(ConfigExportProcessEpoch.current) ?: return
+    private fun restorePendingConfigExportLauncher(savedStatePresent: Boolean) {
+        val request = pendingConfigExport.restorePending(
+            currentProcessEpoch = ConfigExportProcessEpoch.current,
+            canReceiveResult = savedStatePresent,
+        ) ?: return
         runCatching { registerConfigCreateLauncher(request.id, lifecycleAware = true) }
     }
 
@@ -1110,10 +1132,16 @@ class ActivityMain : AppCompatActivity() {
             }
             val current = App.serviceReadinessSnapshot()
             val currentSource = ConfigExportSourceStamp.from(current, ConfigExportProcessEpoch.current)
+            // Settings access is part of write authorization, not launch-time state: after process
+            // death the persisted snapshot must be re-authorized against the current source.
+            // While the recreated process waits for a rebind, this may legitimately resolve the
+            // recovered local store; the archived payload is still allowlist-only and was
+            // authorized at capture, so the user's completed picker is not discarded.
+            val preferencesAvailable = PrefUtils.getPrefs(this, current) != null
             val sourceStillAuthorized = ConfigExportPolicy.mayExport(
                 current,
                 frameworkBindingObserved || App.hasObservedFrameworkBinding(),
-                preferencesAvailable = true,
+                preferencesAvailable = preferencesAvailable,
             )
             val authorizedWrite = ConfigExportRequestPolicy.authorizeWrite(
                 request = request,
@@ -1260,11 +1288,14 @@ class ActivityMain : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
 
+    /** Guards against overlapping document reads/imports from repeated picker results. */
+    private var configImportInProgress = false
+
     /**
      * Launch the Storage Access Framework document picker to select a configuration JSON for import.
      */
     private fun importConfFile() {
-        if (!canEditSettings()) return
+        if (configImportInProgress || !canEditSettings()) return
         val openIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/json"
@@ -1274,26 +1305,56 @@ class ActivityMain : AppCompatActivity() {
 
     /**
      * ActivityResultLauncher handling SAF document selection result for configuration import.
-    */
-    private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { it ->
-        try {
-            if (it.resultCode == Activity.RESULT_OK) {
-                val uri = it.data?.data ?: run {
-                    Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
-                    return@registerForActivityResult
-                }
-                if (!canEditSettings()) return@registerForActivityResult
-                val importedKeys = mutableSetOf<String>()
-                val imported = updateSettings(editedKeys = importedKeys) { currentPrefs ->
-                    importedKeys += utils.readConfigFile(this, uri, currentPrefs)
-                    true
-                }
-                if (!imported) return@registerForActivityResult
-                Toast.makeText(this, R.string.import_complete, Toast.LENGTH_SHORT).show()
-                restartActivity()
-            }
-        } catch (_: Exception) {
+     *
+     * Document I/O, the 1 MiB limit, JSON parsing, and field validation run on
+     * [updateExecutor] because [App.withGuardedSettingsPreferences] holds the global
+     * service-state lock during the settings write. Only the resulting in-memory
+     * plan is applied there, back on the main thread, after re-checking lifecycle.
+     * Editability is revalidated by [updateSettings] under the settings guard, so a
+     * slow provider can never block service-state transitions.
+     */
+    private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+        val uri = result.data?.data ?: run {
             Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        if (configImportInProgress || !canEditSettings()) return@registerForActivityResult
+        configImportInProgress = true
+        val appContext = applicationContext
+        try {
+            updateExecutor.execute {
+                val staged = runCatching { utils.readConfigFile(appContext, uri) }
+                mainHandler.post {
+                    if (isFinishing || isDestroyed) return@post
+                    configImportInProgress = false
+                    val plan = staged.getOrNull()
+                    if (plan == null) {
+                        Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+                        return@post
+                    }
+                    if (plan.hasInvalidDevice) {
+                        Toast.makeText(this, R.string.invalid_imported_device, Toast.LENGTH_LONG).show()
+                    }
+                    if (plan.hasInvalidAndroidVersion) {
+                        Toast.makeText(this, R.string.invalid_imported_android_version, Toast.LENGTH_LONG).show()
+                    }
+                    // updateSettings revalidates expectedStateVersion under the settings lock and
+                    // reports a toast on failure, so no separate editability check is needed here.
+                    val imported = updateSettings(editedKeys = plan.editedKeys) { currentPrefs ->
+                        plan.apply(currentPrefs)
+                        true
+                    }
+                    if (!imported) return@post
+                    Toast.makeText(this, R.string.import_complete, Toast.LENGTH_SHORT).show()
+                    restartActivity()
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            configImportInProgress = false
+            if (!isFinishing && !isDestroyed) {
+                Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -1312,6 +1373,7 @@ class ActivityMain : AppCompatActivity() {
         mainServiceStateListener = null
         readinessDialog?.dismiss()
         readinessDialog = null
+        configImportInProgress = false
         updateExecutor.shutdownNow()
         super.onDestroy()
     }

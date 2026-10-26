@@ -12,6 +12,22 @@ import org.mockito.kotlin.whenever
 
 class OfflineSettingsHandoffTest {
     @Test
+    fun `empty pending intent fails when the remote store is unreachable`() {
+        val pending = MemorySharedPreferences()
+        val local = MemorySharedPreferences()
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(null)
+        val context = mock<Context>()
+        whenever(context.getSharedPreferences(OfflineSettingsHandoff.PREFERENCES_FILE, Context.MODE_PRIVATE))
+            .thenReturn(pending)
+        whenever(context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE))
+            .thenReturn(local)
+
+        assertFalse(OfflineSettingsHandoff.converge(context, service))
+        assertTrue("a successful handoff cannot be invented for an unreachable store", pending.all.isEmpty())
+    }
+
+    @Test
     fun `theme precondition falls back to dynamic colors when recovery journal is unresolved`() {
         val local = MemorySharedPreferences(mapOf(Constants.PREF_USE_CLASSIC_UI to false))
         val pending = MemorySharedPreferences()

@@ -289,6 +289,11 @@ internal object OfflineSettingsHandoff {
      * The durable marker is cleared only after the remote commit succeeds.
      */
     fun converge(context: Context, service: XposedService): Boolean = runCatching {
+        // READY promises that remote settings are usable, so prove the manager store is
+        // reachable even when there is no pending offline intent. Without this probe an
+        // empty handoff would report success against an unreachable service and the UI
+        // would render defaults as if they were the user's settings.
+        val remote = service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME) ?: return false
         val pending = context.getSharedPreferences(PREFERENCES_FILE, Context.MODE_PRIVATE)
         val local = runCatching {
             context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE)
@@ -303,7 +308,6 @@ internal object OfflineSettingsHandoff {
         // discarding user intent we cannot safely interpret.
         if (keys.isEmpty()) return false
         val removedKeys = pending.getStringSet(REMOVED_KEYS, emptySet()).orEmpty().toSet()
-        val remote = service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME) ?: return false
         val editor = remote.edit()
         keys.forEach { key ->
             if (key in removedKeys) {

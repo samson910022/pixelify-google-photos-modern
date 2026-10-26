@@ -36,6 +36,7 @@
     <string name="share_error">設定の共有またはエクスポートができません。</string>
     <string name="config_export_unavailable">設定の参照元を読み取れないためエクスポートできません。設定は共有も保存もされていません。</string>
     <string name="config_export_empty">エクスポートできる保存済み設定がありません。設定は共有も保存もされていません。</string>
+    <string name="config_export_in_progress">設定のエクスポートがドキュメントピッカーの完了を待っています。完了またはキャンセルしてから、もう一度実行してください。</string>
     <string name="read_error">選択された設定ファイルを読み込めません。</string>
     <string name="import_complete">インポート完了</string>
     <string name="invalid_imported_device">インポートされた端末プロファイルは非対応のためスキップされました。</string>
@@ -125,7 +126,7 @@
     <string name="diagnostics_service_disconnected">未接続</string>
     <string name="diagnostics_service_syncing">接続済み・設定を同期中</string>
     <string name="diagnostics_service_ready">準備完了</string>
-    <string name="diagnostics_service_error">接続済み・診断データの同期に失敗</string>
+    <string name="diagnostics_service_error">接続済み・設定の同期に失敗</string>
     <string name="diagnostics_scope">スコープ: %1$s</string>
     <string name="diagnostics_scope_empty">なし</string>
     <string name="diagnostics_source_availability">プロファイル設定: %1$s · フックテレメトリー: %2$s</string>
@@ -169,7 +170,7 @@
     <string name="diagnostics_connection_banner">Xposed マネージャー サービスに接続されていません。これはこのアプリの接続状態のみを示し、Google フォトでフックが実行されたかどうかは示しません。LSPosed でモジュールを有効化して Google フォトを開き、この画面を再度開いてください。</string>
     <string name="diagnostics_snapshot_refreshing">サービス状態が変わったため診断情報を更新しています。取得済みの値は一時的に表示できません。</string>
     <string name="diagnostics_connection_syncing">Xposed マネージャーに接続済みです。設定と診断トークンを同期中のため、診断情報は一時的に利用できない場合があります。フックの実行状況を示すものではありません。</string>
-    <string name="diagnostics_connection_error">Xposed マネージャーに接続されていますが、設定または診断情報の同期に失敗しました。リモート書き込みは無効です。接続を確認して再試行してください。</string>
+    <string name="diagnostics_connection_error">Xposed マネージャーに接続されていますが、設定の同期に失敗しました。リモート書き込みは無効です。接続を確認して再試行してください。</string>
     <string name="diagnostics_connection_disconnected">Xposed マネージャーとの接続が失われました。サービスが再接続し、設定の準備が整うまで設定は読み取り専用です。</string>
     <string name="settings_write_unavailable">Xposed サービスの準備が整うまで設定を保存できません。変更は保存されていません。</string>
     <string name="settings_offline_memory_only">このプロセス内では保存されましたが、ディスクへの保存は確認できません。Xposed サービスとの同期が完了するまでアプリを開いたままにしてください。</string>

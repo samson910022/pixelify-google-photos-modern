@@ -70,7 +70,7 @@ class AppTest {
         try {
             setMockXposedService(null)
             clearListeners()
-            app.testAfterTokenConvergence = null
+            app.testAfterConvergence = null
             app.testTokenConvergenceOverride = null
             app.testSettingsHandoffOverride = null
         } finally {
@@ -157,8 +157,49 @@ class AppTest {
     }
 
     @Test
-    fun `token convergence failure remains connected error and never becomes ready`() {
+    fun `token convergence failure degrades diagnostics only while settings become ready`() {
         app.testTokenConvergenceOverride = { false }
+        var settingsHandoffAttempted = false
+        app.testSettingsHandoffOverride = {
+            settingsHandoffAttempted = true
+            true
+        }
+        val phases = mutableListOf<ServicePhase>()
+        val stateListener: (ServiceReadinessSnapshot) -> Unit = { phases += it.phase }
+        App.addOnServiceStateListener(stateListener)
+        var boundCallbackInvoked = false
+        App.addOnServiceBoundListener { boundCallbackInvoked = true }
+        val service = mock<XposedService>()
+
+        app.onServiceBind(service)
+
+        val snapshot = App.serviceReadinessSnapshot()
+        assertSame(service, snapshot.service)
+        assertTrue(snapshot.connected)
+        assertTrue("READY means settings readiness, independent of diagnostics token state", snapshot.ready)
+        assertEquals(ServicePhase.READY, snapshot.phase)
+        assertTrue(App.isServiceReady())
+        assertSame(service, App.readyService())
+        assertTrue("settings handoff must still run after a token failure", settingsHandoffAttempted)
+        assertTrue("settings readiness must drain bound listeners despite diagnostics failure", boundCallbackInvoked)
+        assertEquals(0, currentListenerCount())
+        assertEquals(
+            listOf(ServicePhase.DISCONNECTED, ServicePhase.CONNECTED_SYNCING, ServicePhase.READY),
+            phases,
+        )
+        mockedLog.verify {
+            Log.w(
+                eq("Pixelify"),
+                eq("Diagnostics IPC token stores did not converge; remote diagnostic results will remain unknown"),
+            )
+        }
+        App.removeOnServiceStateListener(stateListener)
+    }
+
+    @Test
+    fun `settings convergence failure remains connected error and never becomes ready`() {
+        app.testTokenConvergenceOverride = { true }
+        app.testSettingsHandoffOverride = { false }
         val phases = mutableListOf<ServicePhase>()
         val stateListener: (ServiceReadinessSnapshot) -> Unit = { phases += it.phase }
         App.addOnServiceStateListener(stateListener)
@@ -175,8 +216,8 @@ class AppTest {
         assertEquals(ServicePhase.ERROR, snapshot.phase)
         assertFalse(App.isServiceReady())
         assertNull(App.readyService())
-        assertFalse("ready-only listeners must not fire on failed convergence", boundCallbackInvoked)
-        assertEquals(1, currentListenerCount())
+        assertFalse("ready-only listeners must not fire on failed settings convergence", boundCallbackInvoked)
+        assertEquals("failed settings convergence must keep the listener queued", 1, currentListenerCount())
         assertEquals(
             listOf(ServicePhase.DISCONNECTED, ServicePhase.CONNECTED_SYNCING, ServicePhase.ERROR),
             phases,
@@ -185,12 +226,65 @@ class AppTest {
     }
 
     @Test
+    fun `unreachable remote settings keeps service in error even with no pending offline intent`() {
+        // A real preference store for the empty handoff is required to distinguish the pre-fix
+        // short-circuit (empty pending -> READY) from the post-fix reachability failure.
+        val appSpy = spyAppBackedByFileStore()
+        val pendingStore = MemorySharedPreferences()
+        doReturn(pendingStore).whenever(appSpy).getSharedPreferences(
+            eq(OfflineSettingsHandoff.PREFERENCES_FILE),
+            eq(Context.MODE_PRIVATE),
+        )
+        appSpy.testTokenConvergenceOverride = { true }
+        appSpy.testSettingsHandoffOverride = null
+        val service = mock<XposedService>()
+        whenever(service.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)).thenReturn(null)
+        var boundCallbackInvoked = false
+        App.addOnServiceBoundListener { boundCallbackInvoked = true }
+
+        appSpy.onServiceBind(service)
+
+        val snapshot = App.serviceReadinessSnapshot()
+        assertSame(service, snapshot.service)
+        assertTrue(snapshot.connected)
+        assertFalse("READY must prove the remote settings store is usable", snapshot.ready)
+        assertEquals(ServicePhase.ERROR, snapshot.phase)
+        assertFalse(App.isServiceReady())
+        assertNull(App.readyService())
+        assertFalse(boundCallbackInvoked)
+        assertEquals(1, currentListenerCount())
+        assertTrue("the failed probe must not invent a pending handoff", pendingStore.all.isEmpty())
+    }
+
+    @Test
+    fun `combined token and settings convergence failure stays connected error`() {
+        app.testTokenConvergenceOverride = { false }
+        app.testSettingsHandoffOverride = { false }
+        var boundCallbackInvoked = false
+        App.addOnServiceBoundListener { boundCallbackInvoked = true }
+        val service = mock<XposedService>()
+
+        app.onServiceBind(service)
+
+        val snapshot = App.serviceReadinessSnapshot()
+        assertSame(service, snapshot.service)
+        assertTrue(snapshot.connected)
+        assertFalse(snapshot.ready)
+        assertEquals(ServicePhase.ERROR, snapshot.phase)
+        assertFalse(App.isServiceReady())
+        assertNull(App.readyService())
+        assertFalse(boundCallbackInvoked)
+        assertEquals(1, currentListenerCount())
+    }
+
+    @Test
     fun `older same-service bind success cannot override newer failed attempt or drain listeners`() {
         val service = mock<XposedService>()
         val firstAttemptStarted = CountDownLatch(1)
         val releaseFirstAttempt = CountDownLatch(1)
         val attempts = java.util.concurrent.atomic.AtomicInteger()
-        app.testTokenConvergenceOverride = {
+        app.testTokenConvergenceOverride = { true }
+        app.testSettingsHandoffOverride = {
             if (attempts.incrementAndGet() == 1) {
                 firstAttemptStarted.countDown()
                 check(releaseFirstAttempt.await(5, TimeUnit.SECONDS))
@@ -227,7 +321,8 @@ class AppTest {
         val stateListener: (ServiceReadinessSnapshot) -> Unit = { phases += it.phase }
         App.addOnServiceStateListener(stateListener)
         var allowConvergence = false
-        app.testTokenConvergenceOverride = { allowConvergence }
+        app.testTokenConvergenceOverride = { true }
+        app.testSettingsHandoffOverride = { allowConvergence }
         var callbackCount = 0
         App.addOnServiceBoundListener { callbackCount++ }
 
@@ -256,7 +351,29 @@ class AppTest {
     }
 
     @Test
-    fun `listener registered during bind waits until token convergence before refresh`() {
+    fun `retry succeeds on settings convergence even while diagnostics token still fails`() {
+        val service = mock<XposedService>()
+        var allowSettingsConvergence = false
+        app.testTokenConvergenceOverride = { false }
+        app.testSettingsHandoffOverride = { allowSettingsConvergence }
+        var callbackCount = 0
+        App.addOnServiceBoundListener { callbackCount++ }
+
+        app.onServiceBind(service)
+        assertEquals(ServicePhase.ERROR, App.serviceReadinessSnapshot().phase)
+        assertEquals(0, callbackCount)
+
+        allowSettingsConvergence = true
+        assertTrue(app.retryServiceConvergence())
+
+        assertSame(service, App.readyService())
+        assertEquals(ServicePhase.READY, App.serviceReadinessSnapshot().phase)
+        assertEquals(1, callbackCount)
+        assertEquals(0, currentListenerCount())
+    }
+
+    @Test
+    fun `listener registered during bind waits until convergence before refresh`() {
         app.testTokenConvergenceOverride = null
         val service = mock<XposedService>()
         val remotePrefs = stubRemotePrefsOf(service)
@@ -274,13 +391,13 @@ class AppTest {
         val appSpy = spyAppBackedByFileStore()
         var convergenceFinished = false
         var listenerObservedConvergedState = false
-        appSpy.testAfterTokenConvergence = { convergenceFinished = true }
+        appSpy.testAfterConvergence = { convergenceFinished = true }
         val bindThread = Thread { appSpy.onServiceBind(service) }
         bindThread.start()
 
         assertTrue(syncStarted.await(5, TimeUnit.SECONDS))
         assertNotNull("service object is visible during convergence", App.mService)
-        assertFalse("a visible service is not ready before token convergence", App.isServiceReady())
+        assertFalse("a visible service is not ready before convergence", App.isServiceReady())
         App.addOnServiceBoundListener {
             listenerObservedConvergedState = convergenceFinished
         }

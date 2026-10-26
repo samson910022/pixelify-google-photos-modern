@@ -36,6 +36,7 @@
     <string name="share_error">无法分享或导出配置。</string>
     <string name="config_export_unavailable">当前无法读取设置来源，因此不能导出配置；未分享或保存任何配置。</string>
     <string name="config_export_empty">没有可导出的已保存用户设置；未分享或保存任何配置。</string>
+    <string name="config_export_in_progress">已有配置导出正在等待文件选择器完成。请先完成或取消该操作，再开始新的导出。</string>
     <string name="read_error">无法读取所选的配置文件。</string>
     <string name="import_complete">导入完成</string>
     <string name="invalid_imported_device">导入的设备配置文件不受支持，已跳过。</string>
@@ -125,7 +126,7 @@
     <string name="diagnostics_service_disconnected">未连接</string>
     <string name="diagnostics_service_syncing">已连接 · 正在同步偏好设置</string>
     <string name="diagnostics_service_ready">就绪</string>
-    <string name="diagnostics_service_error">已连接 · 诊断同步失败</string>
+    <string name="diagnostics_service_error">已连接 · 设置同步失败</string>
     <string name="diagnostics_scope">作用域：%1$s</string>
     <string name="diagnostics_scope_empty">无</string>
     <string name="diagnostics_source_availability">配置文件设置：%1$s · Hook 遥测：%2$s</string>
@@ -169,7 +170,7 @@
     <string name="diagnostics_connection_banner">Xposed 管理器服务未连接。这只描述此应用与管理器的连接，不能证明 Google 相册中的 Hook 是否运行。请在 LSPosed 启用模块、打开 Google 相册，然后重新打开此界面。</string>
     <string name="diagnostics_snapshot_refreshing">服务状态已变化，正在刷新诊断信息。暂时无法显示已捕获的数据。</string>
     <string name="diagnostics_connection_syncing">已连接到 Xposed 管理器；偏好设置和诊断令牌正在同步，诊断信息可能暂时不可用。这不代表 Hook 是否运行。</string>
-    <string name="diagnostics_connection_error">已连接到 Xposed 管理器，但设置或诊断信息同步失败。远程写入已禁用；请检查管理器连接并重试。</string>
+    <string name="diagnostics_connection_error">已连接到 Xposed 管理器，但设置同步失败。远程写入已禁用；请检查管理器连接并重试。</string>
     <string name="diagnostics_connection_disconnected">Xposed 管理器连接已断开。服务重新连接且偏好设置就绪前，设置为只读。</string>
     <string name="settings_write_unavailable">Xposed 服务重新就绪前无法保存设置。更改尚未保存。</string>
     <string name="settings_offline_memory_only">更改已在当前进程中暂存，但无法确认是否写入磁盘。请保持应用运行，直到 Xposed 服务完成同步。</string>

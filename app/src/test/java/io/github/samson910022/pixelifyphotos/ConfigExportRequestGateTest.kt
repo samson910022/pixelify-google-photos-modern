@@ -49,24 +49,38 @@ class ConfigExportRequestGateTest {
         connected = true,
     )
 
-    private fun request(id: String, source: ConfigExportSourceStamp = this.source, setting: String = id) =
+    /** Deterministic wall clock for the cross-process pending-record TTL. */
+    private class TestClock(var now: Long = 1_000L) {
+        fun read(): Long = now
+    }
+
+    private fun request(
+        id: String,
+        source: ConfigExportSourceStamp = this.source,
+        setting: String = id,
+        createdAtMillis: Long = 1_000L,
+    ) =
         ConfigExportPendingRequest(
             id = id,
             source = source,
             json = JSONObject().put(Constants.PREF_DEVICE_TO_SPOOF, setting).toString(),
+            createdAtMillis = createdAtMillis,
         )
 
     @Test
-    fun `request and allowlisted snapshot survive activity recreation`() {
+    fun `request and allowlisted snapshot survive same-process activity recreation beyond the cross-process TTL`() {
         val file = MemoryFile()
-        val originalActivity = ConfigExportRequestGate(MemoryPersistence(file))
+        val clock = TestClock()
+        val originalActivity = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
         val saved = request("request-one", setting = "Original snapshot")
 
         assertTrue(originalActivity.begin(saved))
 
         // A recreated Activity gets a new gate instance over the same private durable record.
-        val recreatedActivity = ConfigExportRequestGate(MemoryPersistence(file))
-        assertEquals(saved, recreatedActivity.restoreForProcess("process-one"))
+        // Same-process recreation must never age out a picker that is still open.
+        clock.now += ConfigExportRequestGate.CROSS_PROCESS_PENDING_TTL_MILLIS * 2
+        val recreatedActivity = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertEquals(saved, recreatedActivity.restorePending("process-one"))
         assertTrue(recreatedActivity.hasPending())
         val callbackRequest = recreatedActivity.consume("request-one")
         assertEquals("Original snapshot", JSONObject(callbackRequest!!.json)
@@ -76,32 +90,158 @@ class ConfigExportRequestGateTest {
     }
 
     @Test
-    fun `process death without a result clears old epoch and later callback cannot consume new request`() {
+    fun `cross-process restore re-registers the key and re-authorizes the persisted allowlisted snapshot`() {
         val file = MemoryFile()
-        val oldGate = ConfigExportRequestGate(MemoryPersistence(file))
-        val oldRequest = request("old-process-request")
-        assertTrue(oldGate.begin(oldRequest))
+        val clock = TestClock()
+        val oldProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        val saved = request("cross-process-request", setting = "Original snapshot")
+        assertTrue(oldProcess.begin(saved))
 
-        val newProcessSource = source.copy(processEpoch = "process-two")
-        val newProcessGate = ConfigExportRequestGate(MemoryPersistence(file))
-        // Simulates Activity creation after process death, with no picker result to consume.
-        assertNull(newProcessGate.restoreForProcess(newProcessSource.processEpoch))
+        // The system document picker outlives the old process. Just under the TTL the new
+        // process must restore the same key so the in-flight result can be delivered.
+        clock.now += ConfigExportRequestGate.CROSS_PROCESS_PENDING_TTL_MILLIS - 1
+        val newProcessSource = source.copy(
+            processEpoch = "process-two",
+            serviceVersion = source.serviceVersion + 7L,
+        )
+        val newProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertEquals(saved, newProcess.restorePending(newProcessSource.processEpoch))
+        assertTrue(newProcess.hasPending())
+        assertTrue(newProcess.hasAwaitingResult())
 
-        assertEquals(source.serviceVersion, newProcessSource.serviceVersion)
-        assertFalse(newProcessGate.hasPending())
-        val newRequest = request("new-process-request", newProcessSource)
-        assertTrue(newProcessGate.begin(newRequest))
+        val callbackRequest = newProcess.consume(saved.id)
+        assertEquals(saved, callbackRequest)
+        assertFalse(newProcess.hasPending())
 
-        assertNull(newProcessGate.consume(oldRequest.id))
-        assertEquals(newRequest, newProcessGate.pending())
-        val currentCallback = newProcessGate.consume(newRequest.id)
-        assertEquals(newRequest, currentCallback)
+        // The old source stamp is dead, so only current authorization plus the allowlist decides.
         assertTrue(ConfigExportRequestPolicy.mayWrite(
-            currentCallback!!,
-            newRequest.id,
-            newRequest.source,
+            callbackRequest!!,
+            saved.id,
+            newProcessSource,
             sourceStillAuthorized = true,
         ))
+        assertFalse("current settings access is re-checked", ConfigExportRequestPolicy.mayWrite(
+            callbackRequest,
+            saved.id,
+            newProcessSource,
+            sourceStillAuthorized = false,
+        ))
+        assertFalse("the callback ID must still match exactly", ConfigExportRequestPolicy.mayWrite(
+            callbackRequest,
+            "different-callback-id",
+            newProcessSource,
+            sourceStillAuthorized = true,
+        ))
+        assertEquals("Original snapshot", JSONObject(callbackRequest.json)
+            .getString(Constants.PREF_DEVICE_TO_SPOOF))
+    }
+
+    @Test
+    fun `stale cross-process record older than the TTL is cleared so a new export can begin`() {
+        val file = MemoryFile()
+        val clock = TestClock()
+        val oldProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertTrue(oldProcess.begin(request("stale-cross-process")))
+
+        clock.now += ConfigExportRequestGate.CROSS_PROCESS_PENDING_TTL_MILLIS + 1
+        val newProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertNull(newProcess.restorePending("process-two"))
+        assertFalse("a bounded stale record must not block exports forever", newProcess.hasPending())
+        assertFalse(newProcess.hasAwaitingResult())
+
+        val newProcessSource = source.copy(processEpoch = "process-two")
+        val next = request("after-stale-record", newProcessSource, createdAtMillis = clock.now)
+        assertTrue(newProcess.begin(next))
+        assertEquals(next, newProcess.consume(next.id))
+    }
+
+    @Test
+    fun `fresh task without saved registry state discards a pending request instead of orphaning export`() {
+        val file = MemoryFile()
+        val clock = TestClock()
+        val oldProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertTrue(oldProcess.begin(request("no-result-channel")))
+
+        clock.now += 100L
+        val newProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertNull("a fresh task cannot route a restored picker result", newProcess.restorePending(
+            currentProcessEpoch = "process-two",
+            canReceiveResult = false,
+        ))
+        assertFalse(newProcess.hasPending())
+        assertTrue("discarding the orphan must unblock the next export", newProcess.begin(
+            request(
+                "fresh-task-export",
+                source.copy(processEpoch = "process-two"),
+                createdAtMillis = clock.now,
+            ),
+        ))
+    }
+
+    @Test
+    fun `reconcile clears an expired cross-process record without waiting for Activity recreation`() {
+        val file = MemoryFile()
+        val clock = TestClock()
+        val gate = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertTrue(gate.begin(request("long-lived-activity-record")))
+
+        clock.now += ConfigExportRequestGate.CROSS_PROCESS_PENDING_TTL_MILLIS
+        gate.reconcile("process-two")
+
+        assertFalse(gate.hasPending())
+        assertTrue(gate.begin(request(
+            "after-reconcile",
+            source.copy(processEpoch = "process-two"),
+            createdAtMillis = clock.now,
+        )))
+    }
+
+    @Test
+    fun `future creation timestamp cannot keep a cross-process record alive indefinitely`() {
+        val file = MemoryFile()
+        val clock = TestClock()
+        val gate = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertTrue(gate.begin(request("future-timestamp", createdAtMillis = clock.now + 60_000L)))
+
+        assertNull(gate.restorePending("process-two"))
+        assertFalse(gate.hasPending())
+    }
+
+    @Test
+    fun `old callback cannot consume or clear a newer request after a cross-process restore`() {
+        val file = MemoryFile()
+        val clock = TestClock()
+        val oldProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        val restoredRequest = request("restored-old-request", setting = "old JSON")
+        assertTrue(oldProcess.begin(restoredRequest))
+
+        clock.now += 100L
+        val newProcessSource = source.copy(processEpoch = "process-two")
+        val newProcess = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        assertEquals(restoredRequest, newProcess.restorePending(newProcessSource.processEpoch))
+        assertEquals(restoredRequest, newProcess.consume(restoredRequest.id))
+
+        val newer = request(
+            "newer-after-cross-process-restore",
+            newProcessSource,
+            setting = "new JSON",
+            createdAtMillis = clock.now,
+        )
+        assertTrue(newProcess.begin(newer))
+        assertFalse("a stale callback cannot clear a newer request", newProcess.clear(restoredRequest.id))
+        assertNull("a stale callback cannot consume a newer request", newProcess.consume(restoredRequest.id))
+        assertEquals(newer, newProcess.pending())
+
+        val newerCallback = newProcess.consume(newer.id)!!
+        assertFalse("URI and JSON for the newer request cannot pair with a stale callback ID",
+            ConfigExportRequestPolicy.mayWrite(
+                newerCallback,
+                restoredRequest.id,
+                newProcessSource,
+                sourceStillAuthorized = true,
+            ))
+        assertEquals("new JSON", JSONObject(newerCallback.json)
+            .getString(Constants.PREF_DEVICE_TO_SPOOF))
     }
 
     @Test
@@ -111,10 +251,21 @@ class ConfigExportRequestGateTest {
 
         assertTrue(gate.hasPending())
         assertTrue(gate.hasAwaitingResult())
-        assertNull(gate.restoreForProcess("process-one"))
+        assertNull(gate.restorePending("process-one"))
         assertFalse(gate.hasPending())
         assertFalse(gate.hasAwaitingResult())
         assertTrue(gate.begin(request("after-corruption")))
+    }
+
+    @Test
+    fun `legacy persistence format is cleared instead of restoring an unbounded request`() {
+        val file = MemoryFile(JSONObject().put("format", 1).toString())
+        val gate = ConfigExportRequestGate(MemoryPersistence(file))
+
+        assertTrue(gate.hasPending())
+        assertNull(gate.restorePending("process-one"))
+        assertFalse(gate.hasPending())
+        assertTrue(gate.begin(request("after-legacy-format")))
     }
 
     @Test
@@ -150,12 +301,17 @@ class ConfigExportRequestGateTest {
         persistence.commitFailureUpdatesDisk = false
 
         // The callback receives its captured request despite commit(false), because the live map
-        // confirms removal. A real process restart sees the old durable epoch and abandons it.
+        // confirms removal. A restart sees only the old durable record, which is restorable only
+        // within the bounded cross-process TTL and must re-authorize its allowlisted snapshot.
         val consumed = gate.consume(saved.id)
         assertEquals(saved, consumed)
         assertNull(gate.pending())
         assertFalse(gate.hasPending())
-        assertEquals("old on-disk record remains until process death", durableRequest, file.durableValue)
+        assertEquals(
+            "old on-disk record remains until cleanup or the bounded TTL",
+            durableRequest,
+            file.durableValue,
+        )
         assertTrue(restart.completeRequest(saved.id, consumed?.id, configExportPending = gate.hasPending()))
     }
 
@@ -196,13 +352,13 @@ class ConfigExportRequestGateTest {
         // old ID's cleanup; it must not restore a dead ActivityResult key while that record remains.
         val recreatedPersistence = MemoryPersistence(file, commitSucceeds = false)
         val recreatedGate = ConfigExportRequestGate(recreatedPersistence)
-        assertNull(recreatedGate.restoreForProcess("process-one"))
+        assertNull(recreatedGate.restorePending("process-one"))
         assertTrue(recreatedGate.hasPending())
         assertFalse(recreatedGate.hasAwaitingResult())
 
         // A successful later cleanup removes the quarantine and allows the next export.
         recreatedPersistence.commitSucceeds = true
-        assertNull(recreatedGate.restoreForProcess("process-one"))
+        assertNull(recreatedGate.restorePending("process-one"))
         assertFalse(recreatedGate.hasPending())
         assertTrue(recreatedGate.begin(request("save-after-cleanup")))
     }
@@ -229,7 +385,7 @@ class ConfigExportRequestGateTest {
         assertFalse(gate.clear(old.id))
         assertNull(gate.consume(old.id))
         val recreatedGate = ConfigExportRequestGate(MemoryPersistence(file))
-        assertEquals(newer, recreatedGate.restoreForProcess("process-one"))
+        assertEquals(newer, recreatedGate.restorePending("process-one"))
         assertEquals(newer, recreatedGate.pending())
         assertTrue(recreatedGate.hasPending())
         assertTrue(recreatedGate.hasAwaitingResult())
@@ -249,7 +405,7 @@ class ConfigExportRequestGateTest {
         assertTrue(gate.hasPending())
         assertFalse(gate.hasAwaitingResult())
         val recreatedPersistence = MemoryPersistence(file, commitSucceeds = false)
-        assertNull(ConfigExportRequestGate(recreatedPersistence).restoreForProcess("process-one"))
+        assertNull(ConfigExportRequestGate(recreatedPersistence).restorePending("process-one"))
         assertTrue(ConfigExportRequestGate(MemoryPersistence(file, commitSucceeds = false)).hasPending())
 
         // A late result after the launcher path abandoned this request cannot regain write authority.
@@ -393,6 +549,7 @@ class ConfigExportRequestGateTest {
             id = "secret-request",
             source = source,
             json = JSONObject().put("password", "must not persist").toString(),
+            createdAtMillis = 1_000L,
         )
 
         assertFalse(gate.begin(requestWithSecret))

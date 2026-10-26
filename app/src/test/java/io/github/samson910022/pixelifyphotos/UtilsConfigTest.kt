@@ -30,43 +30,14 @@ class UtilsConfigTest {
     }
 
     /**
-     * Simulates the import logic from Utils.readConfigFile.
-     * Reads a JSONObject and returns the extracted preference values.
+     * Runs the production import plan and returns the extracted preference values.
+     * Keeping this on the real code prevents the round-trip tests from validating a
+     * hand-maintained copy that can drift from [Utils.buildConfigImportPlan].
      */
     private fun parseImportJson(jsonObject: JSONObject): Map<String, Any?> {
-        val result = mutableMapOf<String, Any?>()
-
-        // Read features list
-        jsonObject.optJSONArray(Constants.PREF_SPOOF_FEATURES_LIST)?.let { jsonArray ->
-            val list = ArrayList<String>()
-            for (i in 0 until jsonArray.length()) {
-                list.add(jsonArray[i].toString())
-            }
-            result[Constants.PREF_SPOOF_FEATURES_LIST] = list.toSet()
-        }
-
-        // Read device name
-        jsonObject.optString(Constants.PREF_DEVICE_TO_SPOOF, "")?.let {
-            if (it.isNotEmpty()) result[Constants.PREF_DEVICE_TO_SPOOF] = it
-        }
-
-        // Read boolean prefs only when explicitly present and correctly typed.
-        listOf(
-            Constants.PREF_OVERRIDE_ROM_FEATURE_LEVELS,
-            Constants.PREF_ENABLE_VERBOSE_LOGS,
-            Constants.PREF_SPOOF_ANDROID_VERSION_FOLLOW_DEVICE,
-            Constants.PREF_USE_CLASSIC_UI,
-        ).forEach { key ->
-            val value = jsonObject.opt(key)
-            if (value is Boolean) result[key] = value
-        }
-
-        // Read string pref
-        jsonObject.optString(Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL, "")?.let {
-            if (it.isNotEmpty()) result[Constants.PREF_SPOOF_ANDROID_VERSION_MANUAL] = it
-        }
-
-        return result
+        val preferences = MemorySharedPreferences()
+        Utils.buildConfigImportPlan(jsonObject).apply(preferences)
+        return preferences.all
     }
 
     // =========================================================================
@@ -348,13 +319,13 @@ class UtilsConfigTest {
     }
 
     @Test
-    fun `imported legacy Pixel configuration resolves to UNLIMITED_ORIGINAL entitlement`() {
+    fun `imported legacy Pixel XL configuration resolves to UNLIMITED_ORIGINAL entitlement`() {
         val json = JSONObject().apply {
-            put(Constants.PREF_DEVICE_TO_SPOOF, "Pixel")
+            put(Constants.PREF_DEVICE_TO_SPOOF, "Pixel XL")
         }
         val imported = parseImportJson(json)
         val deviceName = imported[Constants.PREF_DEVICE_TO_SPOOF] as? String
-        assertEquals("Pixel", deviceName)
+        assertEquals("Pixel XL", deviceName)
         assertEquals(
             DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL,
             DeviceProps.getBackupEntitlement(deviceName)
