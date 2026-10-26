@@ -6,6 +6,7 @@
     <string name="device_to_spoof">要模擬的裝置</string>
     <string name="spoofs_build_and_features">模擬特定裝置屬性與功能旗標。LSPosed 建議勾選 Google 相簿；其他 App 屬進階且不支援。請勿將 Play 服務、Play 商店、系統 UI 或銀行／支付 App 納入作用範圍。</string>
     <string name="customize_feature_flags">自訂功能旗標</string>
+    <string name="feature_level_without_flags">%1$s（沒有新增功能旗標）</string>
     <string name="feature_flags_changed">功能旗標已變更</string>
     <string name="override_rom_feature_levels">覆寫 ROM 功能層級</string>
     <string name="override_rom_feature_levels_desc">選擇較舊的 Pixel 設定檔時，忽略 ROM 已提供的較高功能層級。<b>（建議）</b></string>

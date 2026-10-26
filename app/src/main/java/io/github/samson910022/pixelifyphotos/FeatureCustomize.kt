@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.children
 import io.github.samson910022.pixelifyphotos.Constants.PREF_SPOOF_FEATURES_LIST
@@ -45,14 +46,29 @@ class FeatureCustomize : AppCompatActivity(R.layout.feature_customize) {
         val saveButton = findViewById<Button>(R.id.save_features)
 
         /**
-         * Populate checkboxes in for each feature name.
+         * Populate checkboxes in for each feature name. Empty feature levels are
+         * shown as information only: they add no flags, and selecting such a
+         * level alone would otherwise hide every known Pixel flag when ROM
+         * override is enabled.
          */
-        DeviceProps.allFeatures.withIndex().forEach {
+        DeviceProps.allFeatures.withIndex().forEach { indexed ->
+
+            val features = indexed.value
+            if (features.featureFlags.isEmpty()) {
+                val density = resources.displayMetrics.density
+                val info = TextView(this).apply {
+                    text = getString(R.string.feature_level_without_flags, features.displayName)
+                    setPaddingRelative((48 * density).toInt(), (4 * density).toInt(), 0, (4 * density).toInt())
+                    alpha = 0.7f
+                }
+                checkboxHolder.addView(info)
+                return@forEach
+            }
 
             val checkBox = CheckBox(this)
             checkBox.apply {
-                text = it.value.displayName
-                id = it.index + 1
+                text = features.displayName
+                id = indexed.index + 1
                 isChecked = text in enabledFeaturesNames
             }
 

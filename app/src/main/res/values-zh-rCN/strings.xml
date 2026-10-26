@@ -6,6 +6,7 @@
     <string name="device_to_spoof">要模拟的设备</string>
     <string name="spoofs_build_and_features">模拟特定设备属性与功能标志。LSPosed 建议勾选 Google 相册；其他 App 属于高级且不支持。切勿将 Play 服务、Play 商店、系统界面或银行／支付类 App 纳入作用域。</string>
     <string name="customize_feature_flags">自定义功能标志</string>
+    <string name="feature_level_without_flags">%1$s（没有新增功能标志）</string>
     <string name="feature_flags_changed">功能标志已更改</string>
     <string name="override_rom_feature_levels">覆盖 ROM 功能层级</string>
     <string name="override_rom_feature_levels_desc">选择较低世代的 Pixel 配置文件时，忽略 ROM 已提供的较高功能层级。<b>（推荐）</b></string>

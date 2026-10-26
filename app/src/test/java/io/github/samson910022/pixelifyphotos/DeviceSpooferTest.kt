@@ -259,6 +259,8 @@ class DeviceSpooferTest {
             "ID" to "UD1A.230803.022",
             "INCREMENTAL" to "10666019",
             "SECURITY_PATCH" to "2023-11-05",
+            "TYPE" to "user",
+            "TAGS" to "release-keys",
         )
         val overrides = invokeBuildSystemPropertyOverrides(props)
         assertEquals("google", overrides["ro.product.brand"])
@@ -276,6 +278,18 @@ class DeviceSpooferTest {
         assertEquals("Pixel 8 Pro", overrides["ro.product.product.model"])
         assertEquals("google/husky/husky:14/UD1A.230803.022/10666019:user/release-keys", overrides["ro.system_ext.build.fingerprint"])
         assertEquals("google/husky/husky:14/UD1A.230803.022/10666019:user/release-keys", overrides["ro.product.build.fingerprint"])
+        assertEquals("user", overrides["ro.build.type"])
+        assertEquals("release-keys", overrides["ro.build.tags"])
+    }
+
+    @Test
+    fun `buildSystemPropertyOverrides maps Pixel 11 TYPE and TAGS`() {
+        val device = DeviceProps.getDeviceProps("Pixel 11")
+        assertNotNull(device)
+
+        val overrides = invokeBuildSystemPropertyOverrides(device!!.props)
+        assertEquals("user", overrides["ro.build.type"])
+        assertEquals("release-keys", overrides["ro.build.tags"])
     }
 
     @Test
