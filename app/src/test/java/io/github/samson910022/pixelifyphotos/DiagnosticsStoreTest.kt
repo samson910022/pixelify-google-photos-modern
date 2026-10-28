@@ -3154,6 +3154,21 @@ class DiagnosticsStoreTest {
     }
 
     @Test
+    fun `convergeBroadcastToken treats a canonical remote token as usable when the local mirror commit fails`() {
+        stubBoundServiceWithRemotePrefs()
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("stale-local")
+        whenever(mockRemotePrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("remote-canonical")
+        whenever(mockEditor.commit()).thenReturn(false)
+
+        assertTrue(DiagnosticsStore.convergeBroadcastToken(mockContext))
+
+        verify(mockEditor).putString(Constants.PREF_DIAG_BROADCAST_TOKEN, "remote-canonical")
+        verify(mockEditor).commit()
+        verify(mockRemoteEditor, never()).commit()
+    }
+
+    @Test
     fun `convergeBroadcastToken is a no-op when both stores already agree`() {
         stubBoundServiceWithRemotePrefs()
         whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn("same-token")

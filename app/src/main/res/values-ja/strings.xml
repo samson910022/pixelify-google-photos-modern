@@ -36,7 +36,7 @@
     <string name="share_error">設定の共有またはエクスポートができません。</string>
     <string name="config_export_unavailable">設定の参照元を読み取れないためエクスポートできません。設定は共有も保存もされていません。</string>
     <string name="config_export_empty">エクスポートできる保存済み設定がありません。設定は共有も保存もされていません。</string>
-    <string name="config_export_in_progress">設定のエクスポートがドキュメントピッカーの完了を待っています。完了またはキャンセルしてから、もう一度実行してください。</string>
+    <string name="config_export_in_progress">設定のエクスポートが進行中です。完了またはキャンセルしてから、もう一度実行してください。</string>
     <string name="read_error">選択された設定ファイルを読み込めません。</string>
     <string name="import_complete">インポート完了</string>
     <string name="invalid_imported_device">インポートされた端末プロファイルは非対応のためスキップされました。</string>
@@ -132,6 +132,7 @@
     <string name="diagnostics_source_availability">プロファイル設定: %1$s · フックテレメトリー: %2$s</string>
     <string name="diagnostics_source_available">読み取り可能</string>
     <string name="diagnostics_source_unavailable">利用不可</string>
+    <string name="diagnostics_source_token_missing">未同期</string>
     <string name="diagnostics_yes">はい</string>
     <string name="diagnostics_no">いいえ</string>
     <string name="diagnostics_unknown">不明</string>
@@ -159,6 +160,8 @@
     <string name="diagnostics_verify_no_verified_run">VERIFY 記録を OS 検証済み run に関連付けられません。現在の run の状態は不明です。</string>
     <string name="diagnostics_verify_no_run_identity">VERIFY 記録も OS 検証済み run ID もありません。現在の run の状態は不明です。</string>
     <string name="diagnostics_data_unavailable">診断データを読み取れませんでした。空のテレメトリーではなく、状態は利用できません。</string>
+    <string name="diagnostics_data_token_unavailable">診断トークンが Xposed のリモート設定に同期されていないため、フックテレメトリーを利用できません。フック対象プロセスはテレメトリーを送信できないため、これは空の結果ではありません。LSPosed を再起動する（またはモジュールを切り替える）とマネージャーサービスが再バインドされます。その後 Google フォトとこの画面を開き直してください。</string>
+    <string name="diagnostics_data_token_unavailable_short">フックテレメトリーを利用できません（診断トークンが未同期）。</string>
     <string name="diagnostics_prior_boot_origin">前回起動時の履歴（origin は OS 検証済み）: %1$s（現在の証拠ではありません）</string>
     <string name="diagnostics_boot_unknown_origin">origin は OS 検証済みですが、現在の起動との一致を確認できません。</string>
     <string name="diagnostics_prior_boot_value">前回起動時の履歴: %1$s</string>

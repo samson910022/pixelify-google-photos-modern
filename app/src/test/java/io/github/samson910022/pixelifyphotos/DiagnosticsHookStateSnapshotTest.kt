@@ -38,7 +38,7 @@ class DiagnosticsHookStateSnapshotTest {
     fun `wrong SharedPreferences type is unavailable instead of readable empty telemetry`() {
         val state = DiagnosticsHookStatePolicy.capture(
             profileSettingsAvailable = true,
-            telemetryPreferencesAvailable = true,
+            telemetryTransport = DiagnosticsTelemetryTransport.READABLE,
             readTelemetry = {
                 DiagnosticsHookStateSnapshot.capture(
                     readAll = { mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to "true") },
@@ -51,5 +51,9 @@ class DiagnosticsHookStateSnapshotTest {
         assertFalse(state.diagnosticsAvailable)
         assertTrue(state.profileSettingsAvailable)
         assertFalse(state.anyRecorded)
+        assertEquals(
+            DiagnosticsCollector.DiagnosticsUnavailableReason.PREFERENCES_UNREADABLE,
+            state.diagnosticsUnavailableReason,
+        )
     }
 }

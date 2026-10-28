@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.text.Html
 import android.util.Log
 import android.view.Menu
@@ -55,6 +56,23 @@ import java.util.concurrent.Executors
  * device selection, feature customization, configuration import/export, and
  * scoped application force-stopping.
  */
+/**
+ * Deferred-export results already completed in this process.
+ *
+ * A rotation can save the waiting result and then let the old instance finish it before
+ * `onDestroy`; the recreated instance must not write or reject the same picker result again.
+ * Only the main thread touches this set.
+ */
+private object ConfigExportDeferredCompletion {
+    private val completed = mutableSetOf<String>()
+
+    fun mark(requestId: String) {
+        completed.add(requestId)
+    }
+
+    fun isCompleted(requestId: String): Boolean = requestId in completed
+}
+
 class ActivityMain : AppCompatActivity() {
 
     companion object {
@@ -70,9 +88,33 @@ class ActivityMain : AppCompatActivity() {
          * binder latency headroom, not derived from any platform contract.
          */
         private const val SERVICE_BIND_GRACE_TIMEOUT_MS = 3_000L
+
+        /**
+         * Upper bound on how long a delivered SAF export result may wait for settings access
+         * to settle (CONNECTED_SYNCING/ERROR -> READY). Sized above the cold-start binder grace
+         * window plus one convergence pass. The one-shot picker URI grant is tied to this
+         * Activity, so the wait cannot outlive it; a timeout fails closed like any other
+         * unavailable-source export.
+         */
+        private const val CONFIG_EXPORT_SETTINGS_WAIT_TIMEOUT_MS = 10_000L
+
+        // Saved-state keys for a delivered export result that is still waiting for settings.
+        private const val STATE_CONFIG_EXPORT_REQUEST_ID = "config_export_deferred_request_id"
+        private const val STATE_CONFIG_EXPORT_JSON = "config_export_deferred_json"
+        private const val STATE_CONFIG_EXPORT_CREATED_AT = "config_export_deferred_created_at"
+        private const val STATE_CONFIG_EXPORT_SOURCE_EPOCH = "config_export_deferred_source_epoch"
+        private const val STATE_CONFIG_EXPORT_SOURCE_VERSION = "config_export_deferred_source_version"
+        private const val STATE_CONFIG_EXPORT_SOURCE_PHASE = "config_export_deferred_source_phase"
+        private const val STATE_CONFIG_EXPORT_SOURCE_CONNECTED = "config_export_deferred_source_connected"
+        private const val STATE_CONFIG_EXPORT_TARGET = "config_export_deferred_target"
+        private const val STATE_CONFIG_EXPORT_PROCESS_EPOCH = "config_export_deferred_process_epoch"
+        private const val STATE_CONFIG_EXPORT_DEADLINE = "config_export_deferred_deadline"
     }
 
     private val updateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    /** Document I/O stays off the main thread and out of the network update probe's queue. */
+    private val configImportExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val configExportExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val utils by lazy { Utils() }
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -97,6 +139,20 @@ class ActivityMain : AppCompatActivity() {
     private val configCreateLaunchers = mutableMapOf<String, ActivityResultLauncher<Intent>>()
     private val deferredActivityRestart = DeferredActivityRestartGate()
     private var configExportCallbackInProgress = false
+
+    /** A delivered export result whose write waits for the settings source to settle. */
+    private data class DeferredConfigExport(
+        val request: ConfigExportPendingRequest,
+        val target: Uri,
+        val deadlineElapsedRealtime: Long,
+        /** A settled ERROR is retried at most once; a retry loop would consume the whole budget. */
+        var convergenceRetryRequested: Boolean = false,
+    )
+    private var deferredConfigExport: DeferredConfigExport? = null
+    private var configExportWriteInProgress = false
+    private val configExportSettingsWaitTimeout = Runnable {
+        completeDeferredConfigExport(settingsWaitExpired = true)
+    }
 
     /** Active cold-start gate, or null when the enabled fast path skipped waiting. */
     private var moduleStateResolver: ModuleStateResolver? = null
@@ -226,7 +282,8 @@ class ActivityMain : AppCompatActivity() {
         // this restart (and every later one) for the lifetime of a long-lived Activity.
         pendingConfigExport.reconcile(ConfigExportProcessEpoch.current)
         if (!deferredActivityRestart.requestRestart(
-                configExportPending = pendingConfigExport.hasAwaitingResult() || configExportCallbackInProgress,
+                configExportPending = pendingConfigExport.hasAwaitingResult() || configExportCallbackInProgress ||
+                    deferredConfigExport != null || configExportWriteInProgress,
             )
         ) return
         performActivityRestart()
@@ -277,6 +334,7 @@ class ActivityMain : AppCompatActivity() {
         // discard the record instead of creating an orphan that blocks future exports.
         restorePendingConfigExportLauncher(savedStatePresent = savedInstanceState != null)
         ensureMainServiceStateListener()
+        restoreDeferredConfigExport(savedInstanceState)
         updateSettingsControls()
         val currentState = App.serviceReadinessSnapshot()
         when (ActivityMainLifecycle.onCreate(currentState, frameworkBindingObserved || App.hasObservedFrameworkBinding())) {
@@ -292,6 +350,83 @@ class ActivityMain : AppCompatActivity() {
             ActivityMainLifecycle.Action.WAIT_FOR_REBIND -> showServiceNotReadyDialog(currentState)
             ActivityMainLifecycle.Action.NO_CHANGE -> Unit
         }
+    }
+
+    /**
+     * Persists a delivered export result that is still waiting for settings access.
+     *
+     * The durable request record was already consumed, so this bundle is the only copy. It is
+     * scoped to the current process epoch: a bundle restored by a new process cannot hold the
+     * one-shot URI grant the picker issued to this task, so it is discarded instead of failing
+     * later with a misleading error.
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        val deferred = deferredConfigExport ?: return
+        outState.putString(STATE_CONFIG_EXPORT_REQUEST_ID, deferred.request.id)
+        outState.putString(STATE_CONFIG_EXPORT_JSON, deferred.request.json)
+        outState.putLong(STATE_CONFIG_EXPORT_CREATED_AT, deferred.request.createdAtMillis)
+        outState.putString(
+            STATE_CONFIG_EXPORT_SOURCE_EPOCH,
+            deferred.request.source.processEpoch,
+        )
+        outState.putLong(
+            STATE_CONFIG_EXPORT_SOURCE_VERSION,
+            deferred.request.source.serviceVersion,
+        )
+        outState.putString(
+            STATE_CONFIG_EXPORT_SOURCE_PHASE,
+            deferred.request.source.servicePhase.name,
+        )
+        outState.putBoolean(
+            STATE_CONFIG_EXPORT_SOURCE_CONNECTED,
+            deferred.request.source.connected,
+        )
+        outState.putString(STATE_CONFIG_EXPORT_TARGET, deferred.target.toString())
+        outState.putString(STATE_CONFIG_EXPORT_PROCESS_EPOCH, ConfigExportProcessEpoch.current)
+        outState.putLong(
+            STATE_CONFIG_EXPORT_DEADLINE,
+            deferred.deadlineElapsedRealtime,
+        )
+    }
+
+    /** Re-arms a deferred export across a same-process recreation (rotation, dark-mode change). */
+    private fun restoreDeferredConfigExport(savedState: Bundle?) {
+        if (savedState == null || deferredConfigExport != null) return
+        if (savedState.getString(STATE_CONFIG_EXPORT_PROCESS_EPOCH) !=
+            ConfigExportProcessEpoch.current
+        ) return
+        val id = savedState.getString(STATE_CONFIG_EXPORT_REQUEST_ID) ?: return
+        // A saved copy whose result this process already wrote or rejected must not run twice.
+        if (ConfigExportDeferredCompletion.isCompleted(id)) return
+        val json = savedState.getString(STATE_CONFIG_EXPORT_JSON) ?: return
+        val target = savedState.getString(STATE_CONFIG_EXPORT_TARGET)
+            ?.let { Uri.parse(it) } ?: return
+        val sourceEpoch = savedState.getString(STATE_CONFIG_EXPORT_SOURCE_EPOCH) ?: return
+        val sourcePhase = savedState.getString(STATE_CONFIG_EXPORT_SOURCE_PHASE)
+            ?.let { runCatching { ServicePhase.valueOf(it) }.getOrNull() } ?: return
+        val request = ConfigExportPendingRequest(
+            id = id,
+            source = ConfigExportSourceStamp(
+                processEpoch = sourceEpoch,
+                serviceVersion = savedState.getLong(STATE_CONFIG_EXPORT_SOURCE_VERSION),
+                servicePhase = sourcePhase,
+                connected = savedState.getBoolean(STATE_CONFIG_EXPORT_SOURCE_CONNECTED),
+            ),
+            json = json,
+            createdAtMillis = savedState.getLong(STATE_CONFIG_EXPORT_CREATED_AT),
+        )
+        val deferred = DeferredConfigExport(
+            request = request,
+            target = target,
+            deadlineElapsedRealtime = savedState.getLong(STATE_CONFIG_EXPORT_DEADLINE),
+        )
+        deferredConfigExport = deferred
+        val remaining = (deferred.deadlineElapsedRealtime -
+            SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        mainHandler.postDelayed(configExportSettingsWaitTimeout, remaining)
+        // Re-decide immediately: the rebuild may already have a settled source.
+        completeDeferredConfigExport(settingsWaitExpired = false)
     }
 
     /** Reconciles the cold-start bind resolver with the current remembered lifecycle state. */
@@ -322,6 +457,9 @@ class ActivityMain : AppCompatActivity() {
                 if (isFinishing || isDestroyed || mainServiceStateListener !== listener) return@post
                 val current = App.serviceReadinessSnapshot()
                 frameworkBindingObserved = frameworkBindingObserved || App.hasObservedFrameworkBinding() || current.connected
+                // A deferred export must complete before initializeForReadyService() can
+                // request an Activity restart, or the one-shot URI grant would be lost.
+                completeDeferredConfigExport(settingsWaitExpired = false)
                 invalidateOptionsMenu()
                 updateSettingsControls()
                 when (ActivityMainLifecycle.onServiceStateChanged(current, frameworkBindingObserved)) {
@@ -1021,7 +1159,7 @@ class ActivityMain : AppCompatActivity() {
         // A long-lived Activity is not recreated, so reconcile here as well as in onCreate;
         // otherwise an expired cross-process record blocks export until the task restarts.
         pendingConfigExport.reconcile(ConfigExportProcessEpoch.current)
-        if (pendingConfigExport.hasPending()) {
+        if (pendingConfigExport.hasPending() || deferredConfigExport != null || configExportWriteInProgress) {
             Toast.makeText(this, R.string.config_export_in_progress, Toast.LENGTH_LONG).show()
             return
         }
@@ -1115,13 +1253,22 @@ class ActivityMain : AppCompatActivity() {
         return launcher
     }
 
-    /** Every callback consumes only its durable request ID, including cancellation and stale results. */
+    /**
+     * Every callback consumes only its durable request ID, including cancellation and stale
+     * results. A delivered result whose settings source is still converging (a restored picker
+     * result can land during CONNECTED_SYNCING/ERROR after process death) is retained in memory
+     * and completed once the source settles or the wait budget expires. Consuming at entry keeps
+     * at-most-once delivery and cannot orphan a record that blocks later exports. The retained
+     * result is saved in instance state so a configuration change re-arms it in the same process
+     * instead of dropping the one-shot URI.
+     */
     private fun handleConfigCreateResult(
         requestId: String,
         result: ActivityResult,
     ) {
         configExportCallbackInProgress = true
         var consumedRequestId: String? = null
+        var completionDeferred = false
         try {
             val request = pendingConfigExport.consume(requestId) ?: return
             consumedRequestId = request.id
@@ -1131,31 +1278,34 @@ class ActivityMain : AppCompatActivity() {
                 return
             }
             val current = App.serviceReadinessSnapshot()
-            val currentSource = ConfigExportSourceStamp.from(current, ConfigExportProcessEpoch.current)
-            // Settings access is part of write authorization, not launch-time state: after process
-            // death the persisted snapshot must be re-authorized against the current source.
-            // While the recreated process waits for a rebind, this may legitimately resolve the
-            // recovered local store; the archived payload is still allowlist-only and was
-            // authorized at capture, so the user's completed picker is not discarded.
-            val preferencesAvailable = PrefUtils.getPrefs(this, current) != null
-            val sourceStillAuthorized = ConfigExportPolicy.mayExport(
-                current,
-                frameworkBindingObserved || App.hasObservedFrameworkBinding(),
-                preferencesAvailable = preferencesAvailable,
-            )
-            val authorizedWrite = ConfigExportRequestPolicy.authorizeWrite(
+            // Settings access is part of write authorization, not launch-time state: after
+            // process death the persisted snapshot must be re-authorized against the current
+            // source. While the recreated process waits for a rebind, that source can still be
+            // CONNECTED_SYNCING; deciding "unavailable" here would permanently discard the
+            // one-shot picker result, so a transient state waits for convergence instead.
+            val action = ConfigExportCallbackPolicy.decide(
                 request = request,
                 callbackRequestId = requestId,
-                target = uri,
-                currentSource = currentSource,
-                sourceStillAuthorized = sourceStillAuthorized,
+                current = current,
+                processEpoch = ConfigExportProcessEpoch.current,
+                frameworkBindingObserved = frameworkBindingObserved || App.hasObservedFrameworkBinding(),
+                preferencesAvailable = PrefUtils.getPrefs(this, current) != null,
+                settingsWaitExpired = false,
             )
-            if (authorizedWrite == null) {
-                Toast.makeText(this, R.string.config_export_unavailable, Toast.LENGTH_LONG).show()
-                return
+            when (action) {
+                ConfigExportCallbackAction.WAIT_FOR_SETTINGS -> {
+                    completionDeferred = true
+                    beginDeferredConfigExport(request, uri)
+                }
+
+                ConfigExportCallbackAction.WRITE -> {
+                    completionDeferred = true
+                    submitConfigExportWrite(request, uri)
+                }
+
+                ConfigExportCallbackAction.REJECT ->
+                    Toast.makeText(this, R.string.config_export_unavailable, Toast.LENGTH_LONG).show()
             }
-            utils.writeConfigFile(this, authorizedWrite.target, JSONObject(authorizedWrite.json))
-            Toast.makeText(this, R.string.export_complete, Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {
             Toast.makeText(this, R.string.share_error, Toast.LENGTH_SHORT).show()
         } finally {
@@ -1165,13 +1315,126 @@ class ActivityMain : AppCompatActivity() {
             if (consumedRequestId == null && pendingConfigExport.wasCallbackDelivered(requestId)) {
                 consumedRequestId = requestId
             }
-            consumedRequestId?.let {
+            if (!completionDeferred) {
+                consumedRequestId?.let {
+                    scheduleDeferredRestartAfterConfigExport(
+                        callbackRequestId = requestId,
+                        completedRequestId = it,
+                        deliveredCallbackId = requestId,
+                    )
+                }
+            }
+        }
+    }
+
+    /** Retains a delivered result while the settings source settles. */
+    private fun beginDeferredConfigExport(request: ConfigExportPendingRequest, target: Uri) {
+        if (deferredConfigExport != null) {
+            Toast.makeText(this, R.string.config_export_unavailable, Toast.LENGTH_LONG).show()
+            scheduleDeferredRestartAfterConfigExport(
+                callbackRequestId = request.id,
+                completedRequestId = request.id,
+                deliveredCallbackId = request.id,
+            )
+            return
+        }
+        deferredConfigExport = DeferredConfigExport(
+            request = request,
+            target = target,
+            deadlineElapsedRealtime = SystemClock.elapsedRealtime() + CONFIG_EXPORT_SETTINGS_WAIT_TIMEOUT_MS,
+        )
+        mainHandler.postDelayed(configExportSettingsWaitTimeout, CONFIG_EXPORT_SETTINGS_WAIT_TIMEOUT_MS)
+    }
+
+    /**
+     * Re-decides a deferred export against the current service state. Called from the
+     * service-state listener and the wait-budget timeout; the durable request was already
+     * consumed, so waiting cannot orphan it or block a later export.
+     */
+    private fun completeDeferredConfigExport(settingsWaitExpired: Boolean) {
+        val deferred = deferredConfigExport ?: return
+        if (isFinishing || isDestroyed) {
+            clearDeferredConfigExport()
+            return
+        }
+        val current = App.serviceReadinessSnapshot()
+        val expired = settingsWaitExpired ||
+            SystemClock.elapsedRealtime() >= deferred.deadlineElapsedRealtime
+        val action = ConfigExportCallbackPolicy.decide(
+            request = deferred.request,
+            callbackRequestId = deferred.request.id,
+            current = current,
+            processEpoch = ConfigExportProcessEpoch.current,
+            frameworkBindingObserved = frameworkBindingObserved || App.hasObservedFrameworkBinding(),
+            preferencesAvailable = PrefUtils.getPrefs(this, current) != null,
+            settingsWaitExpired = expired,
+        )
+        when (action) {
+            ConfigExportCallbackAction.WAIT_FOR_SETTINGS -> {
+                // A settled ERROR would otherwise wait out the whole budget without retrying;
+                // retry only once, because each retry re-enters ERROR and re-notifies listeners.
+                if (current.phase == ServicePhase.ERROR && !deferred.convergenceRetryRequested) {
+                    deferred.convergenceRetryRequested = true
+                    App.requestServiceConvergenceRetry()
+                }
+            }
+
+            ConfigExportCallbackAction.WRITE -> {
+                ConfigExportDeferredCompletion.mark(deferred.request.id)
+                clearDeferredConfigExport()
+                submitConfigExportWrite(deferred.request, deferred.target)
+            }
+
+            ConfigExportCallbackAction.REJECT -> {
+                ConfigExportDeferredCompletion.mark(deferred.request.id)
+                clearDeferredConfigExport()
+                Toast.makeText(this, R.string.config_export_unavailable, Toast.LENGTH_LONG).show()
                 scheduleDeferredRestartAfterConfigExport(
-                    callbackRequestId = requestId,
-                    completedRequestId = it,
-                    deliveredCallbackId = requestId,
+                    callbackRequestId = deferred.request.id,
+                    completedRequestId = deferred.request.id,
+                    deliveredCallbackId = deferred.request.id,
                 )
             }
+        }
+    }
+
+    private fun clearDeferredConfigExport() {
+        deferredConfigExport = null
+        mainHandler.removeCallbacks(configExportSettingsWaitTimeout)
+    }
+
+    /** Writes the authorized document off the main thread; the URI grant outlives this callback. */
+    private fun submitConfigExportWrite(request: ConfigExportPendingRequest, target: Uri) {
+        configExportWriteInProgress = true
+        val appContext = applicationContext
+        try {
+            configExportExecutor.execute {
+                val written = runCatching {
+                    utils.writeConfigFile(appContext, target, JSONObject(request.json))
+                }.isSuccess
+                mainHandler.post {
+                    configExportWriteInProgress = false
+                    if (!isFinishing && !isDestroyed) {
+                        Toast.makeText(
+                            this,
+                            if (written) R.string.export_complete else R.string.share_error,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    scheduleDeferredRestartAfterConfigExport(
+                        callbackRequestId = request.id,
+                        completedRequestId = request.id,
+                        deliveredCallbackId = request.id,
+                    )
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            configExportWriteInProgress = false
+            scheduleDeferredRestartAfterConfigExport(
+                callbackRequestId = request.id,
+                completedRequestId = request.id,
+                deliveredCallbackId = request.id,
+            )
         }
     }
 
@@ -1189,7 +1452,7 @@ class ActivityMain : AppCompatActivity() {
                     deliveredCallbackId = deliveredCallbackId?.takeIf {
                         it == callbackRequestId && it == completedRequestId
                     },
-                ),
+                ) || deferredConfigExport != null || configExportWriteInProgress,
             )
             if (shouldRestart) performActivityRestart()
         }
@@ -1306,12 +1569,19 @@ class ActivityMain : AppCompatActivity() {
     /**
      * ActivityResultLauncher handling SAF document selection result for configuration import.
      *
-     * Document I/O, the 1 MiB limit, JSON parsing, and field validation run on
-     * [updateExecutor] because [App.withGuardedSettingsPreferences] holds the global
-     * service-state lock during the settings write. Only the resulting in-memory
-     * plan is applied there, back on the main thread, after re-checking lifecycle.
-     * Editability is revalidated by [updateSettings] under the settings guard, so a
-     * slow provider can never block service-state transitions.
+     * The read (up to 1 MiB from an arbitrary, possibly remote DocumentsProvider), JSON
+     * parsing, and field validation run on [configImportExecutor] because main-thread provider
+     * I/O can ANR, and because [App.withGuardedSettingsPreferences] holds the global service-state
+     * lock during the settings write. Only the resulting in-memory plan is applied, under that
+     * guard, back on the main thread after re-checking lifecycle. Editability is revalidated by
+     * [updateSettings] under the settings guard, so a slow provider can never block service-state
+     * transitions.
+     *
+     * A configuration change during the read abandons this import: the completion
+     * self-cancels on the destroyed Activity and nothing is applied. The read is pure
+     * and the allowlisted plan is idempotent, so the user can simply re-select the file.
+     * (`shutdownNow()` cannot interrupt a provider that ignores interruption, so a hung
+     * read may pin this Activity until the provider returns.)
      */
     private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
@@ -1323,7 +1593,7 @@ class ActivityMain : AppCompatActivity() {
         configImportInProgress = true
         val appContext = applicationContext
         try {
-            updateExecutor.execute {
+            configImportExecutor.execute {
                 val staged = runCatching { utils.readConfigFile(appContext, uri) }
                 mainHandler.post {
                     if (isFinishing || isDestroyed) return@post
@@ -1359,8 +1629,8 @@ class ActivityMain : AppCompatActivity() {
     }
 
     /**
-     * Activity destroy lifecycle callback. Cancels pending bind resolution and shuts
-     * down the background update executor.
+     * Activity destroy lifecycle callback. Cancels pending bind resolution, clears any
+     * still-waiting export, and drains the background executors.
      */
     override fun onDestroy() {
         // Targeted teardown: the resolver owns the only runnables this activity
@@ -1374,6 +1644,12 @@ class ActivityMain : AppCompatActivity() {
         readinessDialog?.dismiss()
         readinessDialog = null
         configImportInProgress = false
+        clearDeferredConfigExport()
+        configExportWriteInProgress = false
+        // update/import work is pure reads and cancellable; the export write already owns the
+        // picker destination, so it is allowed to finish instead of being interrupted mid-record.
+        configImportExecutor.shutdownNow()
+        configExportExecutor.shutdown()
         updateExecutor.shutdownNow()
         super.onDestroy()
     }

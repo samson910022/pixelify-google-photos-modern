@@ -36,7 +36,7 @@
     <string name="share_error">無法分享或匯出設定。</string>
     <string name="config_export_unavailable">目前無法讀取設定來源，因此不能匯出設定；未分享或儲存任何設定。</string>
     <string name="config_export_empty">沒有可匯出的已儲存使用者設定；未分享或儲存任何設定。</string>
-    <string name="config_export_in_progress">已有設定匯出正在等待文件選擇器完成。請先完成或取消該操作，再開始新的匯出。</string>
+    <string name="config_export_in_progress">已有設定匯出正在進行中。請先完成或取消該操作，再開始新的匯出。</string>
     <string name="read_error">無法讀取所選的設定檔。</string>
     <string name="import_complete">匯入完成</string>
     <string name="invalid_imported_device">匯入的裝置設定檔不受支援，已略過。</string>
@@ -132,6 +132,7 @@
     <string name="diagnostics_source_availability">設定檔設定：%1$s · Hook 遙測：%2$s</string>
     <string name="diagnostics_source_available">可讀取</string>
     <string name="diagnostics_source_unavailable">無法使用</string>
+    <string name="diagnostics_source_token_missing">未同步</string>
     <string name="diagnostics_yes">是</string>
     <string name="diagnostics_no">否</string>
     <string name="diagnostics_unknown">未知</string>
@@ -159,6 +160,8 @@
     <string name="diagnostics_verify_no_verified_run">沒有 VERIFY 記錄可關聯至經 OS 驗證的執行；目前執行狀態未知。</string>
     <string name="diagnostics_verify_no_run_identity">沒有 VERIFY 記錄或經 OS 驗證的執行身分；目前執行狀態未知。</string>
     <string name="diagnostics_data_unavailable">無法讀取診斷資料；狀態無法使用（這不代表遙測記錄為空）。</string>
+    <string name="diagnostics_data_token_unavailable">由於診斷權杖未同步到 Xposed 遠端偏好設定，Hook 遙測無法使用。已掛鉤的程序無法傳送遙測，因此這不代表遙測結果為空。請重新啟動 LSPosed（或切換模組）以重新綁定管理服務，然後重新開啟 Google 相簿與此頁面。</string>
+    <string name="diagnostics_data_token_unavailable_short">Hook 遙測無法使用（診斷權杖未同步）。</string>
     <string name="diagnostics_prior_boot_origin">歷史／前次開機的已驗證來源：%1$s（不是目前證據）</string>
     <string name="diagnostics_boot_unknown_origin">來源經 OS 驗證；無法確認目前開機身分。</string>
     <string name="diagnostics_prior_boot_value">歷史／前次開機：%1$s</string>

@@ -100,3 +100,55 @@ internal object ConfigExportPolicy {
         }
     }.getOrDefault(false)
 }
+
+/** How a delivered SAF picker result should be completed. */
+internal enum class ConfigExportCallbackAction {
+    WRITE,
+    WAIT_FOR_SETTINGS,
+    REJECT,
+}
+
+/**
+ * Callback decision for a delivered picker result.
+ *
+ * A result restored after process death can legitimately arrive while the manager service is
+ * still converging (`CONNECTED_SYNCING`) or briefly failed (`ERROR`). Treating that transient
+ * state as a permanent authorization failure would consume the one-shot URI and lose the
+ * export, so those states wait for the settings source to settle. Anything already settled or
+ * structurally invalid fails closed immediately, and same-process source changes stay strict
+ * because a newer service version can never become the source the user authorized.
+ */
+internal object ConfigExportCallbackPolicy {
+    fun decide(
+        request: ConfigExportPendingRequest,
+        callbackRequestId: String,
+        current: ServiceReadinessSnapshot,
+        processEpoch: String,
+        frameworkBindingObserved: Boolean,
+        preferencesAvailable: Boolean,
+        settingsWaitExpired: Boolean,
+    ): ConfigExportCallbackAction {
+        val currentSource = ConfigExportSourceStamp.from(current, processEpoch)
+        val authorization = ConfigExportRequestPolicy.evaluateWrite(
+            request = request,
+            callbackRequestId = callbackRequestId,
+            currentSource = currentSource,
+            sourceStillAuthorized = ConfigExportPolicy.mayExport(
+                current,
+                frameworkBindingObserved,
+                preferencesAvailable,
+            ),
+        )
+        return when (authorization) {
+            ConfigExportWriteAuthorization.AUTHORIZED -> ConfigExportCallbackAction.WRITE
+            ConfigExportWriteAuthorization.STALE_OR_INVALID -> ConfigExportCallbackAction.REJECT
+            // READY with no usable store is a settled failure, not a convergence window.
+            ConfigExportWriteAuthorization.TRANSIENTLY_UNAUTHORIZED ->
+                if (current.ready || settingsWaitExpired) {
+                    ConfigExportCallbackAction.REJECT
+                } else {
+                    ConfigExportCallbackAction.WAIT_FOR_SETTINGS
+                }
+        }
+    }
+}

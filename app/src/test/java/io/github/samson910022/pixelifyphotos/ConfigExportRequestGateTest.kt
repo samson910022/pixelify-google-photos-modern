@@ -337,15 +337,6 @@ class ConfigExportRequestGateTest {
         assertNull("a duplicate one-shot callback cannot consume quarantined JSON", gate.consume(saved.id))
         assertTrue(gate.hasPending())
         assertFalse("a stranded durable record still blocks another export", gate.begin(request("blocked-save")))
-        assertFalse("a failed consume cannot authorize an export write", consumed?.let {
-            ConfigExportRequestPolicy.authorizeWrite(
-                it,
-                saved.id,
-                "content://picker/result",
-                saved.source,
-                sourceStillAuthorized = true,
-            ) != null
-        } ?: false)
         assertTrue(restart.completeRequest(saved.id, saved.id, configExportPending = gate.hasAwaitingResult()))
 
         // Activity recreation shares the process-local delivered marker and retries only the exact
@@ -463,15 +454,6 @@ class ConfigExportRequestGateTest {
         ))
         val duplicate = gate.consume(saved.id)
         assertNull("a duplicate callback cannot export quarantined JSON", duplicate)
-        assertNull(duplicate?.let {
-            ConfigExportRequestPolicy.authorizeWrite(
-                it,
-                saved.id,
-                "content://picker/unavailable-readback",
-                saved.source,
-                sourceStillAuthorized = true,
-            )
-        })
         assertTrue(gate.hasPending())
         assertTrue(restart.completeRequest(
             callbackRequestId = saved.id,
@@ -571,10 +553,9 @@ class ConfigExportRequestGateTest {
             changedSource,
             sourceStillAuthorized = true,
         ))
-        assertNull(ConfigExportRequestPolicy.authorizeWrite(
+        assertFalse("current settings access is re-checked", ConfigExportRequestPolicy.mayWrite(
             consumed,
             first.id,
-            "content://picker/unauthorized-source",
             source,
             sourceStillAuthorized = false,
         ))
@@ -584,30 +565,30 @@ class ConfigExportRequestGateTest {
             source,
             sourceStillAuthorized = true,
         ))
-        assertNull(ConfigExportRequestPolicy.authorizeWrite(
-            consumed,
-            "different-callback-id",
-            "content://picker/wrong-request",
-            source,
-            sourceStillAuthorized = true,
-        ))
+        assertEquals(
+            ConfigExportWriteAuthorization.TRANSIENTLY_UNAUTHORIZED,
+            ConfigExportRequestPolicy.evaluateWrite(consumed, first.id, source, false),
+        )
+        assertEquals(
+            ConfigExportWriteAuthorization.STALE_OR_INVALID,
+            ConfigExportRequestPolicy.evaluateWrite(consumed, "different-callback-id", source, true),
+        )
 
         val second = request("second", setting = "second JSON")
         assertTrue(gate.begin(second))
         val staleCallbackRequest = gate.consume(first.id)
         assertNull(staleCallbackRequest)
-        val uriForSecond = "content://picker/second"
         val matchingRequest = gate.consume(second.id)!!
-        val authorizedWrite = ConfigExportRequestPolicy.authorizeWrite(
+        assertTrue(ConfigExportRequestPolicy.mayWrite(
             matchingRequest,
             second.id,
-            uriForSecond,
             source,
             sourceStillAuthorized = true,
-        )!!
-        assertEquals("second JSON", JSONObject(authorizedWrite.json)
-            .getString(Constants.PREF_DEVICE_TO_SPOOF))
-        assertEquals("content://picker/second", authorizedWrite.target)
-        assertEquals(second.id, authorizedWrite.requestId)
+        ))
+        assertEquals(
+            "second JSON",
+            JSONObject(matchingRequest.json).getString(Constants.PREF_DEVICE_TO_SPOOF),
+        )
+        assertEquals(second.id, matchingRequest.id)
     }
 }

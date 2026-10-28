@@ -16,6 +16,8 @@ object PrefUtils {
     internal data class DiagnosticsPreferenceSources(
         val profileSettings: SharedPreferences?,
         val telemetry: SharedPreferences?,
+        /** Readability plus canonical-token presence; readable prefs alone are not transport. */
+        val telemetryTransport: DiagnosticsTelemetryTransport,
     )
 
     fun getPrefs(context: Context): SharedPreferences? {
@@ -59,6 +61,13 @@ object PrefUtils {
     ): DiagnosticsPreferenceSources {
         val remote = getRemotePrefs(snapshot)
         val settings = if (snapshot.ready) remote else getPrefs(context, snapshot)
-        return DiagnosticsPreferenceSources(profileSettings = settings, telemetry = remote)
+        val transport = DiagnosticsTelemetrySourcePolicy.classify(preferencesAvailable = remote != null) {
+            remote?.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+        }
+        return DiagnosticsPreferenceSources(
+            profileSettings = settings,
+            telemetry = remote,
+            telemetryTransport = transport,
+        )
     }
 }

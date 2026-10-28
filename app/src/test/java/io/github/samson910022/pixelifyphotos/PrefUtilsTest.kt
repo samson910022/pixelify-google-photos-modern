@@ -66,7 +66,7 @@ class PrefUtilsTest {
         val sources = PrefUtils.diagnosticsSources(context, App.serviceReadinessSnapshot())
         val state = DiagnosticsHookStatePolicy.capture(
             profileSettingsAvailable = sources.profileSettings != null,
-            telemetryPreferencesAvailable = sources.telemetry != null,
+            telemetryTransport = sources.telemetryTransport,
             readTelemetry = { error("remote telemetry must not be read while disconnected") },
         )
 
@@ -123,6 +123,113 @@ class PrefUtilsTest {
         verify(context, never()).getSharedPreferences(
             Constants.SHARED_PREF_FILE_NAME,
             Context.MODE_PRIVATE,
+        )
+    }
+
+    @Test
+    fun `readable remote settings without a diagnostics token are unavailable transport not empty telemetry`() {
+        val service = mock<XposedService>()
+        val remote = MemorySharedPreferences(
+            mapOf(Constants.PREF_DEVICE_TO_SPOOF to "Pixel 9"),
+        )
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(remote)
+        App.setServiceStateForTests(service, ready = true)
+
+        val sources = PrefUtils.diagnosticsSources(context, App.serviceReadinessSnapshot())
+
+        assertEquals(DiagnosticsTelemetryTransport.TOKEN_MISSING, sources.telemetryTransport)
+        assertSame(remote, sources.telemetry)
+        assertEquals("Pixel 9", sources.profileSettings?.getString(Constants.PREF_DEVICE_TO_SPOOF, null))
+
+        var telemetryReads = 0
+        val state = DiagnosticsHookStatePolicy.capture(
+            profileSettingsAvailable = sources.profileSettings != null,
+            telemetryTransport = sources.telemetryTransport,
+            readTelemetry = {
+                telemetryReads += 1
+                error("an unauthenticated transport must not be read as empty telemetry")
+            },
+        )
+
+        assertEquals("unauthenticated telemetry must never be read", 0, telemetryReads)
+
+        assertTrue(state.profileSettingsAvailable)
+        assertFalse(state.diagnosticsAvailable)
+        assertEquals(
+            DiagnosticsCollector.DiagnosticsUnavailableReason.TOKEN_NOT_SYNCHRONIZED,
+            state.diagnosticsUnavailableReason,
+        )
+        assertEquals(
+            DiagnosticsCollector.MilestoneKind.DIAGNOSTICS_TRANSPORT_UNAVAILABLE,
+            DiagnosticsCollector.milestoneSignals(state).single().kind,
+        )
+        val report = DiagnosticsCollector.formatReportText(
+            state = state,
+            serviceConnected = true,
+            serviceStatus = "ready",
+            scope = listOf("com.google.android.apps.photos"),
+            selectedDevice = "Pixel 9",
+            real = emptyMap(),
+            target = emptyMap(),
+        )
+        assertTrue(report.contains("Profile settings: readable"))
+        assertTrue(
+            report.contains(
+                "Diagnostics data: UNAVAILABLE (diagnostics token is not synchronized",
+            ),
+        )
+        assertFalse(report.contains("Diagnostics data: readable"))
+        assertTrue(report.contains("Restart LSPosed"))
+        assertFalse(report.contains("No lifecycle milestones have been recorded yet"))
+    }
+
+    @Test
+    fun `synchronized token keeps a readable empty store as an explicit no-record state`() {
+        val service = mock<XposedService>()
+        val remote = MemorySharedPreferences(
+            mapOf(Constants.PREF_DIAG_BROADCAST_TOKEN to "canonical-token"),
+        )
+        whenever(service.getRemotePreferences(eq(Constants.SHARED_PREF_FILE_NAME))).thenReturn(remote)
+        App.setServiceStateForTests(service, ready = true)
+
+        val sources = PrefUtils.diagnosticsSources(context, App.serviceReadinessSnapshot())
+
+        assertEquals(DiagnosticsTelemetryTransport.READABLE, sources.telemetryTransport)
+
+        val state = DiagnosticsHookStatePolicy.capture(
+            profileSettingsAvailable = sources.profileSettings != null,
+            telemetryTransport = sources.telemetryTransport,
+            readTelemetry = {
+                DiagnosticsHookStateSnapshot.capture(
+                    readAll = { emptyMap<String, Any?>() },
+                    currentBootCount = null,
+                    currentBootEpoch = null,
+                )
+            },
+        )
+
+        assertTrue(state.diagnosticsAvailable)
+        assertEquals(
+            DiagnosticsCollector.MilestoneKind.NO_RECORD,
+            DiagnosticsCollector.milestoneSignals(state).single().kind,
+        )
+    }
+
+    @Test
+    fun `telemetry source classification fails closed when the token read throws`() {
+        assertEquals(
+            DiagnosticsTelemetryTransport.UNAVAILABLE,
+            DiagnosticsTelemetrySourcePolicy.classify(preferencesAvailable = false) { "token" },
+        )
+        assertEquals(
+            DiagnosticsTelemetryTransport.UNAVAILABLE,
+            DiagnosticsTelemetrySourcePolicy.classify(preferencesAvailable = true) {
+                throw IllegalStateException("binder died")
+            },
+        )
+        assertEquals(
+            DiagnosticsTelemetryTransport.TOKEN_MISSING,
+            DiagnosticsTelemetrySourcePolicy.classify(preferencesAvailable = true) { " " },
         )
     }
 }

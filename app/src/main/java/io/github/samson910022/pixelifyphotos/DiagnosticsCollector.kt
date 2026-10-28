@@ -26,6 +26,16 @@ object DiagnosticsCollector {
     }
 
     /**
+     * Why hook telemetry cannot be presented. [NONE] when telemetry was read successfully;
+     * the cause stays distinct so transport/auth failures are never reported as "no record".
+     */
+    enum class DiagnosticsUnavailableReason {
+        NONE,
+        PREFERENCES_UNREADABLE,
+        TOKEN_NOT_SYNCHRONIZED,
+    }
+
+    /**
      * Snapshot of lifecycle, registration, invocation, and Build readback signals
      * recorded by [PixelifyModule], [FeatureSpoofer], and [DeviceSpoofer] in a
      * scoped target process, read back through the shared remote preferences.
@@ -41,7 +51,7 @@ object DiagnosticsCollector {
         val activeRunBootEpoch: String? = null,
         val currentBootEpoch: String? = null,
         val activeOriginVerified: Boolean = false,
-        /** False only when the preference store could not be read; empty readable data is valid. */
+        /** False when telemetry cannot be presented; see [diagnosticsUnavailableReason]. */
         val diagnosticsAvailable: Boolean = true,
         val processPid: Int? = null,
         val moduleLoadedAt: Long? = null,
@@ -64,6 +74,8 @@ object DiagnosticsCollector {
         val systemPropsHookGetWithDefault: Boolean? = null,
         val featureInterceptorAt: Long? = null,
         val systemPropsInterceptorAt: Long? = null,
+        /** Set when [diagnosticsAvailable] is false; distinguishes unreadable data from missing auth. */
+        val diagnosticsUnavailableReason: DiagnosticsUnavailableReason = DiagnosticsUnavailableReason.NONE,
     ) {
         /** True when any lifecycle, registration, invocation, or VERIFY signal exists. */
         val anyRecorded: Boolean
@@ -93,6 +105,8 @@ object DiagnosticsCollector {
     enum class MilestoneKind {
         NO_RECORD,
         DIAGNOSTICS_UNAVAILABLE,
+        /** Telemetry store is readable, but no auth token means no target can deliver telemetry. */
+        DIAGNOSTICS_TRANSPORT_UNAVAILABLE,
         PRIOR_BOOT_RUN,
         BOOT_UNKNOWN_RUN,
         MODULE_LOADED,
@@ -127,7 +141,14 @@ object DiagnosticsCollector {
      */
     fun milestoneSignals(state: HookState, now: Long = System.currentTimeMillis()): List<MilestoneSignal> {
         if (!state.diagnosticsAvailable) {
-            return listOf(MilestoneSignal(MilestoneKind.DIAGNOSTICS_UNAVAILABLE))
+            val kind = if (state.diagnosticsUnavailableReason ==
+                DiagnosticsUnavailableReason.TOKEN_NOT_SYNCHRONIZED
+            ) {
+                MilestoneKind.DIAGNOSTICS_TRANSPORT_UNAVAILABLE
+            } else {
+                MilestoneKind.DIAGNOSTICS_UNAVAILABLE
+            }
+            return listOf(MilestoneSignal(kind))
         }
         val hasLifecycleRecord = state.moduleLoadedAt != null || state.lastPackageLoaded != null ||
             state.lastPackageReady != null || state.verifyAt != null
@@ -295,6 +316,8 @@ object DiagnosticsCollector {
             "No lifecycle milestones have been recorded yet. Hook registration results, if available, are shown separately. Open Google Photos once, wait a few seconds, then reopen this screen."
         MilestoneKind.DIAGNOSTICS_UNAVAILABLE ->
             "Diagnostics data is unavailable because preferences could not be read; no-record status cannot be determined."
+        MilestoneKind.DIAGNOSTICS_TRANSPORT_UNAVAILABLE ->
+            "Diagnostics data is unavailable because the diagnostics auth token is not synchronized to remote preferences. The hooked process cannot deliver telemetry, so an empty result cannot be inferred. Restart LSPosed or toggle the module to rebind the manager service, then reopen Google Photos and this screen."
         MilestoneKind.PRIOR_BOOT_RUN ->
             "Historical/prior-boot diagnostics from an OS-verified origin; these records are not current evidence."
         MilestoneKind.BOOT_UNKNOWN_RUN ->
@@ -520,6 +543,26 @@ object DiagnosticsCollector {
         )
     }
 
+    /** Reason-aware wording so a missing auth token is never described as unreadable data. */
+    private fun unavailableDiagnosticsDescription(state: HookState): String =
+        if (state.diagnosticsUnavailableReason ==
+            DiagnosticsUnavailableReason.TOKEN_NOT_SYNCHRONIZED
+        ) {
+            "unavailable (diagnostics token is not synchronized; no telemetry can be delivered)"
+        } else {
+            "unavailable (diagnostics data could not be read)"
+        }
+
+    /** Summary line that keeps a transport/auth failure distinct from readable-empty telemetry. */
+    private fun diagnosticsDataStatus(state: HookState): String = when {
+        state.diagnosticsAvailable -> "Diagnostics data: readable"
+        state.diagnosticsUnavailableReason == DiagnosticsUnavailableReason.TOKEN_NOT_SYNCHRONIZED ->
+            "Diagnostics data: UNAVAILABLE (diagnostics token is not synchronized to remote " +
+                "preferences; no telemetry can be delivered, so empty telemetry cannot be inferred)"
+        else ->
+            "Diagnostics data: UNAVAILABLE (preferences could not be read; empty telemetry cannot be inferred)"
+    }
+
     /** Registration is not proof of execution; no combined "hook success" flag is exposed. */
     fun formatHookRegistrationText(state: HookState, now: Long): List<String> {
         val model = registrationModel(state, now)
@@ -531,7 +574,7 @@ object DiagnosticsCollector {
                 else -> formatOutcome(value)
             }
         val originDescription = when {
-            !state.diagnosticsAvailable -> "unavailable (diagnostics data could not be read)"
+            !state.diagnosticsAvailable -> unavailableDiagnosticsDescription(state)
             hasVerifiedRunIdentity(state) -> state.activePackage ?: "unknown"
             hasStaleBootRunIdentity(state) ->
                 "historical/prior-boot verified origin: ${state.activePackage ?: "unknown"}"
@@ -540,7 +583,7 @@ object DiagnosticsCollector {
             else -> "unknown/unverified (reported origin: ${state.activePackage ?: "unknown"})"
         }
         val pidDescription = when {
-            !state.diagnosticsAvailable -> "unavailable (diagnostics data could not be read)"
+            !state.diagnosticsAvailable -> unavailableDiagnosticsDescription(state)
             hasVerifiedRunIdentity(state) -> state.processPid?.toString() ?: "unknown"
             hasStaleBootRunIdentity(state) ->
                 "historical/prior-boot OS-observed PID: ${state.processPid ?: "unknown"} (not current)"
@@ -632,10 +675,7 @@ object DiagnosticsCollector {
         val sb = StringBuilder()
         sb.appendLine("Pixelify Infinity diagnostics")
         sb.appendLine("Xposed manager service: ${serviceStatus ?: if (serviceConnected) "connected" else "disconnected"} (connection state only; not proof hooks registered)")
-        sb.appendLine(
-            if (reportState.diagnosticsAvailable) "Diagnostics data: readable"
-            else "Diagnostics data: UNAVAILABLE (preferences could not be read; empty telemetry cannot be inferred)"
-        )
+        sb.appendLine(diagnosticsDataStatus(reportState))
         sb.appendLine(
             "Profile settings: ${if (reportState.profileSettingsAvailable) "readable" else "UNAVAILABLE"}"
         )
@@ -648,7 +688,7 @@ object DiagnosticsCollector {
             }
         )
         val originDescription = when {
-            !state.diagnosticsAvailable -> "unavailable (diagnostics data could not be read)"
+            !state.diagnosticsAvailable -> unavailableDiagnosticsDescription(state)
             verifiedRunIdentity -> reportState.activePackage ?: "unknown"
             hasStaleBootRunIdentity(state) ->
                 "HISTORICAL (prior-boot, OS-verified origin: ${reportState.activePackage ?: "unknown"})"
@@ -657,7 +697,7 @@ object DiagnosticsCollector {
             else -> "UNVERIFIED (reported origin: ${reportState.activePackage ?: "unknown"})"
         }
         val pidDescription = when {
-            !state.diagnosticsAvailable -> "unavailable (diagnostics data could not be read)"
+            !state.diagnosticsAvailable -> unavailableDiagnosticsDescription(state)
             verifiedRunIdentity -> state.processPid?.toString() ?: "unknown"
             hasStaleBootRunIdentity(state) ->
                 "historical/prior-boot PID (not current): ${state.processPid ?: "unknown"}"
@@ -684,7 +724,7 @@ object DiagnosticsCollector {
         val priorBootVerify = hasStaleBootRunIdentity(state)
         val bootUnknownVerify = verifiedOriginIdentity && !verifiedRunIdentity && !priorBootVerify
         val verifyLabel = when {
-            !state.diagnosticsAvailable -> "Last VERIFY: unavailable (diagnostics data could not be read)"
+            !state.diagnosticsAvailable -> "Last VERIFY: ${unavailableDiagnosticsDescription(state)}"
             priorBootVerify -> "Last VERIFY (HISTORICAL PRIOR-BOOT, OS-VERIFIED ORIGIN)"
             bootUnknownVerify -> "Last VERIFY (current boot unknown)"
             hasUnverifiedRun -> "Last VERIFY (UNVERIFIED TELEMETRY)"
@@ -692,7 +732,7 @@ object DiagnosticsCollector {
         }
         sb.appendLine(
             when {
-                !state.diagnosticsAvailable -> "Last VERIFY: unavailable (diagnostics data could not be read)"
+                !state.diagnosticsAvailable -> "Last VERIFY: ${unavailableDiagnosticsDescription(state)}"
                 state.verifyAt != null -> "$verifyLabel: ${formatTimestamp(state.verifyAt, now)}"
                 priorBootVerify -> "$verifyLabel: no VERIFY record for that prior-boot run; this does not describe the current run"
                 bootUnknownVerify -> "$verifyLabel: no VERIFY record can be established as current; run relation is unknown"

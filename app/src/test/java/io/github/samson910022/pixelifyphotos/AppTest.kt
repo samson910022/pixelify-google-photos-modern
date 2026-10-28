@@ -190,7 +190,10 @@ class AppTest {
         mockedLog.verify {
             Log.w(
                 eq("Pixelify"),
-                eq("Diagnostics IPC token stores did not converge; remote diagnostic results will remain unknown"),
+                eq(
+                    "Diagnostics IPC token is not synchronized to remote preferences; " +
+                        "remote diagnostic results will remain unknown",
+                ),
             )
         }
         App.removeOnServiceStateListener(stateListener)

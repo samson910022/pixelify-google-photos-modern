@@ -18,17 +18,57 @@ internal object DiagnosticsScopePresentation {
     }
 }
 
+/**
+ * Whether this manager process has provisioned the canonical token that
+ * [DiagnosticsReporter] requires to authenticate a telemetry delivery.
+ *
+ * Token presence is necessary, not sufficient: a target process that predates the
+ * synchronization, or that cannot read the remote store, can still fail to deliver.
+ * [DiagnosticsReporter] resolves the same remote store, so an empty readable store without
+ * a token must never be presented as "no record yet".
+ */
+internal enum class DiagnosticsTelemetryTransport {
+    READABLE,
+    /** Remote preferences are readable, but no canonical diagnostics token is provisioned. */
+    TOKEN_MISSING,
+    /** Remote preferences themselves are unavailable, or the token read failed. */
+    UNAVAILABLE,
+}
+
+/** Classifies telemetry transport without copying, logging, or rendering the token value. */
+internal object DiagnosticsTelemetrySourcePolicy {
+    fun classify(
+        preferencesAvailable: Boolean,
+        readToken: () -> String?,
+    ): DiagnosticsTelemetryTransport {
+        if (!preferencesAvailable) return DiagnosticsTelemetryTransport.UNAVAILABLE
+        return runCatching {
+            if (readToken().isNullOrBlank()) {
+                DiagnosticsTelemetryTransport.TOKEN_MISSING
+            } else {
+                DiagnosticsTelemetryTransport.READABLE
+            }
+        }.getOrDefault(DiagnosticsTelemetryTransport.UNAVAILABLE)
+    }
+}
+
 /** Cold local settings never imply a readable-empty remote telemetry store. */
 internal object DiagnosticsHookStatePolicy {
     fun capture(
         profileSettingsAvailable: Boolean,
-        telemetryPreferencesAvailable: Boolean,
+        telemetryTransport: DiagnosticsTelemetryTransport,
         readTelemetry: () -> DiagnosticsCollector.HookState,
     ): DiagnosticsCollector.HookState {
-        if (!telemetryPreferencesAvailable) {
+        if (telemetryTransport != DiagnosticsTelemetryTransport.READABLE) {
             return DiagnosticsCollector.HookState(
                 diagnosticsAvailable = false,
                 profileSettingsAvailable = profileSettingsAvailable,
+                diagnosticsUnavailableReason =
+                    if (telemetryTransport == DiagnosticsTelemetryTransport.TOKEN_MISSING) {
+                        DiagnosticsCollector.DiagnosticsUnavailableReason.TOKEN_NOT_SYNCHRONIZED
+                    } else {
+                        DiagnosticsCollector.DiagnosticsUnavailableReason.PREFERENCES_UNREADABLE
+                    },
             )
         }
         return try {
@@ -39,6 +79,8 @@ internal object DiagnosticsHookStatePolicy {
             DiagnosticsCollector.HookState(
                 diagnosticsAvailable = false,
                 profileSettingsAvailable = profileSettingsAvailable,
+                diagnosticsUnavailableReason =
+                    DiagnosticsCollector.DiagnosticsUnavailableReason.PREFERENCES_UNREADABLE,
             )
         }
     }

@@ -36,7 +36,7 @@
     <string name="share_error">Unable to share or export the configuration.</string>
     <string name="config_export_unavailable">Configuration export is unavailable until the settings source can be read. No configuration was shared or saved.</string>
     <string name="config_export_empty">There are no saved user settings to export. No configuration was shared or saved.</string>
-    <string name="config_export_in_progress">A configuration export is already waiting for the document picker. Finish or cancel it before starting another export.</string>
+    <string name="config_export_in_progress">A configuration export is already in progress. Finish or cancel it before starting another export.</string>
     <string name="read_error">Unable to read the selected configuration file.</string>
     <string name="import_complete">Import complete</string>
     <string name="invalid_imported_device">The imported device profile is unsupported and was skipped.</string>
@@ -132,6 +132,7 @@
     <string name="diagnostics_source_availability">Profile settings: %1$s · Hook telemetry: %2$s</string>
     <string name="diagnostics_source_available">readable</string>
     <string name="diagnostics_source_unavailable">unavailable</string>
+    <string name="diagnostics_source_token_missing">not synchronized</string>
     <string name="diagnostics_yes">Yes</string>
     <string name="diagnostics_no">No</string>
     <string name="diagnostics_unknown">unknown</string>
@@ -159,6 +160,8 @@
     <string name="diagnostics_verify_no_verified_run">No VERIFY record can be linked to an OS-verified run; current-run status is unknown.</string>
     <string name="diagnostics_verify_no_run_identity">No VERIFY record or OS-verified run identity is available; current-run status is unknown.</string>
     <string name="diagnostics_data_unavailable">Diagnostics data could not be read; its state is unavailable (not an empty telemetry result).</string>
+    <string name="diagnostics_data_token_unavailable">Hook telemetry is unavailable because the diagnostics token is not synchronized to Xposed remote preferences. The hooked process cannot deliver telemetry, so this is not an empty result. Restart LSPosed (or toggle the module) so the manager service rebinds, then reopen Google Photos and this screen.</string>
+    <string name="diagnostics_data_token_unavailable_short">Hook telemetry is unavailable (diagnostics token not synchronized).</string>
     <string name="diagnostics_prior_boot_origin">Historical/prior-boot verified origin: %1$s (not current evidence)</string>
     <string name="diagnostics_boot_unknown_origin">OS-verified origin; current boot could not be confirmed.</string>
     <string name="diagnostics_prior_boot_value">Historical/prior-boot: %1$s</string>

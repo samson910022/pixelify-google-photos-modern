@@ -36,7 +36,7 @@
     <string name="share_error">无法分享或导出配置。</string>
     <string name="config_export_unavailable">当前无法读取设置来源，因此不能导出配置；未分享或保存任何配置。</string>
     <string name="config_export_empty">没有可导出的已保存用户设置；未分享或保存任何配置。</string>
-    <string name="config_export_in_progress">已有配置导出正在等待文件选择器完成。请先完成或取消该操作，再开始新的导出。</string>
+    <string name="config_export_in_progress">已有配置导出正在进行中。请先完成或取消该操作，再开始新的导出。</string>
     <string name="read_error">无法读取所选的配置文件。</string>
     <string name="import_complete">导入完成</string>
     <string name="invalid_imported_device">导入的设备配置文件不受支持，已跳过。</string>
@@ -132,6 +132,7 @@
     <string name="diagnostics_source_availability">配置文件设置：%1$s · Hook 遥测：%2$s</string>
     <string name="diagnostics_source_available">可读取</string>
     <string name="diagnostics_source_unavailable">不可用</string>
+    <string name="diagnostics_source_token_missing">未同步</string>
     <string name="diagnostics_yes">是</string>
     <string name="diagnostics_no">否</string>
     <string name="diagnostics_unknown">未知</string>
@@ -159,6 +160,8 @@
     <string name="diagnostics_verify_no_verified_run">没有 VERIFY 记录可关联到经 OS 验证的运行；当前运行状态未知。</string>
     <string name="diagnostics_verify_no_run_identity">没有 VERIFY 记录或经 OS 验证的运行身份；当前运行状态未知。</string>
     <string name="diagnostics_data_unavailable">无法读取诊断数据；状态不可用（这不表示遥测记录为空）。</string>
+    <string name="diagnostics_data_token_unavailable">由于诊断令牌未同步到 Xposed 远程首选项，Hook 遥测不可用。已挂钩的进程无法发送遥测，因此这不表示遥测结果为空。请重启 LSPosed（或切换模块）以重新绑定管理服务，然后重新打开 Google 相册和此页面。</string>
+    <string name="diagnostics_data_token_unavailable_short">Hook 遥测不可用（诊断令牌未同步）。</string>
     <string name="diagnostics_prior_boot_origin">历史／上次启动的已验证来源：%1$s（不是当前证据）</string>
     <string name="diagnostics_boot_unknown_origin">来源经 OS 验证；无法确认当前启动身份。</string>
     <string name="diagnostics_prior_boot_value">历史／上次启动：%1$s</string>

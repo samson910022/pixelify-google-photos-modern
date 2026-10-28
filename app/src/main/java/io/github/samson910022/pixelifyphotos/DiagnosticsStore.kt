@@ -327,6 +327,10 @@ object DiagnosticsStore {
      * generated in the module app's private store is copied to remote preferences.
      * No token from a diagnostic payload or other remote caller is adopted.
      * Called from [App.onServiceBind]; safe to call repeatedly.
+     *
+     * Returns false only when the remote store still holds no usable token (or its state is
+     * unknowable), because that is the copy [DiagnosticsReporter] authenticates against. A
+     * failed write of this process's local mirror does not degrade delivery on its own.
      */
     fun convergeBroadcastToken(context: Context, service: io.github.libxposed.service.XposedService? = App.mService): Boolean {
         val boundService = service ?: run {
@@ -360,9 +364,11 @@ object DiagnosticsStore {
                         .putString(Constants.PREF_DIAG_BROADCAST_TOKEN, remoteToken)
                         .commit()
                     if (!committed) {
-                        Log.w(TAG, "Diagnostics IPC token sync to module preferences did not persist")
+                        // The remote token is canonical and usable for delivery; only this
+                        // process's local mirror is stale, so telemetry is not degraded.
+                        Log.w(TAG, "Diagnostics IPC token local mirror did not persist; remote token remains canonical")
                     }
-                    committed
+                    true
                 }
                 else -> true
             }

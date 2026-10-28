@@ -86,7 +86,8 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         if (!tokenConverged) {
             android.util.Log.w(
                 TAG,
-                "Diagnostics IPC token stores did not converge; remote diagnostic results will remain unknown",
+                "Diagnostics IPC token is not synchronized to remote preferences; " +
+                    "remote diagnostic results will remain unknown",
             )
         }
         val settingsConverged = runCatching {

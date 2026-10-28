@@ -249,10 +249,12 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
                         }
                     ),
                     getString(
-                        if (snapshot.state.diagnosticsAvailable) {
-                            R.string.diagnostics_source_available
-                        } else {
-                            R.string.diagnostics_source_unavailable
+                        when {
+                            snapshot.state.diagnosticsAvailable -> R.string.diagnostics_source_available
+                            snapshot.state.diagnosticsUnavailableReason ==
+                                DiagnosticsCollector.DiagnosticsUnavailableReason.TOKEN_NOT_SYNCHRONIZED ->
+                                R.string.diagnostics_source_token_missing
+                            else -> R.string.diagnostics_source_unavailable
                         }
                     ),
                 )
@@ -341,7 +343,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
                 val profileSettingsReadable = profile.settingsReadable
                 val hookState = DiagnosticsHookStatePolicy.capture(
                     profileSettingsAvailable = profileSettingsReadable,
-                    telemetryPreferencesAvailable = sources.telemetry != null,
+                    telemetryTransport = sources.telemetryTransport,
                     readTelemetry = { readHookState(checkNotNull(sources.telemetry)) },
                 )
                 Snapshot(
@@ -420,7 +422,13 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
     }
 
     private fun readHookState(prefs: SharedPreferences?): HookState {
-        if (prefs == null) return HookState(diagnosticsAvailable = false)
+        if (prefs == null) {
+            return HookState(
+                diagnosticsAvailable = false,
+                diagnosticsUnavailableReason =
+                    DiagnosticsCollector.DiagnosticsUnavailableReason.PREFERENCES_UNREADABLE,
+            )
+        }
         val currentBootCount = runCatching {
             Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, -1)
                 .takeIf { it >= 0 }
@@ -482,9 +490,23 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         }
     }.getOrNull()
 
+    /**
+     * Short form for the per-card fields; the milestone list carries the full remediation text
+     * once so the same paragraph is not repeated three times on one screen.
+     */
+    private fun unavailableDataText(state: HookState): String = getString(
+        if (state.diagnosticsUnavailableReason ==
+            DiagnosticsCollector.DiagnosticsUnavailableReason.TOKEN_NOT_SYNCHRONIZED
+        ) {
+            R.string.diagnostics_data_token_unavailable_short
+        } else {
+            R.string.diagnostics_data_unavailable
+        },
+    )
+
     private fun buildVerifyText(state: HookState): String {
         if (!state.diagnosticsAvailable) {
-            return getString(R.string.diagnostics_data_unavailable)
+            return unavailableDataText(state)
         }
         if (state.verifyAt == null) {
             return when (DiagnosticsVerifyCardPolicy.noRecordStatus(state)) {
@@ -589,7 +611,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
 
     private fun buildRegistrationText(state: HookState): String {
         if (!state.diagnosticsAvailable) {
-            return getString(R.string.diagnostics_data_unavailable)
+            return unavailableDataText(state)
         }
         val now = System.currentTimeMillis()
         val model = DiagnosticsCollector.registrationModel(state, now)
@@ -742,6 +764,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             },
         )
         MilestoneKind.DIAGNOSTICS_UNAVAILABLE -> getString(R.string.diagnostics_data_unavailable)
+        MilestoneKind.DIAGNOSTICS_TRANSPORT_UNAVAILABLE -> getString(R.string.diagnostics_data_token_unavailable)
         MilestoneKind.PRIOR_BOOT_RUN -> getString(R.string.diagnostics_milestone_prior_boot)
         MilestoneKind.BOOT_UNKNOWN_RUN -> getString(R.string.diagnostics_milestone_boot_unknown)
         MilestoneKind.MODULE_LOADED ->

@@ -353,14 +353,19 @@ internal class ConfigExportRequestGate(
     }
 }
 
+/** How a callback's authorization attempt resolved; only [TRANSIENTLY_UNAUTHORIZED] may wait. */
+internal enum class ConfigExportWriteAuthorization {
+    AUTHORIZED,
+
+    /** Settings access is not available *yet*; a convergence window may still repair it. */
+    TRANSIENTLY_UNAUTHORIZED,
+
+    /** Stale callback, non-allowlisted payload, or a source change that can never be repaired. */
+    STALE_OR_INVALID,
+}
+
 /** Callback validation kept separate from persistence so stale IDs and source mismatches are directly testable. */
 internal object ConfigExportRequestPolicy {
-    data class AuthorizedWrite<T : Any>(
-        val requestId: String,
-        val target: T,
-        val json: String,
-    )
-
     /**
      * Callback authorization for an already-persisted allowlisted snapshot.
      *
@@ -370,30 +375,30 @@ internal object ConfigExportRequestPolicy {
      * open fails closed. A request restored from an earlier process cannot satisfy that equality;
      * it skips only the dead stamp and relies on current authorization plus allowlist validation.
      */
+    fun evaluateWrite(
+        request: ConfigExportPendingRequest,
+        callbackRequestId: String,
+        currentSource: ConfigExportSourceStamp,
+        sourceStillAuthorized: Boolean,
+    ): ConfigExportWriteAuthorization = when {
+        callbackRequestId != request.id -> ConfigExportWriteAuthorization.STALE_OR_INVALID
+        !ConfigExportPolicy.isAllowlistedExportJson(request.json) ->
+            ConfigExportWriteAuthorization.STALE_OR_INVALID
+        request.source.processEpoch == currentSource.processEpoch && request.source != currentSource ->
+            ConfigExportWriteAuthorization.STALE_OR_INVALID
+        !sourceStillAuthorized -> ConfigExportWriteAuthorization.TRANSIENTLY_UNAUTHORIZED
+        else -> ConfigExportWriteAuthorization.AUTHORIZED
+    }
+
     fun mayWrite(
         request: ConfigExportPendingRequest,
         callbackRequestId: String,
         currentSource: ConfigExportSourceStamp,
         sourceStillAuthorized: Boolean,
-    ): Boolean {
-        if (callbackRequestId != request.id) return false
-        if (!sourceStillAuthorized) return false
-        if (request.source.processEpoch == currentSource.processEpoch && request.source != currentSource) {
-            return false
-        }
-        return ConfigExportPolicy.isAllowlistedExportJson(request.json)
-    }
-
-    fun <T : Any> authorizeWrite(
-        request: ConfigExportPendingRequest,
-        callbackRequestId: String,
-        target: T?,
-        currentSource: ConfigExportSourceStamp,
-        sourceStillAuthorized: Boolean,
-    ): AuthorizedWrite<T>? {
-        if (target == null || !mayWrite(request, callbackRequestId, currentSource, sourceStillAuthorized)) {
-            return null
-        }
-        return AuthorizedWrite(request.id, target, request.json)
-    }
+    ): Boolean = evaluateWrite(
+        request,
+        callbackRequestId,
+        currentSource,
+        sourceStillAuthorized,
+    ) == ConfigExportWriteAuthorization.AUTHORIZED
 }
