@@ -1,17 +1,5 @@
 # Changelog
 
-## [Unreleased]
-
-### Fixed
-
-- **Truthful Diagnostics Evidence**: Hook and interceptor observations are attributed to the active run, stale or unattributed callbacks can no longer be presented as successful hooks, and the Diagnostics screen/report distinguish observed outcomes from unavailable, unreadable, or token-missing telemetry. A kernel boot-time identity fallback keeps run-bound diagnostics available when the boot UUID is unreadable on supported older Android releases.
-- **Settings and SAF Lifecycle Hardening**: Settings readiness is independent of diagnostics-token convergence, config import I/O and validation are staged off the settings lock, offline handoff now proves the manager store is reachable before reporting success, a restored export result waits for settings convergence instead of being discarded, and deferred exports survive Activity/process recreation without duplicate writes.
-- **Changelog Marker**: The version marker is recorded only from authoritative remote settings before the changelog is shown, preventing a replay after the first framework bind.
-
-### Changed
-
-- Diagnostics and support documentation now separate service connection, hook registration, runtime interceptor observation, and Build-field VERIFY readback; translations and the project landing use the same wording.
-
 ## [1.4.1] - 2026-08-23
 
 ### Fixed
