@@ -25,6 +25,8 @@ Pixelify Infinity is an independently maintained Xposed module that spoofs selec
 - Modern Material 3 interface with dynamic color and an optional classic theme.
 - In-app **Diagnostics** screen: manager-service connection, lifecycle milestones, individual hook-registration results, and whether runtime interceptors were observed entering at least once; copy a sanitized report (no account data) for issue reports. An entry observation does not identify the caller or prove a spoofed value was returned.
 
+Diagnostics are evidence about the module, not proof that Google Photos behaviour changed. A manager-service connection only shows that the app is connected; a runtime observation only shows that an interceptor was entered at least once; and a passing Build-field VERIFY only shows that the hooked process could read the expected `Build` values back. None of these proves hook registration, interception of the relevant API, or a successful backup. A missing lifecycle record means no trusted record was persisted for the current run; it does not prove that a callback never happened.
+
 ## Device profiles and backup entitlements
 
 Different Pixel hardware generations receive different Google Photos backup entitlements and feature tiers under Google's cloud storage policies:
@@ -62,7 +64,7 @@ Follow either of these two methods to verify that spoofing and free cloud backup
 If photos still consume account storage quota:
 1. Open the in-app **Diagnostics** screen in Pixelify Infinity (Module App → Diagnostics) and inspect the individual hook-registration results and runtime observations. The separate **Build-field VERIFY** only confirms Build readback; it does not prove Google Photos intercepted the relevant API.
 2. Verify that your Google Photos backup quality setting matches that profile's free conditions (e.g. **Storage saver** for Pixel 2–5).
-3. If Google Photos cached stale device properties, tap **Force-stop scoped apps** or clear Google Photos app cache and restart.
+3. Confirm the result through the real Google Photos backup banner or a test photo's storage info. If Google Photos cached stale device properties, tap **Force-stop scoped apps** or clear Google Photos app cache and restart.
 4. Ensure you have not selected a Pixel 6 or newer profile (which does not provide free backup).
 
 ## Requirements

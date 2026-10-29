@@ -593,7 +593,7 @@ object DiagnosticsCollector {
         return listOf(
             "Registration origin: $originDescription " +
                 "(run ${state.activeRunId ?: "unknown"}, started ${formatTimestamp(state.activeRunStartedAt, now)})",
-            "OS-observed Binder PID: $pidDescription",
+            "OS-observed sender PID (Binder when available): $pidDescription",
             "Feature hooks: ${formatRegistration(model.feature, now)}",
             "  hasSystemFeature(String): ${rowOutcome(state.featureHookHasSystemFeature, model.feature)}",
             "  hasSystemFeature(String, int): ${rowOutcome(state.featureHookHasSystemFeatureWithFlags, model.feature)}",
@@ -709,7 +709,7 @@ object DiagnosticsCollector {
                 "run ID: ${reportState.activeRunId ?: "unknown"}; " +
                 "started: ${formatTimestamp(state.activeRunStartedAt, now)}"
         )
-        sb.appendLine("OS-observed Binder PID: $pidDescription")
+        sb.appendLine("OS-observed sender PID (Binder when available): $pidDescription")
         sb.appendLine("Entitlement tier: $entitlementSummary")
         sb.appendLine("Backup quality requirement: $qualityRequirement")
         sb.appendLine()

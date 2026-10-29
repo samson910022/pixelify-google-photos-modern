@@ -482,32 +482,57 @@ object DiagnosticsStore {
         return true
     }
 
-    private fun runIdentityMatches(prefs: PreferenceReader, extras: DiagnosticPayload?): Boolean {
+    private fun runIdentityMatches(
+        prefs: PreferenceReader,
+        extras: DiagnosticPayload?,
+        currentBootEpoch: String?,
+    ): Boolean {
         val origin = extras?.getString(Constants.EXTRA_DIAGNOSTICS_ORIGIN) ?: return false
         val runId = extras.getString(Constants.EXTRA_DIAGNOSTICS_RUN_ID) ?: return false
         val runStartedAt = extras.getLong(Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT, 0L)
         val runGeneration = extras.getLong(Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION, 0L)
         val runBootEpoch = extras.getString(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH)
+        val storedBootEpoch = prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, null)
+        // A run accepted while the boot identity was unreadable has no stored epoch. A later
+        // event that proves the store's current epoch may bind it one way; without that upgrade
+        // the run would stay permanently unknown even after the OS identity became readable.
+        val bootEpochMatches = !runBootEpoch.isNullOrBlank() &&
+            (runBootEpoch == storedBootEpoch ||
+                (storedBootEpoch.isNullOrBlank() && runBootEpoch == currentBootEpoch))
         return origin == prefs.getString(Constants.PREF_DIAG_ACTIVE_PACKAGE, null) &&
             runId == prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_ID, null) &&
             runStartedAt > 0L &&
             runStartedAt == prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L) &&
             runGeneration > 0L &&
             runGeneration == prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION, 0L) &&
-            !runBootEpoch.isNullOrBlank() &&
-            runBootEpoch == prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, null)
+            bootEpochMatches
     }
 
-    /** Run-bound telemetry must belong to both the persisted run and this OS boot. */
-    private fun currentBootRunIdentityMatches(
+    /**
+     * Returns this boot's epoch when the payload belongs to both the persisted run and this
+     * boot, so the caller can persist a one-way epoch upgrade for a run that started without one.
+     */
+    private fun matchedRunBootEpoch(
         context: Context,
         prefs: PreferenceReader,
         extras: DiagnosticPayload?,
-    ): Boolean {
-        val currentBootEpoch = currentRunClock(context)?.bootEpochHash ?: return false
+    ): String? {
+        val currentBootEpoch = currentRunClock(context)?.bootEpochHash ?: return null
         val payloadBootEpoch = extras?.getString(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH)
-        return !payloadBootEpoch.isNullOrBlank() &&
-            payloadBootEpoch == currentBootEpoch && runIdentityMatches(prefs, extras)
+        if (payloadBootEpoch != currentBootEpoch) return null
+        return if (runIdentityMatches(prefs, extras, currentBootEpoch)) currentBootEpoch else null
+    }
+
+    /** Binds a blank stored epoch to this boot once a matching run-bound event proved it. */
+    private fun bindActiveRunEpoch(
+        prefs: PreferenceReader,
+        editor: SharedPreferences.Editor,
+        currentBootEpoch: String?,
+    ) {
+        if (currentBootEpoch.isNullOrBlank()) return
+        if (prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, null).isNullOrBlank()) {
+            editor.putString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, currentBootEpoch)
+        }
     }
 
     private fun startRun(
@@ -526,19 +551,24 @@ object DiagnosticsStore {
         val generation = extras.getLong(Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION, 0L)
         val bootCount = extras.getInt(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT, -1)
         val bootEpoch = extras.getString(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH)
+        // A missing OS epoch cannot prove currentness, but rejecting every start would
+        // disable lifecycle diagnostics entirely on devices where the boot identity is
+        // unreadable (notably Android 8.x). Accept an epoch-less start only when it
+        // cannot replace existing data; run-bound events remain epoch-gated and unknown.
+        val currentBootEpoch = runClock.bootEpochHash
         if (!ScopePolicy.shouldSpoof(origin) || runId.length !in 1..128 ||
             !runId.matches(Regex("[A-Za-z0-9._-]+")) || startedAt <= 0L || generation <= 0L ||
-            (runClock.bootEpochHash == null && runClock.bootCount != null && bootCount != runClock.bootCount) ||
+            (currentBootEpoch == null && runClock.bootCount != null && bootCount != runClock.bootCount) ||
             generation > runClock.elapsedRealtimeNanos ||
-            (runClock.bootEpochHash != null && bootEpoch != runClock.bootEpochHash) ||
-            (runClock.bootEpochHash == null && !bootEpoch.isNullOrBlank())
+            (currentBootEpoch != null && bootEpoch != currentBootEpoch) ||
+            (currentBootEpoch == null && !bootEpoch.isNullOrBlank())
         ) {
             return false
         }
 
         // Without a unique OS epoch a start is safe only when it cannot replace
         // existing data. Subsequent run-bound events also fail closed as unknown.
-        if (runClock.bootEpochHash == null &&
+        if (currentBootEpoch == null &&
             !prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_ID, null).isNullOrBlank()
         ) return false
 
@@ -551,10 +581,10 @@ object DiagnosticsStore {
         // Compare epochs before preserving verified origin: an explicitly gated
         // API 30-33 token-only fallback may replace verified state from a known
         // prior boot. Unknown epochs cannot prove that the active run is historical.
-        val sameEpoch = !bootEpoch.isNullOrBlank() && activeBootEpoch == bootEpoch
+        val sameEpoch = currentBootEpoch != null && activeBootEpoch == currentBootEpoch
         val knownPriorEpoch = !activeId.isNullOrBlank() &&
-            !bootEpoch.isNullOrBlank() &&
-            !activeBootEpoch.isNullOrBlank() && activeBootEpoch != bootEpoch
+            currentBootEpoch != null &&
+            !activeBootEpoch.isNullOrBlank() && activeBootEpoch != currentBootEpoch
         if (activeOriginVerified && !incomingOriginVerified &&
             !(allowPriorBootUnverifiedReplacement && tokenOnlyBroadcastAllowed && knownPriorEpoch)
         ) {
@@ -603,8 +633,8 @@ object DiagnosticsStore {
         editor.putLong(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION, generation)
         if (runClock.bootCount != null) editor.putInt(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT, runClock.bootCount)
         else editor.remove(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT)
-        if (bootEpoch == null) editor.remove(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH)
-        else editor.putString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, bootEpoch)
+        if (currentBootEpoch == null) editor.remove(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH)
+        else editor.putString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, currentBootEpoch)
         editor.putBoolean(Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED, incomingOriginVerified)
         editor.remove(Constants.PREF_DIAG_ACTIVE_BINDER_PID)
         if (incomingOriginVerified && callingPid != null && callingPid > 0) {
@@ -1120,11 +1150,13 @@ object DiagnosticsStore {
                 }
                 Constants.METHOD_RECORD_DIAGNOSTICS,
                 Constants.METHOD_RECORD_VERIFY -> {
-                    if ((method == Constants.METHOD_RECORD_VERIFY || !sameUid) &&
-                        !currentBootRunIdentityMatches(context, prefs, extras)
-                    ) {
-                        Log.w(TAG, "Rejecting diagnostics update for inactive target run")
-                        return false
+                    val runBootEpoch = if (method == Constants.METHOD_RECORD_VERIFY || !sameUid) {
+                        matchedRunBootEpoch(context, prefs, extras) ?: run {
+                            Log.w(TAG, "Rejecting diagnostics update for inactive target run")
+                            return false
+                        }
+                    } else {
+                        null
                     }
                     if (method == Constants.METHOD_RECORD_VERIFY) {
                         val verifyPackage = extras.getString(Constants.PREF_DIAG_VERIFY_PACKAGE)
@@ -1156,6 +1188,7 @@ object DiagnosticsStore {
                         // verification and preserve the first OS-observed sender PID.
                         markActiveRunVerified(prefs, editor, activeOriginVerified, callingPid)
                     }
+                    bindActiveRunEpoch(prefs, editor, runBootEpoch)
                     var anySequencedValueApplied = false
                     var hasSequencedValues = false
                     for (key in extras.keySet()) {
@@ -1184,9 +1217,13 @@ object DiagnosticsStore {
                     true
                 }
                 Constants.METHOD_CLEAR_VERIFY -> {
-                    if (!sameUid && !currentBootRunIdentityMatches(context, prefs, extras)) {
-                        Log.w(TAG, "Rejecting VERIFY clear for inactive target run")
-                        return false
+                    val runBootEpoch = if (!sameUid) {
+                        matchedRunBootEpoch(context, prefs, extras) ?: run {
+                            Log.w(TAG, "Rejecting VERIFY clear for inactive target run")
+                            return false
+                        }
+                    } else {
+                        null
                     }
                     if (!sameUid && prefs.getBoolean(
                             Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED,
@@ -1196,6 +1233,9 @@ object DiagnosticsStore {
                         Log.w(TAG, "Rejecting unverified VERIFY clear to preserve active verified diagnostics")
                         return false
                     }
+                    // Bind only after the provenance check: a rejected clear must not stage a
+                    // one-way epoch upgrade for a run it is not allowed to touch.
+                    bindActiveRunEpoch(prefs, editor, runBootEpoch)
                     var anyCleared = false
                     VERIFY_KEYS_TO_CLEAR.forEach { key ->
                         if (eventSequence == null) {

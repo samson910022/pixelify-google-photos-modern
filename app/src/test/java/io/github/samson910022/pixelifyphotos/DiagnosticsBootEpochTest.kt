@@ -18,4 +18,40 @@ class DiagnosticsBootEpochTest {
         assertNull(DiagnosticsBootEpoch.hashBootId("not-a-boot-uuid"))
         assertTrue(hash != bootId)
     }
+
+    @Test
+    fun `proc stat parser extracts only a valid btime line`() {
+        val procStat = sequenceOf(
+            "cpu  1 2 3 4",
+            "intr 12345",
+            "btime 1700000000",
+            "processes 9876",
+        )
+        assertEquals("1700000000", DiagnosticsBootEpoch.parseBootTimeLine(procStat))
+        assertEquals(
+            DiagnosticsBootEpoch.hashBootTime("1700000000"),
+            DiagnosticsBootEpoch.parseBootTimeLine(procStat)?.let(DiagnosticsBootEpoch::hashBootTime),
+        )
+        assertNull(DiagnosticsBootEpoch.parseBootTimeLine(sequenceOf("cpu 1 2 3")))
+        assertNull(DiagnosticsBootEpoch.parseBootTimeLine(sequenceOf("btime not-a-number")))
+        assertNull(DiagnosticsBootEpoch.parseBootTimeLine(sequenceOf("btime 17000000000000")))
+    }
+
+    @Test
+    fun `proc stat boot time is a validated deterministic fallback identity`() {
+        val hash = DiagnosticsBootEpoch.hashBootTime("1700000000")
+
+        assertEquals(64, hash?.length)
+        assertEquals(hash, DiagnosticsBootEpoch.hashBootTime(" 1700000000 "))
+        assertNotEquals(hash, DiagnosticsBootEpoch.hashBootTime("1700000001"))
+        assertNotEquals(
+            "a boot-time fallback must not collide with a boot UUID hash",
+            hash,
+            DiagnosticsBootEpoch.hashBootId("123e4567-e89b-12d3-a456-426614174000"),
+        )
+        assertNull(DiagnosticsBootEpoch.hashBootTime(""))
+        assertNull(DiagnosticsBootEpoch.hashBootTime("btime"))
+        assertNull(DiagnosticsBootEpoch.hashBootTime("17 00"))
+        assertNull(DiagnosticsBootEpoch.hashBootTime("17000000000000"))
+    }
 }

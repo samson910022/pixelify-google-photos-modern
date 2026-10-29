@@ -233,6 +233,6 @@
     <string name="diagnostics_origin_unverified">未知／未验证（报告的来源：%1$s）</string>
     <string name="diagnostics_unverified">未知／未验证</string>
     <string name="diagnostics_unverified_telemetry">未验证遥测（来源／包名未经 OS 验证）：%1$s</string>
-    <string name="diagnostics_process_pid">OS 观察到的 Binder PID：%1$s</string>
+    <string name="diagnostics_process_pid">OS 观察到的发送方 PID（可用时为 Binder）：%1$s</string>
     <string name="diagnostics_registration_caveat">全部注册也不代表 Google 相册调用了目标 API。观察到拦截器进入只表示它曾进入，不代表调用来自 Google 相册或返回了模拟值。</string>
 </resources>

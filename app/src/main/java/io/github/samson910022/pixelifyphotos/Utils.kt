@@ -112,8 +112,9 @@ class Utils {
             .filter { SpoofedPackageTracker.isValidPackageName(it) }
             .distinct()
         if (packages.isEmpty()) return
+        val appContext = context.applicationContext
 
-        Toast.makeText(context, R.string.killing_please_wait, Toast.LENGTH_SHORT).show()
+        Toast.makeText(appContext, R.string.killing_please_wait, Toast.LENGTH_SHORT).show()
 
         Thread({
             var firstFailed: String? = null
@@ -149,11 +150,12 @@ class Utils {
 
             if (firstFailed != null) {
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(context, R.string.failed_to_stop_package, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(appContext, R.string.failed_to_stop_package, Toast.LENGTH_SHORT).show()
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.fromParts("package", firstFailed, null)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    context.startActivity(intent)
+                    runCatching { appContext.startActivity(intent) }
                 }
             }
         }, "pixelify-force-stop").start()

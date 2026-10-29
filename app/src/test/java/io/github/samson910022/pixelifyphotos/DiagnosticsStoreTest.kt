@@ -1590,7 +1590,7 @@ class DiagnosticsStoreTest {
     }
 
     @Test
-    fun `missing boot epoch can only seed an empty unknown run and cannot authorize events`() {
+    fun `missing boot epoch seeds an empty unknown run and cannot authorize events`() {
         enablePersistedPrefs()
         preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
         DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
@@ -1615,6 +1615,7 @@ class DiagnosticsStoreTest {
                 myUid = 10001,
             ),
         )
+        assertEquals("unknown-epoch-run", preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_ID])
         assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
         assertFalse(
             DiagnosticsStore.applyDiagnostics(
@@ -1633,6 +1634,439 @@ class DiagnosticsStoreTest {
             ),
         )
         assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_FEATURE_HOOK_STRING))
+    }
+
+    @Test
+    fun `missing boot epoch cannot replace an existing run and recovers when identity returns`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 900L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "recovered-epoch-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertFalse(
+            "an epoch-less start must not replace the active unknown run",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "recovered-epoch-run-successor",
+                    startedAt = startedAt + 1L,
+                    generation = generation + 1L,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = "recovered-epoch",
+        )
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "recovered-epoch-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = "recovered-epoch",
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals("recovered-epoch", preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH])
+    }
+
+    @Test
+    fun `run-bound event binds a blank stored epoch once identity becomes readable`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 900L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "upgrade-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
+
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = "recovered-epoch",
+        )
+        assertTrue(
+            "an event that proves the current epoch must upgrade the blank stored run",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    runId = "upgrade-run",
+                    bootEpoch = "recovered-epoch",
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals("recovered-epoch", preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH])
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+
+        assertFalse(
+            "a different epoch cannot keep using the bound run",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    runId = "upgrade-run",
+                    bootEpoch = "other-epoch",
+                    diagnostics = mapOf(Constants.PREF_DIAG_SYSPROPS_HOOK_GET to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+    }
+
+    @Test
+    fun `unverified event cannot bind the recovered epoch to a verified run`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 910L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "verified-blank-epoch-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = "recovered-epoch",
+        )
+        assertFalse(
+            "a token-only event must not upgrade verified diagnostics",
+            DiagnosticsStore.applyDiagnostics(
+                context = mockContext,
+                method = Constants.METHOD_RECORD_DIAGNOSTICS,
+                extras = authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    runId = "verified-blank-epoch-run",
+                    bootEpoch = "recovered-epoch",
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_FEATURE_HOOK_STRING))
+    }
+
+    @Test
+    fun `unverified VERIFY clear cannot bind the recovered epoch`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 915L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "clear-blank-epoch-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = "recovered-epoch",
+        )
+        assertFalse(
+            "a token-only VERIFY clear must not bind the epoch of a verified run",
+            DiagnosticsStore.applyDiagnostics(
+                context = mockContext,
+                method = Constants.METHOD_CLEAR_VERIFY,
+                extras = authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    runId = "clear-blank-epoch-run",
+                    bootEpoch = "recovered-epoch",
+                    diagnostics = emptyMap(),
+                ),
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+        assertFalse(
+            "a rejected VERIFY clear must not stage the epoch upgrade",
+            preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH),
+        )
+    }
+
+    @Test
+    fun `verified VERIFY clear binds the recovered epoch for an active run`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 918L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "clear-verified-upgrade-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
+
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = "recovered-epoch",
+        )
+        assertTrue(
+            "an OS-verified VERIFY clear must bind the epoch for a matching active run",
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_CLEAR_VERIFY,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    runId = "clear-verified-upgrade-run",
+                    bootEpoch = "recovered-epoch",
+                    diagnostics = emptyMap(),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals("recovered-epoch", preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH])
+    }
+
+    @Test
+    fun `rejected batch does not persist the epoch upgrade`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 2_000L
+        val generation = 920L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "batch-previous-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
+
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = "recovered-epoch",
+        )
+        // The successor start is valid and fully staged. The event is a decodable VERIFY for the
+        // previous run, so it is rejected only after the staged start exists. A batch that
+        // committed its staged editor before checking the event result would persist both the
+        // successor run and its epoch upgrade.
+        val successorStart = authenticatedStartBundle(
+            runId = "batch-successor-run",
+            startedAt = startedAt + 1_000L,
+            generation = generation + 1L,
+            bootEpoch = "recovered-epoch",
+        )
+        val staleEvent = authenticatedEventBundle(
+            startedAt = startedAt,
+            generation = generation,
+            runId = "batch-previous-run",
+            bootEpoch = "recovered-epoch",
+            diagnostics = verifyFields(),
+        )
+        assertEquals(
+            false to false,
+            DiagnosticsStore.applyDiagnosticsBatch(
+                mockContext,
+                start = successorStart,
+                eventMethod = Constants.METHOD_RECORD_VERIFY,
+                event = staleEvent,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(
+            "a rejected batch must not commit the staged successor run",
+            "batch-previous-run",
+            preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_ID],
+        )
+        assertFalse(
+            "a rejected batch must not commit the staged epoch upgrade",
+            preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH),
+        )
+
+        // Positive control: the exact same successor start with a matching verify event
+        // succeeds and commits the new run identity and epoch upgrade.
+        val matchingVerify = authenticatedEventBundle(
+            startedAt = startedAt + 1_000L,
+            generation = generation + 1L,
+            runId = "batch-successor-run",
+            bootEpoch = "recovered-epoch",
+            diagnostics = verifyFields(),
+        )
+        assertEquals(
+            true to true,
+            DiagnosticsStore.applyDiagnosticsBatch(
+                mockContext,
+                start = successorStart,
+                eventMethod = Constants.METHOD_RECORD_VERIFY,
+                event = matchingVerify,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(
+            "batch-successor-run",
+            preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_ID],
+        )
+        assertEquals(
+            "recovered-epoch",
+            preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH],
+        )
+    }
+
+    @Test
+    fun `start with an omitted epoch is rejected when the store can prove currentness`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = testBootEpoch,
+        )
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "omitted-epoch-run",
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_ID))
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
     }
 
     @Test
@@ -2108,6 +2542,7 @@ class DiagnosticsStoreTest {
             runId = "ready-only-run",
             startedAt = startedAt,
             generation = generation,
+            bootEpochHash = testBootEpoch,
             moduleLoadedAt = 1_000L,
             packageLoadCallbackObserved = false,
         ) + mapOf(

@@ -233,6 +233,6 @@
     <string name="diagnostics_origin_unverified">unknown / unverified (reported origin: %1$s)</string>
     <string name="diagnostics_unverified">unknown / unverified</string>
     <string name="diagnostics_unverified_telemetry">UNVERIFIED TELEMETRY (origin/package not OS-verified): %1$s</string>
-    <string name="diagnostics_process_pid">OS-observed Binder PID: %1$s</string>
+    <string name="diagnostics_process_pid">OS-observed sender PID (Binder when available): %1$s</string>
     <string name="diagnostics_registration_caveat">All registrations do not prove Google Photos called a target API. An observed entry only proves an interceptor was entered, not that it ran for Google Photos or returned a spoofed value.</string>
 </resources>

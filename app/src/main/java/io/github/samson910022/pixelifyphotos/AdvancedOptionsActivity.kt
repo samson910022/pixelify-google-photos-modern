@@ -1,6 +1,7 @@
 package io.github.samson910022.pixelifyphotos
 
 import android.app.Activity
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,9 +29,15 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
     private var settingsSourceVersion: Long? = null
     private var sourceRefreshRequested = false
     private var initialSelection: AdvancedOptionsSelection? = null
+    private var recreateAttempts = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        recreateAttempts = savedInstanceState?.getInt(STATE_RECREATE_ATTEMPTS, 0) ?: 0
+
+        save.setOnClickListener {
+            savePreferences()
+        }
 
         val sourceState = App.serviceReadinessSnapshot()
         settingsSourceVersion = sourceState.version
@@ -38,7 +45,7 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
         if (App.serviceReadinessSnapshot().version != sourceState.version) {
             installServiceStateListener()
             updateSettingsAvailability()
-            recreate()
+            requestRecreateIfAllowed()
             return
         }
         if (prefs == null) {
@@ -47,6 +54,17 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
             return
         }
 
+        populateSettings(prefs)
+        installServiceStateListener()
+        updateSettingsAvailability()
+
+    }
+
+    /**
+     * Populates the controls from [prefs]. Also used when the settings source becomes usable
+     * after this screen was opened, so a flapping manager cannot leave the screen dead.
+     */
+    private fun populateSettings(prefs: SharedPreferences) {
         verboseLogging.isChecked = prefs.getBoolean(PREF_ENABLE_VERBOSE_LOGS, false)
 
         /**
@@ -102,15 +120,8 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
             )
         }
 
-        save.setOnClickListener {
-            savePreferences()
-        }
-
         settingsInitialized = true
         initialSelection = currentSelection()
-        installServiceStateListener()
-        updateSettingsAvailability()
-
     }
 
     /** Save only advanced options changed since this screen was populated. */
@@ -206,7 +217,28 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
         sourceRefreshRequested = true
         settingsInitialized = false
         updateSettingsAvailability()
+        if (requestRecreateIfAllowed()) return
+        // The relaunch budget is exhausted (for example a flapping manager service). Rebuild
+        // in place from the current source instead of leaving the screen permanently disabled.
+        reloadFromCurrentSource()
+        sourceRefreshRequested = false
+    }
+
+    private fun reloadFromCurrentSource() {
+        val current = App.serviceReadinessSnapshot()
+        settingsSourceVersion = current.version
+        val prefs = PrefUtils.getPrefs(this, current)
+        if (current.ready && prefs != null) {
+            populateSettings(prefs)
+        }
+        updateSettingsAvailability()
+    }
+
+    private fun requestRecreateIfAllowed(): Boolean {
+        if (!SettingsScreenRecreatePolicy.mayRecreate(recreateAttempts)) return false
+        recreateAttempts = SettingsScreenRecreatePolicy.nextAttempts(recreateAttempts)
         if (!isFinishing && !isDestroyed) recreate()
+        return true
     }
 
     private fun installServiceStateListener() {
@@ -217,8 +249,14 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
                     val current = App.serviceReadinessSnapshot()
                     if (SettingsScreenSourcePolicy.mustReload(settingsSourceVersion, current)) {
                         refreshForCurrentSource()
-                    } else if (!settingsInitialized && current.ready && PrefUtils.getPrefs(this, current) != null) {
-                        recreate()
+                    } else if (!settingsInitialized) {
+                        val prefs = PrefUtils.getPrefs(this, current)
+                        if (current.ready && prefs != null) {
+                            settingsSourceVersion = current.version
+                            populateSettings(prefs)
+                            sourceRefreshRequested = false
+                        }
+                        updateSettingsAvailability()
                     } else {
                         updateSettingsAvailability()
                     }
@@ -250,10 +288,19 @@ class AdvancedOptionsActivity : AppCompatActivity(R.layout.advanced_options_acti
     private fun ViewGroup.directChildren(): Sequence<View> =
         (0 until childCount).asSequence().map(::getChildAt)
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_RECREATE_ATTEMPTS, recreateAttempts)
+    }
+
     override fun onDestroy() {
         serviceStateListener?.let { App.removeOnServiceStateListener(it) }
         serviceStateListener = null
         super.onDestroy()
+    }
+
+    private companion object {
+        const val STATE_RECREATE_ATTEMPTS = "advanced_options_recreate_attempts"
     }
 
 }

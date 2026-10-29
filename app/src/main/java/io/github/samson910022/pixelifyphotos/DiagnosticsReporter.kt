@@ -50,6 +50,14 @@ object DiagnosticsReporter {
      */
     private const val MAX_UNCONFIRMED_REARMS = 2
 
+    /**
+     * Bounded retries for a run that started before the OS boot identity was readable.
+     * Only failed resolutions consume the budget, because the start plus the first few
+     * lifecycle events would otherwise exhaust a small cap before a transient read failure
+     * clears.
+     */
+    private const val MAX_BOOT_EPOCH_RECOVERY_ATTEMPTS = 32
+
     /** Delivery outcome for one queued diagnostics event. */
     internal enum class DispatchDelivery { CONFIRMED, UNCONFIRMED, FAILED }
 
@@ -69,9 +77,10 @@ object DiagnosticsReporter {
         val id: String,
         val startedAt: Long,
         val generation: Long,
-        val bootEpochHash: String?,
-        val startFields: Map<String, Any>,
+        var bootEpochHash: String?,
+        var startFields: Map<String, Any>,
         var lastEventSequence: Long = 0L,
+        var bootEpochRecoveryAttempts: Int = 0,
     ) {
         val handle = TargetRunHandle(runId = id, origin = origin, generation = generation)
 
@@ -142,6 +151,10 @@ object DiagnosticsReporter {
     internal var testBroadcastToken: String? = null
     internal var testBootCount: Int? = null
     internal var testBootEpochResolver: (() -> String?)? = null
+    @Volatile
+    internal var testRunEpochRecoveryObserver: ((String, String) -> Unit)? = null
+    @Volatile
+    internal var testDispatchedPayloadEpochObserver: ((String, String?) -> Unit)? = null
     internal var testResolvedContext: Context? = null
     private val PROVIDER_URI: Uri
         get() = testProviderUri ?: runCatching {
@@ -698,14 +711,31 @@ object DiagnosticsReporter {
             return DispatchDelivery.FAILED
         }
         val bootCount = resolveBootCount(context)
+        // A boot identity can be unreadable when the run starts but become readable later
+        // (transient SELinux/IO failure). Re-resolve once for the queued event so the run is
+        // not permanently stuck as unknown while the store already accepts the epoch.
+        val effectiveRun = refreshRunEpochIfNeeded(run)
+        val basePayload = if (method == Constants.METHOD_START_DIAGNOSTICS_RUN && effectiveRun != null) {
+            bundleFromFields(effectiveRun.startFields)
+        } else {
+            payload
+        }
 
-        val eventPayload = Bundle(payload).apply {
+        val eventPayload = Bundle(basePayload).apply {
             bootCount?.let { putInt(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT, it) }
+            if (method != Constants.METHOD_START_DIAGNOSTICS_RUN) {
+                effectiveRun?.bootEpochHash?.let {
+                    putString(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH, it)
+                }
+                testDispatchedPayloadEpochObserver?.invoke(method, effectiveRun?.bootEpochHash)
+            }
             attachIpcToken(this, token)
         }
 
-        if (method != Constants.METHOD_START_DIAGNOSTICS_RUN && run != null && !isProviderConfirmed(run.id)) {
-            val replayPayload = bundleFromFields(run.startFields).apply {
+        if (method != Constants.METHOD_START_DIAGNOSTICS_RUN && effectiveRun != null &&
+            !isProviderConfirmed(effectiveRun.id)
+        ) {
+            val replayPayload = bundleFromFields(effectiveRun.startFields).apply {
                 bootCount?.let { putInt(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT, it) }
                 attachIpcToken(this, token)
             }
@@ -718,17 +748,43 @@ object DiagnosticsReporter {
                     batchStartPayload = replayPayload,
                 )
             }
-            markProviderConfirmed(run.id)
+            markProviderConfirmed(effectiveRun.id)
         }
 
         if (providerWriteWithRetries(context, method, eventPayload)) {
-            if (method == Constants.METHOD_START_DIAGNOSTICS_RUN && run != null) {
-                markProviderConfirmed(run.id)
+            if (method == Constants.METHOD_START_DIAGNOSTICS_RUN && effectiveRun != null) {
+                markProviderConfirmed(effectiveRun.id)
             }
             return DispatchDelivery.CONFIRMED
         }
 
         return dispatchFallbackWithRetries(context, method, eventPayload)
+    }
+
+    /**
+     * Updates a run that started without an epoch once the OS identity becomes readable.
+     * The run identity stays unchanged so the store accepts the recovered epoch for the
+     * same run instead of treating it as a successor.
+     */
+    private fun refreshRunEpochIfNeeded(run: TargetRun?): TargetRun? {
+        if (run == null || run.bootEpochHash != null) return run
+        if (run.bootEpochRecoveryAttempts >= MAX_BOOT_EPOCH_RECOVERY_ATTEMPTS) return run
+        val epoch = resolveBootEpochHash()
+        synchronized(runLock) {
+            if (targetRun !== run) return run
+            if (epoch == null) {
+                run.bootEpochRecoveryAttempts++
+                return run
+            }
+            if (run.bootEpochHash == null) {
+                run.bootEpochHash = epoch
+                run.startFields = run.startFields + (
+                    Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH to epoch
+                )
+                testRunEpochRecoveryObserver?.invoke(run.id, epoch)
+            }
+        }
+        return run
     }
 
     private fun resolveContextWithRetries(explicitContext: Context?): Context? {

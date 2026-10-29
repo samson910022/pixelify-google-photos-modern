@@ -64,7 +64,7 @@ Pixelify Infinity 是獨立維護的 Xposed 模組，可模擬特定 Google Pixe
 ### 疑難排解與診斷
 
 若相片上傳後仍顯示扣除 Google 帳號空間：
-1. 在 Pixelify Infinity 的「**診斷**」畫面（模組 App → 診斷）分別檢查各 Hook 註冊結果與 Build 欄位 VERIFY。服務連線或 VERIFY 成功本身不能證明 Hook 或 Google 相簿功能正常。
+1. 在 Pixelify Infinity 的「**診斷**」畫面（模組 App → 診斷）分別檢查各 Hook 註冊結果、執行時攔截器進入觀察與 Build 欄位 VERIFY。服務連線或 VERIFY 成功本身不能證明 Hook 或 Google 相簿功能正常。
 2. 確認 Google 相簿實際設定的備份畫質符合該機型的免費條件（例如 Pixel 2–5 必須設定為**省儲存空間**）。
 3. 請以 Google 相簿實際顯示的備份設定橫幅或測試相片的儲存空間資訊確認功能。若 Google 相簿快取了舊機型資料，請點擊「**強制停止作用範圍 App**」或至系統應用程式設定清除 Google 相簿快取後重新開啟。
 4. 確認您沒有誤選為 Pixel 6 或更新的機型（新機型無免費備份權益）。
@@ -92,7 +92,7 @@ Build 屬性模擬掛接的是框架層級類別（`android.os.Build` 欄位與 
 | Android 17 | 7.84.0.949657053 | Pixel 6 Pro（`CP2A.260705.006`） | 正常運作 |
 | Android 16 | — | — | 尚未由維護者驗證；歡迎回報 |
 
-若 Google 相簿更新後行為改變，請使用 App 內「**診斷**」畫面（模組 App → 診斷）查看 Hook 里程碑與上次裝置模擬 VERIFY 結果，回報問題時請附上複製的報告。
+若 Google 相簿更新後行為改變，請使用 App 內「**診斷**」畫面（模組 App → 診斷）查看 Hook 里程碑、各 Hook 註冊結果、執行時攔截器進入觀察記錄，以及上次裝置模擬 VERIFY 結果；回報問題時請附上複製的報告。攔截器觀察無法確認呼叫者，也不能證明已回傳模擬值。
 
 ## 安裝
 

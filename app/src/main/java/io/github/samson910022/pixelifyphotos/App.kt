@@ -160,7 +160,7 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
             mService != null && servicePhase == ServicePhase.ERROR
         }
         if (!shouldRetry) return
-        Thread({ retryServiceConvergence() }, "pixelify-diagnostics-convergence-retry").apply {
+        Thread({ retryServiceConvergence() }, "pixelify-settings-convergence-retry").apply {
             isDaemon = true
             start()
         }
@@ -275,9 +275,15 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
          * flags.
          * The offline path takes [OfflineSettingsHandoff.recoveryLock] inside this lock;
          * that ordering (serviceStateLock -> recoveryLock) must never be reversed.
-         * Holding the lock through the operation is intentional because an `apply()`
-         * write offers no failure signal to roll back after a rebind. Callers must
-         * finish any document I/O, parsing, and validation before calling (for
+         * Holding the lock through the operation is intentional because a remote `apply()`
+         * offers no failure signal to roll back after a rebind. On the remote path libxposed's
+         * `RemotePreferences.Editor.apply()` updates its in-memory map and dispatches any
+         * registered change listeners on this calling thread while the lock is held, then
+         * enqueues the binder write on its own executor (Android `QueuedWork` applies only to
+         * local/offline preferences). No `OnSharedPreferenceChangeListener` may therefore be
+         * registered against these remote preferences unless it can run without touching
+         * service state or blocking the main thread.
+         * Callers must finish any document I/O, parsing, and validation before calling (for
          * example the staged [ConfigImportPlan]); only short in-memory writes belong
          * inside the operation.
          */

@@ -1095,7 +1095,7 @@ class DiagnosticsCollectorTest {
         )
         val unknownReport = DiagnosticsCollector.formatHookRegistrationText(unverified, now).joinToString("\n")
         assertTrue(unknownReport.contains("Registration origin: unknown/unverified"))
-        assertTrue(unknownReport.contains("OS-observed Binder PID: unknown/unverified"))
+        assertTrue(unknownReport.contains("OS-observed sender PID (Binder when available): unknown/unverified"))
         assertTrue(unknownReport.contains("Feature hooks: unknown/unavailable"))
         assertTrue(unknownReport.contains("Feature interceptor entered: unknown"))
         assertFalse(unknownReport.contains("all registered"))
@@ -1132,7 +1132,7 @@ class DiagnosticsCollectorTest {
             now,
         ).joinToString("\n")
         assertTrue(verifiedNoInvocation.contains("Registration origin: ${Constants.PACKAGE_NAME_GOOGLE_PHOTOS}"))
-        assertTrue(verifiedNoInvocation.contains("OS-observed Binder PID: 1234"))
+        assertTrue(verifiedNoInvocation.contains("OS-observed sender PID (Binder when available): 1234"))
         assertTrue(verifiedNoInvocation.contains("Feature interceptor entered: not observed"))
     }
 

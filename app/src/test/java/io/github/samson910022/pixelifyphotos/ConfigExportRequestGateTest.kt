@@ -90,6 +90,20 @@ class ConfigExportRequestGateTest {
     }
 
     @Test
+    fun `epoch change alone does not delete a pending same-session request`() {
+        val file = MemoryFile()
+        val clock = TestClock()
+        val gate = ConfigExportRequestGate(MemoryPersistence(file), clock::read)
+        val saved = request("epoch-change-keeps-record")
+        assertTrue(gate.begin(saved))
+
+        clock.now += 100L
+        assertEquals(saved, gate.restorePending("process-two"))
+        assertTrue(gate.hasPending())
+        assertEquals(saved, gate.consume(saved.id))
+    }
+
+    @Test
     fun `cross-process restore re-registers the key and re-authorizes the persisted allowlisted snapshot`() {
         val file = MemoryFile()
         val clock = TestClock()

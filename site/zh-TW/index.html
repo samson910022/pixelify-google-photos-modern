@@ -92,7 +92,7 @@
         <li>覆寫 ROM 內建的 Pixel feature level。</li>
         <li>透過進階設定個別選擇功能旗標。</li>
         <li>匯入、匯出及分享模組設定。</li>
-        <li>應用內診斷畫面：顯示模組啟用狀態、備份權益狀態、Hook 里程碑與上次裝置模擬 VERIFY 結果，無需 logcat；可一鍵複製不含帳號資料的診斷報告。</li>
+        <li>應用內診斷畫面：顯示管理器服務連線、生命週期記錄、各 Hook 註冊結果、執行時攔截器進入觀察記錄與上次 Build 欄位 VERIFY 讀回；可一鍵複製不含帳號資料的診斷報告。連線或進入觀察不能證明 Google 相簿 Hook、呼叫者身分或已回傳模擬值。</li>
       </ul>
     </section>
 
@@ -168,7 +168,7 @@
         </div>
       </div>
       <p class="note troubleshooting-note">
-        <strong>疑難排解：</strong>若相片上傳後仍顯示扣除空間，請至本 App 的「<strong>診斷</strong>」畫面確認 VERIFY 成功、確認 Pixel 2–5 已設為<strong>省儲存空間</strong>畫質，並點擊「<strong>強制停止作用範圍 App</strong>」或清除 Google 相簿快取。
+        <strong>疑難排解：</strong>若相片上傳後仍顯示扣除空間，請至本 App 的「<strong>診斷</strong>」畫面檢查各 Hook 註冊結果與執行時觀察；VERIFY 成功只表示 Build 欄位讀回，不能證明攔截已生效。確認 Pixel 2–5 已設為<strong>省儲存空間</strong>畫質，並點擊「<strong>強制停止作用範圍 App</strong>」或清除 Google 相簿快取。
       </p>
     </section>
 

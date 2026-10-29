@@ -22,6 +22,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -45,9 +46,11 @@ import io.github.samson910022.pixelifyphotos.Constants.UPDATE_INFO_URL2
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.lang.ref.WeakReference
 import java.net.URL
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
 
 /**
  * Main entry-point activity for Pixelify Infinity configuration.
@@ -56,23 +59,6 @@ import java.util.concurrent.Executors
  * device selection, feature customization, configuration import/export, and
  * scoped application force-stopping.
  */
-/**
- * Deferred-export results already completed in this process.
- *
- * A rotation can save the waiting result and then let the old instance finish it before
- * `onDestroy`; the recreated instance must not write or reject the same picker result again.
- * Only the main thread touches this set.
- */
-private object ConfigExportDeferredCompletion {
-    private val completed = mutableSetOf<String>()
-
-    fun mark(requestId: String) {
-        completed.add(requestId)
-    }
-
-    fun isCompleted(requestId: String): Boolean = requestId in completed
-}
-
 class ActivityMain : AppCompatActivity() {
 
     companion object {
@@ -107,14 +93,19 @@ class ActivityMain : AppCompatActivity() {
         private const val STATE_CONFIG_EXPORT_SOURCE_PHASE = "config_export_deferred_source_phase"
         private const val STATE_CONFIG_EXPORT_SOURCE_CONNECTED = "config_export_deferred_source_connected"
         private const val STATE_CONFIG_EXPORT_TARGET = "config_export_deferred_target"
-        private const val STATE_CONFIG_EXPORT_PROCESS_EPOCH = "config_export_deferred_process_epoch"
-        private const val STATE_CONFIG_EXPORT_DEADLINE = "config_export_deferred_deadline"
+
+        private fun namedThreadFactory(name: String): ThreadFactory = ThreadFactory { runnable ->
+            Thread(runnable, name).apply { isDaemon = true }
+        }
     }
 
-    private val updateExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val updateExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor(namedThreadFactory("pixelify-update"))
     /** Document I/O stays off the main thread and out of the network update probe's queue. */
-    private val configImportExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val configExportExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val configImportExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor(namedThreadFactory("pixelify-config-import"))
+    private val configExportExecutor: ExecutorService =
+        Executors.newSingleThreadExecutor(namedThreadFactory("pixelify-config-export"))
     private val utils by lazy { Utils() }
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -135,6 +126,9 @@ class ActivityMain : AppCompatActivity() {
     }
     private val pendingConfigExport by lazy(LazyThreadSafetyMode.NONE) {
         ConfigExportRequestGate.from(applicationContext)
+    }
+    private val deferredConfigExportCompletion by lazy(LazyThreadSafetyMode.NONE) {
+        ConfigExportDeferredCompletionStore.from(applicationContext)
     }
     private val configCreateLaunchers = mutableMapOf<String, ActivityResultLauncher<Intent>>()
     private val deferredActivityRestart = DeferredActivityRestartGate()
@@ -282,11 +276,37 @@ class ActivityMain : AppCompatActivity() {
         // this restart (and every later one) for the lifetime of a long-lived Activity.
         pendingConfigExport.reconcile(ConfigExportProcessEpoch.current)
         if (!deferredActivityRestart.requestRestart(
-                configExportPending = pendingConfigExport.hasAwaitingResult() || configExportCallbackInProgress ||
-                    deferredConfigExport != null || configExportWriteInProgress,
+                configExportPending = configExportPending(),
+                hostActive = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
             )
         ) return
         performActivityRestart()
+    }
+
+    /**
+     * True while finishing the restart now could strand an in-flight SAF result.
+     *
+     * [deliveredCallbackId] is the callback whose result is being completed, so a restart that
+     * belongs to that callback is not blocked by its own now-delivered request.
+     */
+    private fun configExportPending(deliveredCallbackId: String? = null): Boolean =
+        pendingConfigExport.hasAwaitingResult(deliveredCallbackId = deliveredCallbackId) ||
+            configExportCallbackInProgress ||
+            configImportInFlight ||
+            configImportInProgress ||
+            deferredConfigExport != null ||
+            configExportWriteInProgress
+
+    /**
+     * A restart requested while the Activity was stopped is performed here, when a replacement
+     * Activity can be launched. Restarting from a background service-state callback would finish
+     * this task and then be blocked by background-activity-launch restrictions on Android 10+.
+     */
+    override fun onStart() {
+        super.onStart()
+        if (deferredActivityRestart.takeResumedRestart(configExportPending())) {
+            performActivityRestart()
+        }
     }
 
     private fun performActivityRestart() {
@@ -355,10 +375,11 @@ class ActivityMain : AppCompatActivity() {
     /**
      * Persists a delivered export result that is still waiting for settings access.
      *
-     * The durable request record was already consumed, so this bundle is the only copy. It is
-     * scoped to the current process epoch: a bundle restored by a new process cannot hold the
-     * one-shot URI grant the picker issued to this task, so it is discarded instead of failing
-     * later with a misleading error.
+     * The durable request record was already consumed, so this bundle is the only copy. A
+     * picker result's URI grant is attached to the Activity record and survives client-process
+     * death while the task and its saved state exist, so a recreated process may still finish
+     * the write. The completion store prevents a saved copy from writing a result the old
+     * process already completed.
      */
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -383,48 +404,55 @@ class ActivityMain : AppCompatActivity() {
             deferred.request.source.connected,
         )
         outState.putString(STATE_CONFIG_EXPORT_TARGET, deferred.target.toString())
-        outState.putString(STATE_CONFIG_EXPORT_PROCESS_EPOCH, ConfigExportProcessEpoch.current)
-        outState.putLong(
-            STATE_CONFIG_EXPORT_DEADLINE,
-            deferred.deadlineElapsedRealtime,
-        )
     }
 
-    /** Re-arms a deferred export across a same-process recreation (rotation, dark-mode change). */
+    /**
+     * Re-arms a deferred export after Activity recreation, including process death.
+     *
+     * The saved state is re-authorized against the current settings source exactly like a
+     * restored picker callback. A durable completion marker suppresses a duplicate write when
+     * the old process finished the export just before it died.
+     */
     private fun restoreDeferredConfigExport(savedState: Bundle?) {
         if (savedState == null || deferredConfigExport != null) return
-        if (savedState.getString(STATE_CONFIG_EXPORT_PROCESS_EPOCH) !=
-            ConfigExportProcessEpoch.current
+        val id = savedState.getString(STATE_CONFIG_EXPORT_REQUEST_ID)
+        val json = savedState.getString(STATE_CONFIG_EXPORT_JSON)
+        val targetString = savedState.getString(STATE_CONFIG_EXPORT_TARGET)
+        val alreadyCompleted = id != null && deferredConfigExportCompletion.isCompleted(id)
+        if (ConfigExportDeferredRestorePolicy.decide(
+                requestId = id,
+                json = json,
+                target = targetString,
+                alreadyCompleted = alreadyCompleted,
+            ) != ConfigExportDeferredRestore.RESTORE
         ) return
-        val id = savedState.getString(STATE_CONFIG_EXPORT_REQUEST_ID) ?: return
-        // A saved copy whose result this process already wrote or rejected must not run twice.
-        if (ConfigExportDeferredCompletion.isCompleted(id)) return
-        val json = savedState.getString(STATE_CONFIG_EXPORT_JSON) ?: return
-        val target = savedState.getString(STATE_CONFIG_EXPORT_TARGET)
-            ?.let { Uri.parse(it) } ?: return
+        val target = Uri.parse(targetString!!)
         val sourceEpoch = savedState.getString(STATE_CONFIG_EXPORT_SOURCE_EPOCH) ?: return
         val sourcePhase = savedState.getString(STATE_CONFIG_EXPORT_SOURCE_PHASE)
             ?.let { runCatching { ServicePhase.valueOf(it) }.getOrNull() } ?: return
         val request = ConfigExportPendingRequest(
-            id = id,
+            id = id!!,
             source = ConfigExportSourceStamp(
                 processEpoch = sourceEpoch,
                 serviceVersion = savedState.getLong(STATE_CONFIG_EXPORT_SOURCE_VERSION),
                 servicePhase = sourcePhase,
                 connected = savedState.getBoolean(STATE_CONFIG_EXPORT_SOURCE_CONNECTED),
             ),
-            json = json,
+            json = json!!,
             createdAtMillis = savedState.getLong(STATE_CONFIG_EXPORT_CREATED_AT),
         )
+        // The saved absolute deadline belonged to the dead process and is usually already
+        // expired, which would reject the restored result before this process had any chance
+        // to wait for the manager to settle. A restored picker callback gets a fresh budget,
+        // so a restored deferred result must get one too.
         val deferred = DeferredConfigExport(
             request = request,
             target = target,
-            deadlineElapsedRealtime = savedState.getLong(STATE_CONFIG_EXPORT_DEADLINE),
+            deadlineElapsedRealtime =
+                SystemClock.elapsedRealtime() + CONFIG_EXPORT_SETTINGS_WAIT_TIMEOUT_MS,
         )
         deferredConfigExport = deferred
-        val remaining = (deferred.deadlineElapsedRealtime -
-            SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-        mainHandler.postDelayed(configExportSettingsWaitTimeout, remaining)
+        mainHandler.postDelayed(configExportSettingsWaitTimeout, CONFIG_EXPORT_SETTINGS_WAIT_TIMEOUT_MS)
         // Re-decide immediately: the rebuild may already have a settled source.
         completeDeferredConfigExport(settingsWaitExpired = false)
     }
@@ -568,32 +596,39 @@ class ActivityMain : AppCompatActivity() {
 
         // Show/record the changelog marker only from authoritative remote settings. The marker is
         // deliberately outside OfflineSettingsHandoff's user-setting allowlist, so a local write
-        // would never converge and would replay the same changelog after the first bind.
+        // would never converge and would replay the same changelog after the first bind. Record
+        // the marker before showing the dialog; `apply()` updates the remote in-memory map
+        // synchronously and only defers the binder/disk write, so a lost write merely replays
+        // the changelog on a later launch instead of blocking startup under the settings lock.
         val thisVersion = BuildConfig.VERSION_CODE
         if (AppVersionMarkerPolicy.shouldRecordVersion(pref, versionMarkerAuthoritative, thisVersion)) {
-            showChangeLog()
-            updateSettings { currentPrefs ->
+            val recorded = updateSettings { currentPrefs ->
                 currentPrefs.edit().putInt(PREF_LAST_VERSION, thisVersion).apply()
                 true
             }
+            if (recorded) showChangeLog()
         }
 
         // Check for updates in background thread.
-        updateExecutor.execute {
-            isUpdateAvailable()?.let { url ->
-                if (!isFinishing && !isDestroyed) {
-                    runOnUiThread {
-                        if (!isFinishing && !isDestroyed) {
-                            val updateLink = findViewById<TextView>(R.id.update_available_link)
-                            updateLink?.apply {
-                                paintFlags = Paint.UNDERLINE_TEXT_FLAG
-                                visibility = View.VISIBLE
-                                setOnClickListener { openWebLink(url) }
+        try {
+            updateExecutor.execute {
+                isUpdateAvailable()?.let { url ->
+                    if (!isFinishing && !isDestroyed) {
+                        runOnUiThread {
+                            if (!isFinishing && !isDestroyed) {
+                                val updateLink = findViewById<TextView>(R.id.update_available_link)
+                                updateLink?.apply {
+                                    paintFlags = Paint.UNDERLINE_TEXT_FLAG
+                                    visibility = View.VISIBLE
+                                    setOnClickListener { openWebLink(url) }
+                                }
                             }
                         }
                     }
                 }
             }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // The Activity was destroyed while initializing; there is no view left to update.
         }
     }
 
@@ -1231,7 +1266,9 @@ class ActivityMain : AppCompatActivity() {
     ): ActivityResultLauncher<Intent> {
         configCreateLaunchers[requestId]?.let { return it }
         val key = "config-create-$requestId"
+        val callbackFired = java.util.concurrent.atomic.AtomicBoolean(false)
         val callback = ActivityResultCallback<ActivityResult> { result ->
+            callbackFired.set(true)
             configCreateLaunchers.remove(requestId)?.unregister()
             handleConfigCreateResult(requestId, result)
         }
@@ -1249,7 +1286,15 @@ class ActivityMain : AppCompatActivity() {
                 callback,
             )
         }
-        configCreateLaunchers[requestId] = launcher
+        // Defensive: an Activity/registry version may deliver a pending result during
+        // registration. The callback then unregisters the launcher and removes the map entry
+        // before the assignment below, so never re-add a launcher whose one-shot result was
+        // already delivered.
+        if (!callbackFired.get()) {
+            configCreateLaunchers[requestId] = launcher
+        } else {
+            runCatching { launcher.unregister() }
+        }
         return launcher
     }
 
@@ -1380,13 +1425,13 @@ class ActivityMain : AppCompatActivity() {
             }
 
             ConfigExportCallbackAction.WRITE -> {
-                ConfigExportDeferredCompletion.mark(deferred.request.id)
+                deferredConfigExportCompletion.markCompleted(deferred.request.id)
                 clearDeferredConfigExport()
                 submitConfigExportWrite(deferred.request, deferred.target)
             }
 
             ConfigExportCallbackAction.REJECT -> {
-                ConfigExportDeferredCompletion.mark(deferred.request.id)
+                deferredConfigExportCompletion.markCompleted(deferred.request.id)
                 clearDeferredConfigExport()
                 Toast.makeText(this, R.string.config_export_unavailable, Toast.LENGTH_LONG).show()
                 scheduleDeferredRestartAfterConfigExport(
@@ -1407,24 +1452,31 @@ class ActivityMain : AppCompatActivity() {
     private fun submitConfigExportWrite(request: ConfigExportPendingRequest, target: Uri) {
         configExportWriteInProgress = true
         val appContext = applicationContext
+        val handler = Handler(Looper.getMainLooper())
+        val activityRef = WeakReference(this)
+        val json = request.json
+        val requestId = request.id
         try {
             configExportExecutor.execute {
+                // Keep the Activity out of this worker closure: a graceful executor shutdown
+                // lets a slow provider finish after rotation without retaining the old view tree.
                 val written = runCatching {
-                    utils.writeConfigFile(appContext, target, JSONObject(request.json))
+                    Utils().writeConfigFile(appContext, target, JSONObject(json))
                 }.isSuccess
-                mainHandler.post {
-                    configExportWriteInProgress = false
-                    if (!isFinishing && !isDestroyed) {
+                handler.post {
+                    val activity = activityRef.get() ?: return@post
+                    activity.configExportWriteInProgress = false
+                    if (!activity.isFinishing && !activity.isDestroyed) {
                         Toast.makeText(
-                            this,
+                            activity,
                             if (written) R.string.export_complete else R.string.share_error,
                             Toast.LENGTH_SHORT,
                         ).show()
                     }
-                    scheduleDeferredRestartAfterConfigExport(
-                        callbackRequestId = request.id,
-                        completedRequestId = request.id,
-                        deliveredCallbackId = request.id,
+                    activity.scheduleDeferredRestartAfterConfigExport(
+                        callbackRequestId = requestId,
+                        completedRequestId = requestId,
+                        deliveredCallbackId = requestId,
                     )
                 }
             }
@@ -1448,13 +1500,34 @@ class ActivityMain : AppCompatActivity() {
             val shouldRestart = deferredActivityRestart.completeRequest(
                 callbackRequestId = callbackRequestId,
                 completedRequestId = completedRequestId,
-                configExportPending = pendingConfigExport.hasAwaitingResult(
+                configExportPending = configExportPending(
                     deliveredCallbackId = deliveredCallbackId?.takeIf {
                         it == callbackRequestId && it == completedRequestId
                     },
-                ) || deferredConfigExport != null || configExportWriteInProgress,
+                ),
+                hostActive = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
             )
             if (shouldRestart) performActivityRestart()
+        }
+    }
+
+    /**
+     * Releases a restart that was deferred because a config import was in flight.
+     *
+     * The import result may be delivered on the ON_START event, which on API 29+ is dispatched
+     * after `onStart()` returns while on API 26–28 it arrives during `super.onStart()`. The release
+     * path covers both, ensuring that every import path ending without a restart re-checks and
+     * releases the deferred intent.
+     */
+    private fun releaseDeferredRestartAfterImport() {
+        mainHandler.post {
+            if (deferredActivityRestart.releaseDeferredRestart(
+                    configExportPending = configExportPending(),
+                    hostActive = lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED),
+                )
+            ) {
+                performActivityRestart()
+            }
         }
     }
 
@@ -1554,16 +1627,26 @@ class ActivityMain : AppCompatActivity() {
     /** Guards against overlapping document reads/imports from repeated picker results. */
     private var configImportInProgress = false
 
+    /** True from import-picker launch until its result is handled, so a restart cannot strand it. */
+    private var configImportInFlight = false
+
     /**
      * Launch the Storage Access Framework document picker to select a configuration JSON for import.
      */
     private fun importConfFile() {
-        if (configImportInProgress || !canEditSettings()) return
+        if (configImportInProgress || configImportInFlight || !canEditSettings()) return
         val openIntent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "application/json"
         }
-        configOpenLauncher.launch(openIntent)
+        configImportInFlight = true
+        try {
+            configOpenLauncher.launch(openIntent)
+        } catch (_: Exception) {
+            configImportInFlight = false
+            Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+            releaseDeferredRestartAfterImport()
+        }
     }
 
     /**
@@ -1584,12 +1667,20 @@ class ActivityMain : AppCompatActivity() {
      * read may pin this Activity until the provider returns.)
      */
     private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
-        val uri = result.data?.data ?: run {
-            Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+        configImportInFlight = false
+        if (result.resultCode != Activity.RESULT_OK) {
+            releaseDeferredRestartAfterImport()
             return@registerForActivityResult
         }
-        if (configImportInProgress || !canEditSettings()) return@registerForActivityResult
+        val uri = result.data?.data ?: run {
+            Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+            releaseDeferredRestartAfterImport()
+            return@registerForActivityResult
+        }
+        if (configImportInProgress || !canEditSettings()) {
+            releaseDeferredRestartAfterImport()
+            return@registerForActivityResult
+        }
         configImportInProgress = true
         val appContext = applicationContext
         try {
@@ -1601,6 +1692,7 @@ class ActivityMain : AppCompatActivity() {
                     val plan = staged.getOrNull()
                     if (plan == null) {
                         Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
+                        releaseDeferredRestartAfterImport()
                         return@post
                     }
                     if (plan.hasInvalidDevice) {
@@ -1615,7 +1707,10 @@ class ActivityMain : AppCompatActivity() {
                         plan.apply(currentPrefs)
                         true
                     }
-                    if (!imported) return@post
+                    if (!imported) {
+                        releaseDeferredRestartAfterImport()
+                        return@post
+                    }
                     Toast.makeText(this, R.string.import_complete, Toast.LENGTH_SHORT).show()
                     restartActivity()
                 }
@@ -1625,6 +1720,7 @@ class ActivityMain : AppCompatActivity() {
             if (!isFinishing && !isDestroyed) {
                 Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
             }
+            releaseDeferredRestartAfterImport()
         }
     }
 
@@ -1644,6 +1740,7 @@ class ActivityMain : AppCompatActivity() {
         readinessDialog?.dismiss()
         readinessDialog = null
         configImportInProgress = false
+        configImportInFlight = false
         clearDeferredConfigExport()
         configExportWriteInProgress = false
         // update/import work is pure reads and cancellable; the export write already owns the

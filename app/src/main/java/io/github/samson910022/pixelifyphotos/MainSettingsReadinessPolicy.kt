@@ -36,6 +36,20 @@ internal object SettingsScreenSourcePolicy {
         MainSettingsReadinessPolicy.mayAccessPreferences(current, frameworkBindingObserved)
 }
 
+/**
+ * Bounds the synchronous `recreate()` chain used when a settings screen notices a source change
+ * between reading its snapshot and reading preferences. A flapping manager service must not be
+ * able to relaunch the screen forever; after the cap the screen keeps its listener and falls
+ * back to the normal disabled/retry state.
+ */
+internal object SettingsScreenRecreatePolicy {
+    const val MAX_SYNC_RECREATES = 1
+
+    fun mayRecreate(attempts: Int): Boolean = attempts in 0 until MAX_SYNC_RECREATES
+
+    fun nextAttempts(attempts: Int): Int = (attempts + 1).coerceAtMost(MAX_SYNC_RECREATES)
+}
+
 /** ActivityMain's lifecycle decisions, kept pure so cold-start/death races are testable. */
 internal object ActivityMainLifecycle {
     enum class Action {

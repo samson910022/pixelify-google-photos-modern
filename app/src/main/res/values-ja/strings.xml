@@ -233,6 +233,6 @@
     <string name="diagnostics_origin_unverified">不明／未検証（申告された origin: %1$s）</string>
     <string name="diagnostics_unverified">不明／未検証</string>
     <string name="diagnostics_unverified_telemetry">未検証テレメトリー（origin／package は OS 未検証）: %1$s</string>
-    <string name="diagnostics_process_pid">OS が観測した Binder PID: %1$s</string>
+    <string name="diagnostics_process_pid">OS が観測した送信元 PID（利用可能な場合は Binder）: %1$s</string>
     <string name="diagnostics_registration_caveat">すべて登録済みでも、Google フォトが対象 API を呼び出した証明にはなりません。進入の観測はインターセプターに入ったことだけを示し、Google フォトからの呼び出しや偽装値の返却を証明しません。</string>
 </resources>

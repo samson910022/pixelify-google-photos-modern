@@ -52,6 +52,7 @@ class DiagnosticsReporterTest {
         DiagnosticsReporter.testBroadcastToken = "test-auth-token"
         DiagnosticsReporter.testBootCount = 1
         DiagnosticsReporter.testBootEpochResolver = { "test-epoch-1" }
+        DiagnosticsReporter.testRunEpochRecoveryObserver = null
         DiagnosticsReporter.testResolvedContext = null
         DiagnosticsReporter.testEnqueueObserver = null
         DiagnosticsReporter.testBeforeDispatchLock = null
@@ -73,6 +74,8 @@ class DiagnosticsReporterTest {
         DiagnosticsReporter.testBroadcastToken = null
         DiagnosticsReporter.testBootCount = null
         DiagnosticsReporter.testBootEpochResolver = null
+        DiagnosticsReporter.testRunEpochRecoveryObserver = null
+        DiagnosticsReporter.testDispatchedPayloadEpochObserver = null
         DiagnosticsReporter.testResolvedContext = null
         DiagnosticsReporter.testEnqueueObserver = null
         DiagnosticsReporter.testBeforeDispatchLock = null
@@ -215,6 +218,55 @@ class DiagnosticsReporterTest {
         assertEquals(Constants.METHOD_RECORD_DIAGNOSTICS, events[1].first)
         assertNotNull(events[0].second)
         assertEquals(events[0].second, events[1].second)
+    }
+
+    @Test
+    fun `run start without an epoch recovers it before dependent telemetry`() {
+        var epoch: String? = null
+        DiagnosticsReporter.testBootEpochResolver = { epoch }
+        val recovered = Collections.synchronizedList(mutableListOf<Pair<String, String>>())
+        DiagnosticsReporter.testRunEpochRecoveryObserver = { runId, recoveredEpoch ->
+            recovered += runId to recoveredEpoch
+        }
+        val dispatchedPayloadEpochs = Collections.synchronizedList(mutableListOf<Pair<String, String?>>())
+        DiagnosticsReporter.testDispatchedPayloadEpochObserver = { method, dispatchedEpoch ->
+            dispatchedPayloadEpochs += method to dispatchedEpoch
+        }
+        val startLatch = CountDownLatch(1)
+        val telemetryLatch = CountDownLatch(1)
+        DiagnosticsReporter.testResolvedContext = mockContext
+        val success = mock<Bundle>()
+        whenever(success.getBoolean(eq("success"), eq(false))).thenReturn(true)
+        whenever(mockResolver.call(any<Uri>(), any<String>(), isNull(), anyOrNull<Bundle>())).thenAnswer { invocation ->
+            when (invocation.getArgument<String>(1)) {
+                Constants.METHOD_START_DIAGNOSTICS_RUN -> startLatch.countDown()
+                Constants.METHOD_RECORD_DIAGNOSTICS -> telemetryLatch.countDown()
+            }
+            success
+        }
+
+        val handle = DiagnosticsReporter.startTargetRun(
+            packageName = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            moduleLoadedAt = 1L,
+        )
+        assertTrue(startLatch.await(5, TimeUnit.SECONDS))
+
+        epoch = "recovered-epoch"
+        DiagnosticsReporter.recordMilestone(mockContext) { bundle ->
+            bundle.putBoolean(Constants.PREF_DIAG_FEATURE_HOOK_STRING, true)
+        }
+        assertTrue(telemetryLatch.await(5, TimeUnit.SECONDS))
+        assertEquals("recovered-epoch", recovered.single().second)
+        assertEquals(
+            "a later readable identity must be attached without changing run identity",
+            handle?.runId,
+            recovered.single().first,
+        )
+        assertEquals(
+            "dispatched telemetry payload must carry the recovered epoch",
+            "recovered-epoch",
+            dispatchedPayloadEpochs.single { it.first == Constants.METHOD_RECORD_DIAGNOSTICS }.second,
+        )
     }
 
     @Test

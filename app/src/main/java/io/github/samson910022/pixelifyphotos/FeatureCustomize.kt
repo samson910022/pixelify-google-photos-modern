@@ -1,6 +1,7 @@
 package io.github.samson910022.pixelifyphotos
 
 import android.app.Activity
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -26,68 +27,16 @@ class FeatureCustomize : AppCompatActivity(R.layout.feature_customize) {
     private var settingsSourceVersion: Long? = null
     private var sourceRefreshRequested = false
     private var initialSelectedFeatures: Set<String> = emptySet()
+    private var storedFeatureNames: Set<String> = emptySet()
+    private var renderedFeatureNames: Set<String> = emptySet()
+    private var recreateAttempts = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        recreateAttempts = savedInstanceState?.getInt(STATE_RECREATE_ATTEMPTS, 0) ?: 0
 
         checkboxHolder = findViewById(R.id.feature_checkbox_holder)
         saveButton = findViewById(R.id.save_features)
-        val sourceState = App.serviceReadinessSnapshot()
-        settingsSourceVersion = sourceState.version
-        val prefs = PrefUtils.getPrefs(this, sourceState)
-        if (App.serviceReadinessSnapshot().version != sourceState.version) {
-            installServiceStateListener()
-            updateSettingsAvailability()
-            recreate()
-            return
-        }
-        if (prefs == null) {
-            installServiceStateListener()
-            updateSettingsAvailability()
-            return
-        }
-
-        val defaultFeatureLevelsName = DeviceProps.defaultFeatures.map { it.displayName }.toSet()
-        val storedFeatureNames = prefs.getStringSet(PREF_SPOOF_FEATURES_LIST, defaultFeatureLevelsName)
-            ?.toSet().orEmpty()
-        // Only levels with actual flags render a checkbox. Empty levels are informational,
-        // so any stored name for them must be preserved as unrendered state.
-        val renderedFeatureNames = FeatureCustomizeChangePolicy.renderedFeatureNames(DeviceProps.allFeatures)
-        initialSelectedFeatures = FeatureCustomizeChangePolicy.renderedSelection(
-            storedFeatureNames,
-            renderedFeatureNames,
-        )
-
-        /**
-         * Populate checkboxes in for each feature name. Empty feature levels are
-         * shown as information only: they add no flags, and selecting such a
-         * level alone would otherwise hide every known Pixel flag when ROM
-         * override is enabled.
-         */
-        DeviceProps.allFeatures.withIndex().forEach { indexed ->
-
-            val features = indexed.value
-            if (features.featureFlags.isEmpty()) {
-                val density = resources.displayMetrics.density
-                val info = TextView(this).apply {
-                    text = getString(R.string.feature_level_without_flags, features.displayName)
-                    setPaddingRelative((48 * density).toInt(), (4 * density).toInt(), 0, (4 * density).toInt())
-                    alpha = 0.7f
-                }
-                checkboxHolder?.addView(info)
-                return@forEach
-            }
-
-            val checkBox = CheckBox(this)
-            checkBox.apply {
-                text = features.displayName
-                id = indexed.index + 1
-                isChecked = text in initialSelectedFeatures
-            }
-
-            checkboxHolder?.addView(checkBox)
-
-        }
 
         /** A changed selection is stored and returns RESULT_OK; no-op saves do neither. */
         saveButton?.setOnClickListener {
@@ -149,9 +98,75 @@ class FeatureCustomize : AppCompatActivity(R.layout.feature_customize) {
 
         }
 
-        settingsInitialized = true
+        val sourceState = App.serviceReadinessSnapshot()
+        settingsSourceVersion = sourceState.version
+        val prefs = PrefUtils.getPrefs(this, sourceState)
+        if (App.serviceReadinessSnapshot().version != sourceState.version) {
+            installServiceStateListener()
+            updateSettingsAvailability()
+            requestRecreateIfAllowed()
+            return
+        }
+        if (prefs == null) {
+            installServiceStateListener()
+            updateSettingsAvailability()
+            return
+        }
+
+        populateSettings(prefs)
         installServiceStateListener()
         updateSettingsAvailability()
+    }
+
+    /**
+     * Builds the checkboxes from [prefs]. Also used when the settings source becomes usable
+     * after this screen was opened, so a flapping manager cannot leave the screen dead.
+     */
+    private fun populateSettings(prefs: SharedPreferences) {
+        checkboxHolder?.removeAllViews()
+        val defaultFeatureLevelsName = DeviceProps.defaultFeatures.map { it.displayName }.toSet()
+        storedFeatureNames = prefs.getStringSet(PREF_SPOOF_FEATURES_LIST, defaultFeatureLevelsName)
+            ?.toSet().orEmpty()
+        // Only levels with actual flags render a checkbox. Empty levels are informational,
+        // so any stored name for them must be preserved as unrendered state.
+        renderedFeatureNames = FeatureCustomizeChangePolicy.renderedFeatureNames(DeviceProps.allFeatures)
+        initialSelectedFeatures = FeatureCustomizeChangePolicy.renderedSelection(
+            storedFeatureNames,
+            renderedFeatureNames,
+        )
+
+        /**
+         * Populate checkboxes in for each feature name. Empty feature levels are
+         * shown as information only: they add no flags, and selecting such a
+         * level alone would otherwise hide every known Pixel flag when ROM
+         * override is enabled.
+         */
+        DeviceProps.allFeatures.withIndex().forEach { indexed ->
+
+            val features = indexed.value
+            if (features.featureFlags.isEmpty()) {
+                val density = resources.displayMetrics.density
+                val info = TextView(this).apply {
+                    text = getString(R.string.feature_level_without_flags, features.displayName)
+                    setPaddingRelative((48 * density).toInt(), (4 * density).toInt(), 0, (4 * density).toInt())
+                    alpha = 0.7f
+                }
+                checkboxHolder?.addView(info)
+                return@forEach
+            }
+
+            val checkBox = CheckBox(this)
+            checkBox.apply {
+                text = features.displayName
+                id = indexed.index + 1
+                isChecked = text in initialSelectedFeatures
+            }
+
+            checkboxHolder?.addView(checkBox)
+
+        }
+
+        settingsInitialized = true
     }
 
     private fun canEditSettings(): Boolean = SettingsScreenSourcePolicy.maySave(
@@ -165,7 +180,28 @@ class FeatureCustomize : AppCompatActivity(R.layout.feature_customize) {
         sourceRefreshRequested = true
         settingsInitialized = false
         updateSettingsAvailability()
+        if (requestRecreateIfAllowed()) return
+        // The relaunch budget is exhausted (for example a flapping manager service). Rebuild
+        // in place from the current source instead of leaving the screen permanently disabled.
+        reloadFromCurrentSource()
+        sourceRefreshRequested = false
+    }
+
+    private fun reloadFromCurrentSource() {
+        val current = App.serviceReadinessSnapshot()
+        settingsSourceVersion = current.version
+        val prefs = PrefUtils.getPrefs(this, current)
+        if (current.ready && prefs != null) {
+            populateSettings(prefs)
+        }
+        updateSettingsAvailability()
+    }
+
+    private fun requestRecreateIfAllowed(): Boolean {
+        if (!SettingsScreenRecreatePolicy.mayRecreate(recreateAttempts)) return false
+        recreateAttempts = SettingsScreenRecreatePolicy.nextAttempts(recreateAttempts)
         if (!isFinishing && !isDestroyed) recreate()
+        return true
     }
 
     private fun installServiceStateListener() {
@@ -176,8 +212,14 @@ class FeatureCustomize : AppCompatActivity(R.layout.feature_customize) {
                     val current = App.serviceReadinessSnapshot()
                     if (SettingsScreenSourcePolicy.mustReload(settingsSourceVersion, current)) {
                         refreshForCurrentSource()
-                    } else if (!settingsInitialized && current.ready && PrefUtils.getPrefs(this, current) != null) {
-                        recreate()
+                    } else if (!settingsInitialized) {
+                        val prefs = PrefUtils.getPrefs(this, current)
+                        if (current.ready && prefs != null) {
+                            settingsSourceVersion = current.version
+                            populateSettings(prefs)
+                            sourceRefreshRequested = false
+                        }
+                        updateSettingsAvailability()
                     } else {
                         updateSettingsAvailability()
                     }
@@ -198,10 +240,19 @@ class FeatureCustomize : AppCompatActivity(R.layout.feature_customize) {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_RECREATE_ATTEMPTS, recreateAttempts)
+    }
+
     override fun onDestroy() {
         serviceStateListener?.let { App.removeOnServiceStateListener(it) }
         serviceStateListener = null
         super.onDestroy()
+    }
+
+    private companion object {
+        const val STATE_RECREATE_ATTEMPTS = "feature_customize_recreate_attempts"
     }
 
 }
