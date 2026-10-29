@@ -93,6 +93,7 @@ class ActivityMain : AppCompatActivity() {
         private const val STATE_CONFIG_EXPORT_SOURCE_PHASE = "config_export_deferred_source_phase"
         private const val STATE_CONFIG_EXPORT_SOURCE_CONNECTED = "config_export_deferred_source_connected"
         private const val STATE_CONFIG_EXPORT_TARGET = "config_export_deferred_target"
+        private const val STATE_CONFIG_IMPORT_IN_FLIGHT = "config_import_in_flight"
 
         private fun namedThreadFactory(name: String): ThreadFactory = ThreadFactory { runnable ->
             Thread(runnable, name).apply { isDaemon = true }
@@ -329,6 +330,7 @@ class ActivityMain : AppCompatActivity() {
      * the chosen UI mode, checks onboarding and updates.
      */
     override fun onCreate(savedInstanceState: Bundle?) {
+        configImportInFlight = savedInstanceState?.getBoolean(STATE_CONFIG_IMPORT_IN_FLIGHT, false) ?: false
         val initialServiceState = App.serviceReadinessSnapshot()
         frameworkBindingObserved = App.hasObservedFrameworkBinding() || initialServiceState.connected
         val pref = PrefUtils.getPrefs(this, initialServiceState)
@@ -383,6 +385,7 @@ class ActivityMain : AppCompatActivity() {
      */
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_CONFIG_IMPORT_IN_FLIGHT, configImportInFlight)
         val deferred = deferredConfigExport ?: return
         outState.putString(STATE_CONFIG_EXPORT_REQUEST_ID, deferred.request.id)
         outState.putString(STATE_CONFIG_EXPORT_JSON, deferred.request.json)
