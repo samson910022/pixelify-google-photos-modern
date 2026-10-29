@@ -1663,8 +1663,8 @@ class ActivityMain : AppCompatActivity() {
      * A configuration change during the read abandons this import: the completion
      * self-cancels on the destroyed Activity and nothing is applied. The read is pure
      * and the allowlisted plan is idempotent, so the user can simply re-select the file.
-     * (`shutdownNow()` cannot interrupt a provider that ignores interruption, so a hung
-     * read may pin this Activity until the provider returns.)
+     * A WeakReference and standalone Utils instance keep the Activity out of the worker
+     * closure so a slow or hung provider read cannot leak the Activity.
      */
     private val configOpenLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         configImportInFlight = false
@@ -1683,36 +1683,39 @@ class ActivityMain : AppCompatActivity() {
         }
         configImportInProgress = true
         val appContext = applicationContext
+        val handler = Handler(Looper.getMainLooper())
+        val activityRef = WeakReference(this)
         try {
             configImportExecutor.execute {
-                val staged = runCatching { utils.readConfigFile(appContext, uri) }
-                mainHandler.post {
-                    if (isFinishing || isDestroyed) return@post
-                    configImportInProgress = false
+                val staged = runCatching { Utils().readConfigFile(appContext, uri) }
+                handler.post {
+                    val activity = activityRef.get() ?: return@post
+                    if (activity.isFinishing || activity.isDestroyed) return@post
+                    activity.configImportInProgress = false
                     val plan = staged.getOrNull()
                     if (plan == null) {
-                        Toast.makeText(this, R.string.read_error, Toast.LENGTH_SHORT).show()
-                        releaseDeferredRestartAfterImport()
+                        Toast.makeText(activity, R.string.read_error, Toast.LENGTH_SHORT).show()
+                        activity.releaseDeferredRestartAfterImport()
                         return@post
                     }
                     if (plan.hasInvalidDevice) {
-                        Toast.makeText(this, R.string.invalid_imported_device, Toast.LENGTH_LONG).show()
+                        Toast.makeText(activity, R.string.invalid_imported_device, Toast.LENGTH_LONG).show()
                     }
                     if (plan.hasInvalidAndroidVersion) {
-                        Toast.makeText(this, R.string.invalid_imported_android_version, Toast.LENGTH_LONG).show()
+                        Toast.makeText(activity, R.string.invalid_imported_android_version, Toast.LENGTH_LONG).show()
                     }
                     // updateSettings revalidates expectedStateVersion under the settings lock and
                     // reports a toast on failure, so no separate editability check is needed here.
-                    val imported = updateSettings(editedKeys = plan.editedKeys) { currentPrefs ->
+                    val imported = activity.updateSettings(editedKeys = plan.editedKeys) { currentPrefs ->
                         plan.apply(currentPrefs)
                         true
                     }
                     if (!imported) {
-                        releaseDeferredRestartAfterImport()
+                        activity.releaseDeferredRestartAfterImport()
                         return@post
                     }
-                    Toast.makeText(this, R.string.import_complete, Toast.LENGTH_SHORT).show()
-                    restartActivity()
+                    Toast.makeText(activity, R.string.import_complete, Toast.LENGTH_SHORT).show()
+                    activity.restartActivity()
                 }
             }
         } catch (_: java.util.concurrent.RejectedExecutionException) {
@@ -1743,6 +1746,8 @@ class ActivityMain : AppCompatActivity() {
         configImportInFlight = false
         clearDeferredConfigExport()
         configExportWriteInProgress = false
+        configCreateLaunchers.values.forEach { runCatching { it.unregister() } }
+        configCreateLaunchers.clear()
         // update/import work is pure reads and cancellable; the export write already owns the
         // picker destination, so it is allowed to finish instead of being interrupted mid-record.
         configImportExecutor.shutdownNow()
