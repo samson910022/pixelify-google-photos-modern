@@ -3628,6 +3628,32 @@ class DiagnosticsStoreTest {
     }
 
     @Test
+    fun `convergeBroadcastToken provisions local token on demand when both stores are empty`() {
+        stubBoundServiceWithRemotePrefs()
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+        whenever(mockRemotePrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+
+        assertTrue(DiagnosticsStore.convergeBroadcastToken(mockContext))
+
+        verify(mockEditor).putString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), any())
+        verify(mockEditor).commit()
+        verify(mockRemoteEditor).putString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), any())
+        verify(mockRemoteEditor).commit()
+    }
+
+    @Test
+    fun `convergeBroadcastToken returns false when local on-demand provisioning fails and remote is empty`() {
+        stubBoundServiceWithRemotePrefs()
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+        whenever(mockRemotePrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull())).thenReturn(null)
+        whenever(mockEditor.commit()).thenReturn(false)
+
+        assertFalse(DiagnosticsStore.convergeBroadcastToken(mockContext))
+
+        verify(mockRemoteEditor, never()).commit()
+    }
+
+    @Test
     fun `getOrCreateToken returns existing token without regenerating`() {
         whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
             .thenReturn(mockPrefs)

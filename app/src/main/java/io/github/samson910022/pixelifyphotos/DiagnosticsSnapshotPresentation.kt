@@ -130,7 +130,7 @@ internal object DiagnosticsHookStateSnapshot {
                 if (!failedValues.all { it is String }) {
                     throw ClassCastException("Preference '${Constants.PREF_DIAG_VERIFY_FAILED}' is not a StringSet")
                 }
-                failedValues.map { it as String }
+                failedValues.map { it as String }.sorted()
             }
             else -> throw ClassCastException("Preference '${Constants.PREF_DIAG_VERIFY_FAILED}' is not a StringSet")
         }

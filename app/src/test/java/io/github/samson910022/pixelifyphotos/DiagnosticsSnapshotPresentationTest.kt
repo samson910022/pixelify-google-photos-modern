@@ -216,4 +216,17 @@ class DiagnosticsSnapshotPresentationTest {
             assertFalse(report.contains("No lifecycle milestones have been recorded yet"))
         }
     }
+
+    @Test
+    fun `capture sorts failed verify fields deterministically`() {
+        val rawValues = mapOf<String, Any?>(
+            Constants.PREF_DIAG_VERIFY_FAILED to linkedSetOf("MODEL", "BRAND", "DEVICE", "ID"),
+        )
+        val state = DiagnosticsHookStateSnapshot.capture(
+            readAll = { rawValues },
+            currentBootCount = null,
+            currentBootEpoch = null,
+        )
+        assertEquals(listOf("BRAND", "DEVICE", "ID", "MODEL"), state.verifyFailed)
+    }
 }

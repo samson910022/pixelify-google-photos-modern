@@ -344,22 +344,23 @@ object DiagnosticsStore {
             // PrefUtils-based "local" view a no-op alias of [remote].
             val fileStore = context.getSharedPreferences(Constants.SHARED_PREF_FILE_NAME, Context.MODE_PRIVATE)
             val localToken = fileStore.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+            val resolvedLocalToken = if (localToken.isNullOrBlank()) getOrCreateToken(context) else localToken
             val remoteToken = remote.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
             when {
-                remoteToken.isNullOrBlank() && localToken.isNullOrBlank() -> {
+                remoteToken.isNullOrBlank() && resolvedLocalToken.isNullOrBlank() -> {
                     Log.w(TAG, "Diagnostics IPC token sync found no provisioned token; reports remain unknown")
                     false
                 }
                 remoteToken.isNullOrBlank() -> {
                     val committed = remote.edit()
-                        .putString(Constants.PREF_DIAG_BROADCAST_TOKEN, localToken)
+                        .putString(Constants.PREF_DIAG_BROADCAST_TOKEN, resolvedLocalToken)
                         .commit()
                     if (!committed) {
                         Log.w(TAG, "Diagnostics IPC token sync to remote preferences did not persist")
                     }
                     committed
                 }
-                remoteToken != localToken -> {
+                remoteToken != resolvedLocalToken -> {
                     val committed = fileStore.edit()
                         .putString(Constants.PREF_DIAG_BROADCAST_TOKEN, remoteToken)
                         .commit()
