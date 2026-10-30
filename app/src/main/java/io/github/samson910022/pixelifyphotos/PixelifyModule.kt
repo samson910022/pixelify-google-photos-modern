@@ -7,6 +7,9 @@ import io.github.libxposed.api.XposedModuleInterface
 
 class PixelifyModule : XposedModule() {
 
+    @Volatile
+    private var moduleLoadedAt: Long? = null
+
     companion object {
         const val TAG = "Pixelify"
 
@@ -27,19 +30,7 @@ class PixelifyModule : XposedModule() {
 
     override fun onModuleLoaded(params: XposedModuleInterface.ModuleLoadedParam) {
         Log.d(TAG, "Pixelify Infinity module loaded (libxposed Modern API)")
-        // Provision broadcast token early so hooked processes can authenticate fallback broadcasts.
-        // Use commit() and single-owner pattern to avoid cross-process UUID races (App.onCreate also provisions).
-        try {
-            val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-            if (prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null).isNullOrEmpty()) {
-                prefs.edit().putString(Constants.PREF_DIAG_BROADCAST_TOKEN, java.util.UUID.randomUUID().toString()).commit()
-            }
-        } catch (t: Throwable) {
-            Log.d(TAG, "Broadcast token provisioning skipped: ${t.message}")
-        }
-        DiagnosticsReporter.recordMilestone { bundle ->
-            bundle.putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, System.currentTimeMillis())
-        }
+        moduleLoadedAt = System.currentTimeMillis()
     }
 
     /**
@@ -56,7 +47,7 @@ class PixelifyModule : XposedModule() {
      */
     override fun onPackageLoaded(params: XposedModuleInterface.PackageLoadedParam) {
         // PackageLoadedParam.isFirstPackage() is part of libxposed API 101.
-        if (!params.isFirstPackage) {
+        if (!ModuleLifecyclePolicy.shouldHandlePackageLoaded(params.isFirstPackage)) {
             Log.v(TAG, "Skipping non-first package load for ${params.packageName}")
             return
         }
@@ -69,16 +60,28 @@ class PixelifyModule : XposedModule() {
             return
         }
 
+        // Establish the package/process run before queuing any telemetry so every
+        // subsequent result carries this run identity and cannot overwrite a newer run.
+        val runHandle = DiagnosticsReporter.startTargetRun(params.packageName, moduleLoadedAt) ?: return
+
         logIfNonPhotosPackage(params.packageName, "early device spoof")
         Log.d(TAG, "Package loaded (${params.packageName}). Early device spoof...")
         try {
             val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
             // Pass module so DeviceSpoofer can resolve module nativeLibraryDir for JNI.
             // No failure UI yet — Application/host extract may only work on package ready.
-            DeviceSpoofer.hook(this, prefs, allowFailureUi = false, packageName = params.packageName)
-            Log.d(TAG, "DeviceSpoofer early apply done for ${params.packageName}")
+            DeviceSpoofer.hook(
+                this,
+                prefs,
+                allowFailureUi = false,
+                packageName = params.packageName,
+                runHandle = runHandle,
+            )
+            Log.d(TAG, "DeviceSpoofer early apply attempt completed for ${params.packageName}")
         } catch (t: Throwable) {
             Log.e(TAG, "Failed early DeviceSpoofer apply for ${params.packageName}", t)
+        } finally {
+            recordSystemPropertiesRegistration(runHandle)
         }
 
         // On Android 10+ (API 29, Q), Google Photos and system libraries query PackageManager
@@ -86,22 +89,27 @@ class PixelifyModule : XposedModule() {
         // Application.onCreate). Hooking early via params.defaultClassLoader ensures feature
         // capabilities like Unlimited Backup are spoofed before early caching takes place.
         // On Android 9 and older, class resolution is deferred to onPackageReady.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ModuleLifecyclePolicy.shouldHookFeaturesEarly(Build.VERSION.SDK_INT)
+        ) {
             try {
-                FeatureSpoofer.hook(this, params.defaultClassLoader)
-                Log.d(TAG, "FeatureSpoofer early apply done for ${params.packageName}")
+                FeatureSpoofer.hook(this, params.defaultClassLoader, runHandle)
+                Log.d(TAG, "FeatureSpoofer early registration attempt completed for ${params.packageName}")
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed early FeatureSpoofer apply for ${params.packageName}", t)
+            } finally {
+                recordFeatureRegistration(runHandle)
             }
         }
-        DiagnosticsReporter.recordMilestone { bundle ->
+        DiagnosticsReporter.recordMilestone(runHandle = runHandle) { bundle ->
             bundle.putString(Constants.PREF_DIAG_LAST_PACKAGE_LOADED, params.packageName)
         }
     }
 
     /**
-     * Package ready: register FeatureSpoofer + re-apply DeviceSpoofer for any
-     * non-denylisted scoped package (same global prefs as Photos).
+     * Package-ready lifecycle callback: attempt FeatureSpoofer registration and
+     * re-apply DeviceSpoofer for any non-denylisted scoped package (same global
+     * prefs as Photos). Registration outcomes are reported separately.
      */
     override fun onPackageReady(params: XposedModuleInterface.PackageReadyParam) {
         if (!ScopePolicy.shouldSpoof(params.packageName)) {
@@ -112,32 +120,82 @@ class PixelifyModule : XposedModule() {
             return
         }
 
-        Log.d(TAG, "Package ready (${params.packageName}). Applying hooks...")
+        // Some framework lifecycle variants can reach package-ready without a usable
+        // first-package callback. The create-or-return operation is atomic so racing
+        // package callbacks cannot each publish a different run identity.
+        val runHandle = DiagnosticsReporter.startTargetRunIfAbsent(
+            packageName = params.packageName,
+            moduleLoadedAt = moduleLoadedAt,
+            packageLoadCallbackObserved = false,
+        ) ?: return
+        val telemetrySupportedForPackage =
+            DiagnosticsReporter.supportsCallbackPackage(params.packageName, runHandle)
+        if (!telemetrySupportedForPackage) {
+            Log.w(
+                TAG,
+                "Same-process secondary package telemetry is unsupported: run origin differs from " +
+                    "${params.packageName}; hook registration still proceeds, but its diagnostics remain unknown",
+            )
+        }
+
+        Log.d(TAG, "Package-ready callback observed (${params.packageName}). Attempting hooks...")
 
         // Each hook is individually guarded so one failure doesn't block the other.
         logIfNonPhotosPackage(params.packageName, "feature/device spoof on ready")
         try {
             try {
-                FeatureSpoofer.hook(this, params.classLoader)
-                Log.d(TAG, "FeatureSpoofer hook registered for ${params.packageName}")
+                FeatureSpoofer.hook(this, params.classLoader, runHandle)
+                Log.d(TAG, "FeatureSpoofer registration attempt completed for ${params.packageName}")
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to register FeatureSpoofer hooks for ${params.packageName}", t)
+            } finally {
+                if (telemetrySupportedForPackage) recordFeatureRegistration(runHandle)
             }
 
             try {
                 val prefs = getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
                 // Re-apply Build writes + ensure SystemProperties hooks exist.
-                DeviceSpoofer.hook(this, prefs, packageName = params.packageName)
-                Log.d(TAG, "DeviceSpoofer hook registered for ${params.packageName}")
+                DeviceSpoofer.hook(
+                    this,
+                    prefs,
+                    packageName = params.packageName,
+                    runHandle = runHandle,
+                )
+                Log.d(TAG, "DeviceSpoofer apply attempt completed for ${params.packageName}")
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to register DeviceSpoofer hooks for ${params.packageName}", t)
+            } finally {
+                if (telemetrySupportedForPackage) recordSystemPropertiesRegistration(runHandle)
             }
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to register hooks for ${params.packageName}", t)
         }
-        DiagnosticsReporter.recordMilestone { bundle ->
-            bundle.putString(Constants.PREF_DIAG_LAST_PACKAGE_READY, params.packageName)
-            bundle.putLong(Constants.PREF_DIAG_LAST_PACKAGE_READY_AT, System.currentTimeMillis())
+        if (telemetrySupportedForPackage) {
+            DiagnosticsReporter.recordMilestone(runHandle = runHandle) { bundle ->
+                bundle.putString(Constants.PREF_DIAG_LAST_PACKAGE_READY, params.packageName)
+                bundle.putLong(Constants.PREF_DIAG_LAST_PACKAGE_READY_AT, System.currentTimeMillis())
+            }
+        }
+    }
+
+    private fun recordFeatureRegistration(runHandle: DiagnosticsReporter.TargetRunHandle) {
+        val result = FeatureSpoofer.registrationSnapshot()
+        DiagnosticsReporter.recordFeatureHookRegistration(
+            hasSystemFeature = result.hasSystemFeature,
+            hasSystemFeatureWithFlags = result.hasSystemFeatureWithFlags,
+            getSystemAvailableFeatures = result.getSystemAvailableFeatures,
+            runHandle = runHandle,
+        )
+    }
+
+    private fun recordSystemPropertiesRegistration(runHandle: DiagnosticsReporter.TargetRunHandle) {
+        val result = DeviceSpoofer.systemPropertiesRegistrationSnapshot()
+        if (result.attempted) {
+            DiagnosticsReporter.recordSystemPropertiesHookRegistration(
+                get = result.get,
+                getWithDefault = result.getWithDefault,
+                runHandle = runHandle,
+            )
         }
     }
 

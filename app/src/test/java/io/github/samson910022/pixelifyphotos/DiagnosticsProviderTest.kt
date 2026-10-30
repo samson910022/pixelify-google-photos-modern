@@ -27,6 +27,11 @@ class DiagnosticsProviderTest {
 
     @Before
     fun setUp() {
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE,
+            bootEpochHash = "test-epoch-1",
+        )
         mockedLog = Mockito.mockStatic(Log::class.java)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>(), anyOrNull()) }.thenReturn(0)
         mockedLog.`when`<Int> { Log.w(any<String>(), any<String>()) }.thenReturn(0)
@@ -34,7 +39,7 @@ class DiagnosticsProviderTest {
 
         // Hermeticity: never inherit a bound service left by another suite in this JVM,
         // otherwise PrefUtils would route to remote prefs and bypass the file-store mocks.
-        TestStatics.setStaticField(App::class.java, "mService", null)
+        App.setServiceStateForTests(null, ready = false)
 
         mockContext = mock()
         mockPrefs = mock()
@@ -42,6 +47,7 @@ class DiagnosticsProviderTest {
 
         whenever(mockContext.getSharedPreferences(eq(Constants.SHARED_PREF_FILE_NAME), eq(Context.MODE_PRIVATE)))
             .thenReturn(mockPrefs)
+        DiagnosticsStore.testRemotePreferencesResolver = { mockPrefs }
         whenever(mockPrefs.edit()).thenReturn(mockEditor)
         whenever(mockEditor.putLong(any(), any())).thenReturn(mockEditor)
         whenever(mockEditor.putString(any(), any())).thenReturn(mockEditor)
@@ -61,9 +67,12 @@ class DiagnosticsProviderTest {
     fun tearDown() {
         try {
             restoreStoreInstance()
+            DiagnosticsStore.testRunClock = null
+            DiagnosticsStore.testRemotePreferencesResolver = null
             provider.testContext = null
             provider.testCallingUid = null
             provider.testMyUid = null
+            provider.testCallingPid = null
         } finally {
             mockedLog.close()
         }
@@ -296,29 +305,50 @@ class DiagnosticsProviderTest {
     @Test
     fun `call RECORD_VERIFY writes all verify properties and converts ArrayList to Set`() {
         val extras = mock<Bundle>()
-        val failedList = arrayListOf("MODEL(actual=Redmi)", "FINGERPRINT(actual=unknown)")
+        val failedList = arrayListOf("MODEL", "FINGERPRINT")
+        val startedAt = 1_700_000_000_000L
+        val generation = 123L
+        val origin = Constants.PACKAGE_NAME_GOOGLE_PHOTOS
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_ACTIVE_PACKAGE), anyOrNull())).thenReturn(origin)
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_ACTIVE_RUN_ID), anyOrNull())).thenReturn("run-1")
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH), anyOrNull())).thenReturn("test-epoch-1")
+        whenever(mockPrefs.getLong(eq(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT), any())).thenReturn(startedAt)
+        whenever(mockPrefs.getLong(eq(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION), any())).thenReturn(generation)
         whenever(extras.keySet()).thenReturn(
             setOf(
                 Constants.PREF_DIAG_VERIFY_AT,
                 Constants.PREF_DIAG_VERIFY_DEVICE,
+                Constants.PREF_DIAG_VERIFY_PACKAGE,
                 Constants.PREF_DIAG_VERIFY_OK,
                 Constants.PREF_DIAG_VERIFY_FAILED,
                 Constants.PREF_DIAG_VERIFY_NATIVE_READY,
                 Constants.PREF_DIAG_VERIFY_SYSPROPS,
+                Constants.EXTRA_DIAGNOSTICS_ORIGIN,
+                Constants.EXTRA_DIAGNOSTICS_RUN_ID,
+                Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT,
+                Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION,
+                Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH,
             )
         )
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_AT)).thenReturn(1700000010000L)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_DEVICE)).thenReturn("Pixel 8 Pro")
+        whenever(extras.get(Constants.PREF_DIAG_VERIFY_PACKAGE)).thenReturn(origin)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_OK)).thenReturn(false)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_FAILED)).thenReturn(failedList)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_NATIVE_READY)).thenReturn(true)
         whenever(extras.get(Constants.PREF_DIAG_VERIFY_SYSPROPS)).thenReturn(true)
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_ORIGIN)).thenReturn(origin)
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_RUN_ID)).thenReturn("run-1")
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT)).thenReturn(startedAt)
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION)).thenReturn(generation)
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH)).thenReturn("test-epoch-1")
 
         val result = provider.call(Constants.METHOD_RECORD_VERIFY, null, extras)!!
 
         verify(result).putBoolean("success", true)
         verify(mockEditor).putLong(Constants.PREF_DIAG_VERIFY_AT, 1700000010000L)
         verify(mockEditor).putString(Constants.PREF_DIAG_VERIFY_DEVICE, "Pixel 8 Pro")
+        verify(mockEditor).putString(Constants.PREF_DIAG_VERIFY_PACKAGE, origin)
         verify(mockEditor).putBoolean(Constants.PREF_DIAG_VERIFY_OK, false)
         verify(mockEditor).putStringSet(Constants.PREF_DIAG_VERIFY_FAILED, failedList.toSet())
         verify(mockEditor).putBoolean(Constants.PREF_DIAG_VERIFY_NATIVE_READY, true)
@@ -342,7 +372,7 @@ class DiagnosticsProviderTest {
     }
 
     @Test
-    fun `call strictly ignores non-whitelisted keys from caller`() {
+    fun `call rejects unknown keys before writing any payload`() {
         val extras = mock<Bundle>()
         whenever(extras.keySet()).thenReturn(
             setOf(
@@ -357,13 +387,10 @@ class DiagnosticsProviderTest {
         whenever(extras.get("unauthorized_key")).thenReturn("malicious")
         whenever(extras.get(Constants.PREF_DIAG_LAST_PACKAGE_LOADED)).thenReturn("com.google.android.apps.photos")
 
-        provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)
+        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)!!
 
-        verify(mockEditor, never()).putString(eq(Constants.PREF_DEVICE_TO_SPOOF), any())
-        verify(mockEditor, never()).putStringSet(eq(Constants.PREF_SPOOF_FEATURES_LIST), any())
-        verify(mockEditor, never()).putString(eq("unauthorized_key"), any())
-        verify(mockEditor).putString(Constants.PREF_DIAG_LAST_PACKAGE_LOADED, "com.google.android.apps.photos")
-        verify(mockEditor).apply()
+        verify(result).putBoolean("success", false)
+        verifyNoInteractions(mockEditor)
     }
 
     @Test
@@ -379,6 +406,19 @@ class DiagnosticsProviderTest {
         val unattachedProvider = observingProvider()
 
         val result = unattachedProvider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, null)!!
+
+        verify(result).putBoolean("success", false)
+        verifyNoInteractions(mockEditor)
+    }
+
+    @Test
+    fun `call rejects malformed extras without authenticating or crashing`() {
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(setOf(Constants.EXTRA_DIAGNOSTICS_ORIGIN))
+        whenever(extras.get(Constants.EXTRA_DIAGNOSTICS_ORIGIN))
+            .thenThrow(IllegalStateException("malformed parcel"))
+
+        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)!!
 
         verify(result).putBoolean("success", false)
         verifyNoInteractions(mockEditor)
@@ -413,7 +453,9 @@ class DiagnosticsProviderTest {
     @Test
     fun `call delegates to applyDiagnostics with resolved context method extras and uid arguments`() {
         val storeMock = swapStoreInstanceWithMock()
-        whenever(storeMock.applyDiagnostics(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(storeMock.applyDiagnostics(
+            any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), any(), any(), any(), anyOrNull(),
+        ))
             .thenReturn(true)
         val packageManager = mock<PackageManager>()
         whenever(mockContext.packageManager).thenReturn(packageManager)
@@ -421,6 +463,7 @@ class DiagnosticsProviderTest {
             .thenReturn(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS))
         provider.testCallingUid = 10123
         provider.testMyUid = 10000
+        provider.testCallingPid = 23456
 
         val extras = mock<Bundle>()
         val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)!!
@@ -433,13 +476,21 @@ class DiagnosticsProviderTest {
             callingUid = eq(10123),
             callingPackages = eq(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)),
             myUid = eq(10000),
+            callingPid = eq(23456),
+            verifiedBroadcastOrigin = anyOrNull(),
+            requireVerifiedOrigin = eq(false),
+            allowTokenOnlyUnverifiedOrigin = eq(false),
+            allowPriorBootUnverifiedReplacement = eq(false),
+            remoteTargetWrite = eq(true),
         )
     }
 
     @Test
     fun `call propagates false delegation outcome as success false`() {
         val storeMock = swapStoreInstanceWithMock()
-        whenever(storeMock.applyDiagnostics(any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull()))
+        whenever(storeMock.applyDiagnostics(
+            any(), any(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), anyOrNull(), any(), any(), any(), anyOrNull(),
+        ))
             .thenReturn(false)
 
         val result = provider.call(Constants.METHOD_CLEAR_VERIFY, null, null)!!
@@ -452,7 +503,58 @@ class DiagnosticsProviderTest {
             callingUid = eq(10000),
             callingPackages = anyOrNull(),
             myUid = eq(10000),
+            callingPid = isNull(),
+            verifiedBroadcastOrigin = isNull(),
+            requireVerifiedOrigin = eq(false),
+            allowTokenOnlyUnverifiedOrigin = eq(false),
+            allowPriorBootUnverifiedReplacement = eq(false),
+            remoteTargetWrite = eq(false),
         )
+    }
+
+    @Test
+    fun `remote target call returns false and does not write local fallback when service is unavailable`() {
+        DiagnosticsStore.testRemotePreferencesResolver = null
+        App.setServiceStateForTests(null, ready = false)
+        whenever(mockPrefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)).thenReturn("local-token")
+        val packageManager = mock<PackageManager>()
+        whenever(mockContext.packageManager).thenReturn(packageManager)
+        whenever(packageManager.getPackagesForUid(10123))
+            .thenReturn(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS))
+        provider.testCallingUid = 10123
+        provider.testMyUid = 10000
+
+        val extras = mock<Bundle>()
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_ORIGIN))
+            .thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        val result = provider.call(Constants.METHOD_START_DIAGNOSTICS_RUN, null, extras)!!
+
+        verify(result).putBoolean("success", false)
+        verify(mockEditor, never()).apply()
+        verify(mockEditor, never()).remove(any())
+    }
+
+    @Test
+    fun `remote target call fails closed after connected service token convergence fails`() {
+        DiagnosticsStore.testRemotePreferencesResolver = null
+        val syncingService = mock<io.github.libxposed.service.XposedService>()
+        App.setServiceStateForTests(syncingService, ready = false, phase = ServicePhase.ERROR)
+        val packageManager = mock<PackageManager>()
+        whenever(mockContext.packageManager).thenReturn(packageManager)
+        whenever(packageManager.getPackagesForUid(10123))
+            .thenReturn(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS))
+        provider.testCallingUid = 10123
+        provider.testMyUid = 10000
+
+        val extras = mock<Bundle>()
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_ORIGIN))
+            .thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        val result = provider.call(Constants.METHOD_START_DIAGNOSTICS_RUN, null, extras)!!
+
+        verify(result).putBoolean("success", false)
+        verify(syncingService, never()).getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
+        verify(mockEditor, never()).apply()
+        verify(mockEditor, never()).remove(any())
     }
 
     @Test
@@ -471,7 +573,7 @@ class DiagnosticsProviderTest {
     // =========================================================================
 
     @Test
-    fun `call authorizes remote scoped-app uid end to end and writes milestone`() {
+    fun `call rejects remote scoped-app uid without install token`() {
         val packageManager = mock<PackageManager>()
         whenever(mockContext.packageManager).thenReturn(packageManager)
         whenever(packageManager.getPackagesForUid(10123))
@@ -480,14 +582,119 @@ class DiagnosticsProviderTest {
         provider.testMyUid = 10000
 
         val extras = mock<Bundle>()
-        whenever(extras.keySet()).thenReturn(setOf(Constants.PREF_DIAG_MODULE_LOADED_AT))
+        whenever(extras.keySet()).thenReturn(
+            setOf(
+                Constants.EXTRA_DIAGNOSTICS_ORIGIN,
+                Constants.EXTRA_DIAGNOSTICS_RUN_ID,
+                Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT,
+                Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION,
+                Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT,
+                Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH,
+                Constants.PREF_DIAG_MODULE_LOADED_AT,
+                Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
+            )
+        )
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_ORIGIN)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_RUN_ID)).thenReturn("provider-run")
+        whenever(extras.getLong(Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT, 0L))
+            .thenReturn(System.currentTimeMillis() - 1_000L)
         whenever(extras.get(Constants.PREF_DIAG_MODULE_LOADED_AT)).thenReturn(1700000000000L)
+        whenever(extras.get(Constants.PREF_DIAG_LAST_PACKAGE_LOADED)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        whenever(extras.getString(Constants.PREF_DIAG_LAST_PACKAGE_LOADED)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
 
-        val result = provider.call(Constants.METHOD_RECORD_DIAGNOSTICS, null, extras)!!
+        val result = provider.call(Constants.METHOD_START_DIAGNOSTICS_RUN, null, extras)!!
+
+        verify(result).putBoolean("success", false)
+        verifyNoInteractions(mockEditor)
+    }
+
+    @Test
+    fun `call accepts authenticated remote scoped-app run start`() {
+        val packageManager = mock<PackageManager>()
+        whenever(mockContext.packageManager).thenReturn(packageManager)
+        whenever(packageManager.getPackagesForUid(10123))
+            .thenReturn(arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS))
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("provider-token")
+        provider.testCallingUid = 10123
+        provider.testMyUid = 10000
+
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 456L
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(
+            setOf(
+                Constants.EXTRA_DIAGNOSTICS_TOKEN,
+                Constants.EXTRA_DIAGNOSTICS_ORIGIN,
+                Constants.EXTRA_DIAGNOSTICS_RUN_ID,
+                Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT,
+                Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION,
+                Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT,
+                Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH,
+                Constants.PREF_DIAG_MODULE_LOADED_AT,
+                Constants.PREF_DIAG_LAST_PACKAGE_LOADED,
+            )
+        )
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("provider-token")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_ORIGIN)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_RUN_ID)).thenReturn("provider-run")
+        whenever(extras.getLong(Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT, 0L)).thenReturn(startedAt)
+        whenever(extras.getLong(Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION, 0L)).thenReturn(generation)
+        whenever(extras.getInt(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT, -1)).thenReturn(1)
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH)).thenReturn("test-epoch-1")
+        whenever(extras.get(Constants.PREF_DIAG_MODULE_LOADED_AT)).thenReturn(startedAt)
+        whenever(extras.get(Constants.PREF_DIAG_LAST_PACKAGE_LOADED)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        whenever(extras.getString(Constants.PREF_DIAG_LAST_PACKAGE_LOADED)).thenReturn(Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        val materialized = mapOf<String, Any>(
+            Constants.EXTRA_DIAGNOSTICS_TOKEN to "provider-token",
+            Constants.EXTRA_DIAGNOSTICS_ORIGIN to Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            Constants.EXTRA_DIAGNOSTICS_RUN_ID to "provider-run",
+            Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT to startedAt,
+            Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION to generation,
+            Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT to 1,
+            Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH to "test-epoch-1",
+            Constants.PREF_DIAG_MODULE_LOADED_AT to startedAt,
+            Constants.PREF_DIAG_LAST_PACKAGE_LOADED to Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+        )
+        whenever(extras.get(any())).thenAnswer { materialized[it.getArgument<String>(0)] }
+
+        val result = provider.call(Constants.METHOD_START_DIAGNOSTICS_RUN, null, extras)!!
 
         verify(result).putBoolean("success", true)
-        verify(mockEditor).putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, 1700000000000L)
+        verify(mockEditor).putString(Constants.PREF_DIAG_ACTIVE_PACKAGE, Constants.PACKAGE_NAME_GOOGLE_PHOTOS)
+        verify(mockEditor).putString(Constants.PREF_DIAG_ACTIVE_RUN_ID, "provider-run")
+        verify(mockEditor).putLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, startedAt)
+        verify(mockEditor).putLong(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION, 456L)
+        verify(mockEditor).putInt(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT, 1)
+        verify(mockEditor).putString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, "test-epoch-1")
+        verify(mockEditor).putLong(Constants.PREF_DIAG_MODULE_LOADED_AT, startedAt)
         verify(mockEditor).apply()
+    }
+
+    @Test
+    fun `shared UID provider origin returns success false for receiver fallback`() {
+        val packageManager = mock<PackageManager>()
+        val photos = Constants.PACKAGE_NAME_GOOGLE_PHOTOS
+        whenever(mockContext.packageManager).thenReturn(packageManager)
+        whenever(packageManager.getPackagesForUid(10123))
+            .thenReturn(arrayOf(photos, "com.example.shared"))
+        whenever(mockPrefs.getString(eq(Constants.PREF_DIAG_BROADCAST_TOKEN), anyOrNull()))
+            .thenReturn("shared-provider-token")
+        provider.testCallingUid = 10123
+        provider.testMyUid = 10000
+
+        val extras = mock<Bundle>()
+        whenever(extras.keySet()).thenReturn(
+            setOf(Constants.EXTRA_DIAGNOSTICS_TOKEN, Constants.EXTRA_DIAGNOSTICS_ORIGIN),
+        )
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_TOKEN)).thenReturn("shared-provider-token")
+        whenever(extras.getString(Constants.EXTRA_DIAGNOSTICS_ORIGIN)).thenReturn(photos)
+
+        val result = provider.call(Constants.METHOD_START_DIAGNOSTICS_RUN, null, extras)!!
+
+        verify(result).putBoolean("success", false)
+        verify(mockEditor, never()).apply()
+        verify(mockEditor, never()).putString(Constants.PREF_DIAG_ACTIVE_PACKAGE, photos)
     }
 
     @Test

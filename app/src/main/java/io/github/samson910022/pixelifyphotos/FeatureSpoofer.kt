@@ -77,6 +77,18 @@ object FeatureSpoofer {
     private val hookHasSystemFeatureStringInt = java.util.concurrent.atomic.AtomicBoolean(false)
     private val hookGetSystemAvailableFeatures = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    internal data class RegistrationSnapshot(
+        val hasSystemFeature: Boolean,
+        val hasSystemFeatureWithFlags: Boolean,
+        val getSystemAvailableFeatures: Boolean,
+    )
+
+    internal fun registrationSnapshot() = RegistrationSnapshot(
+        hasSystemFeature = hookHasSystemFeatureString.get(),
+        hasSystemFeatureWithFlags = hookHasSystemFeatureStringInt.get(),
+        getSystemAvailableFeatures = hookGetSystemAvailableFeatures.get(),
+    )
+
     // ──────────────────────────────────────────────────────────────────────────
     // Public API
     // ──────────────────────────────────────────────────────────────────────────
@@ -93,19 +105,30 @@ object FeatureSpoofer {
      *
      * @param module      The module instance used to register hooks and read prefs.
      * @param classLoader The class loader of the target package (Google Photos).
+     * @param runHandle   Immutable run identity captured by the package callback.
      */
-    fun hook(module: XposedModule, classLoader: ClassLoader) {
+    fun hook(
+        module: XposedModule,
+        classLoader: ClassLoader,
+        runHandle: DiagnosticsReporter.TargetRunHandle,
+    ) {
         try {
             val prefs = module.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
             initFromPrefs(prefs)
 
             val clazz = classLoader.loadClass(CLASS_APPLICATION_MANAGER)
+            // The callback remains tied to the lifecycle run that registered the
+            // hooks, even if another target run becomes active before invocation.
+            val reportInvocation = featureInvocationCallback(runHandle)
 
             // hasSystemFeature(String) – the most commonly called signature
             if (!hookHasSystemFeatureString.get()) {
                 try {
                     val methodString = clazz.getDeclaredMethod("hasSystemFeature", String::class.java)
-                    module.hook(methodString).intercept { chain -> decideSpoof(chain) }
+                    module.hook(methodString).intercept { chain ->
+                        reportInvocation()
+                        decideSpoof(chain)
+                    }
                     hookHasSystemFeatureString.set(true)
                 } catch (t: Throwable) {
                     Log.e(TAG, "Failed to hook hasSystemFeature(String)", t)
@@ -119,7 +142,10 @@ object FeatureSpoofer {
                     val methodStringInt = clazz.getDeclaredMethod(
                         "hasSystemFeature", String::class.java, Int::class.javaPrimitiveType
                     )
-                    module.hook(methodStringInt).intercept { chain -> decideSpoof(chain) }
+                    module.hook(methodStringInt).intercept { chain ->
+                        reportInvocation()
+                        decideSpoof(chain)
+                    }
                     hookHasSystemFeatureStringInt.set(true)
                 } catch (t: Throwable) {
                     Log.e(TAG, "Failed to hook hasSystemFeature(String, int)", t)
@@ -130,7 +156,10 @@ object FeatureSpoofer {
             if (!hookGetSystemAvailableFeatures.get()) {
                 try {
                     val methodFeatures = clazz.getDeclaredMethod("getSystemAvailableFeatures")
-                    module.hook(methodFeatures).intercept { chain -> decideFeatures(chain) }
+                    module.hook(methodFeatures).intercept { chain ->
+                        reportInvocation()
+                        decideFeatures(chain)
+                    }
                     hookGetSystemAvailableFeatures.set(true)
                 } catch (t: Throwable) {
                     Log.w(TAG, "Failed to hook getSystemAvailableFeatures", t)
@@ -140,6 +169,21 @@ object FeatureSpoofer {
             Log.d(TAG, "FeatureSpoofer hooks evaluation complete")
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to initialize or resolve classes for FeatureSpoofer", t)
+        }
+    }
+
+    /** Callback captured by each registered feature hook for its target run. */
+    internal fun featureInvocationCallback(
+        runHandle: DiagnosticsReporter.TargetRunHandle,
+    ): () -> Unit = {
+        // Diagnostics are best-effort and must never change the feature spoof
+        // result returned by the interceptor. The reporter deduplicates per run
+        // and retries when persistence is not confirmed.
+        runCatching {
+            DiagnosticsReporter.recordInterceptorInvocation(
+                featureInterceptor = true,
+                runHandle = runHandle,
+            )
         }
     }
 

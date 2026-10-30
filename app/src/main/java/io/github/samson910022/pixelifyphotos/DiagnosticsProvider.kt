@@ -28,6 +28,7 @@ open class DiagnosticsProvider : ContentProvider() {
     internal var testContext: Context? = null
     internal var testCallingUid: Int? = null
     internal var testMyUid: Int? = null
+    internal var testCallingPid: Int? = null
 
     /**
      * Test seam for the [call] result bundle: host-side unit tests run against the
@@ -39,8 +40,21 @@ open class DiagnosticsProvider : ContentProvider() {
     internal open fun createResultBundle(): Bundle = Bundle()
 
     private fun resolveContext(): Context? = testContext ?: context
-    private fun resolveCallingUid(): Int = testCallingUid ?: runCatching { Binder.getCallingUid() }.getOrDefault(0)
-    private fun resolveMyUid(): Int = testMyUid ?: runCatching { Process.myUid() }.getOrDefault(0)
+    private fun resolveCallingUid(): Int? = testCallingUid ?: try {
+        Binder.getCallingUid()
+    } catch (_: RuntimeException) {
+        null
+    }
+    private fun resolveCallingPid(): Int? = testCallingPid ?: try {
+        Binder.getCallingPid().takeIf { it > 0 }
+    } catch (_: RuntimeException) {
+        null
+    }
+    private fun resolveMyUid(): Int? = testMyUid ?: try {
+        Process.myUid()
+    } catch (_: RuntimeException) {
+        null
+    }
 
     override fun onCreate(): Boolean = true
 
@@ -68,21 +82,36 @@ open class DiagnosticsProvider : ContentProvider() {
     @Suppress("DEPRECATION")
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
         val result = createResultBundle()
-        val ctx = resolveContext() ?: return result.apply { putBoolean("success", false) }
+        return try {
+            val ctx = resolveContext() ?: return result.apply { putBoolean("success", false) }
 
-        val callingUid = resolveCallingUid()
-        val myUid = resolveMyUid()
-        val callingPackages = runCatching { ctx.packageManager.getPackagesForUid(callingUid) }.getOrNull()
+            val callingUid = resolveCallingUid()
+            val callingPid = resolveCallingPid()
+            val myUid = resolveMyUid()
+            val callingPackages = callingUid?.let { uid ->
+                try {
+                    ctx.packageManager.getPackagesForUid(uid)
+                } catch (_: RuntimeException) {
+                    null
+                }
+            }
 
-        val success = DiagnosticsStore.applyDiagnostics(
-            context = ctx,
-            method = method,
-            extras = extras,
-            callingUid = callingUid,
-            callingPackages = callingPackages,
-            myUid = myUid,
-        )
+            val success = DiagnosticsStore.applyDiagnostics(
+                context = ctx,
+                method = method,
+                extras = extras,
+                callingUid = callingUid,
+                callingPackages = callingPackages,
+                myUid = myUid,
+                callingPid = callingPid,
+                remoteTargetWrite = !(callingUid != null && myUid != null && callingUid == myUid),
+            )
 
-        return result.apply { putBoolean("success", success) }
+            result.apply { putBoolean("success", success) }
+        } catch (_: RuntimeException) {
+            // Bundle unparcelling and typed reads are attacker-controlled. Reject without
+            // echoing payload data or allowing malformed extras to crash the process.
+            result.apply { putBoolean("success", false) }
+        }
     }
 }
