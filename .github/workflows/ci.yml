@@ -24,12 +24,61 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up JDK 17
+      # Pin the exact JDK release: the truststore policy below is verified
+      # against Temurin 17.0.21+9, and a moving "17" could silently reintroduce
+      # the incident anchors or change cacerts contents.
+      - name: Set up JDK 17 (Temurin 17.0.21+9)
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "17.0.21+9"
           check-latest: false
+
+      - name: Verify pinned JDK toolchain
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tool in java javac keytool; do
+            if [[ ! -x "$JAVA_HOME/bin/$tool" ]]; then
+              echo "::error::$JAVA_HOME/bin/$tool is missing; the tests must not skip"
+              exit 1
+            fi
+          done
+          cacerts="$JAVA_HOME/lib/security/cacerts"
+          if [[ ! -f "$cacerts" || ! -r "$cacerts" ]]; then
+            echo "::error::$cacerts is missing or unreadable; the tests must not skip"
+            exit 1
+          fi
+          runtime="$("$JAVA_HOME/bin/java" -XshowSettings:properties -version 2>&1 \
+            | sed -n 's/^ *java.runtime.version = //p')"
+          if [[ "$runtime" != "17.0.21+9" ]]; then
+            echo "::error::expected Temurin runtime 17.0.21+9, found ${runtime:-<unknown>}"
+            exit 1
+          fi
+
+      - name: Test JDK truststore hardening tool
+        timeout-minutes: 15
+        run: python3 -m unittest tests.test_jdk_truststore -v
+
+      - name: Harden CI JDK truststore
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${RUNNER_TEMP:?RUNNER_TEMP is required}"
+          : "${GITHUB_ENV:?GITHUB_ENV is required}"
+          ./scripts/harden-jdk-truststore.sh \
+            --out-store "$RUNNER_TEMP/ci-cacerts" \
+            --out-env "$GITHUB_ENV"
+
+      - name: Verify hardened truststore is the effective JSSE store
+        timeout-minutes: 5
+        run: ./scripts/harden-jdk-truststore.sh --verify-only
+
+      - name: Probe public TLS with the hardened truststore
+        timeout-minutes: 5
+        run: ./scripts/harden-jdk-truststore.sh --probe-tls
 
       - name: Validate wrapper and configure Gradle
         uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0

@@ -12,10 +12,80 @@ Thank you for helping improve Pixelify Infinity. This repository is an independe
 
 ## Development environment
 
-- JDK 17 (`JAVA_HOME` must point at a real JDK 17, not only an Android SDK)
+- JDK 17 (CI pins Temurin 17.0.21+9; local development should use a current JDK 17 with `javac` and `keytool`, and `JAVA_HOME` must point at a real JDK, not only an Android SDK)
 - Android SDK Platform 36
 - Android Build Tools 36.0.0 or a compatible version
 - The repository Gradle wrapper
+
+### OpenJDK eMudhra advisory (CVE-2026-91403)
+
+This advisory concerns compromised eMudhra intermediate CA keys and Java's
+standalone JSSE trust store. OpenJDK tracks the corresponding root-removal work
+as JDK-8395690 / CVE-2026-114820. This policy differs from that removal list: it
+retains G1/G2 but also covers the TLS/CS G3 roots that anchor the compromised
+intermediates; see the G1/G2 note below. None of this changes the Android app's
+runtime trust store, its platform-default HTTPS update check, or the release
+signing identity.
+
+CI pins Temurin 17.0.21+9 and additionally hardens a private copy of that JDK's
+`lib/security/cacerts` before Gradle runs. The wrapper
+`scripts/harden-jdk-truststore.sh` copies `cacerts` to `$RUNNER_TEMP`, removes
+every certificate whose public-key SPKI SHA-256 matches
+`scripts/jdk-truststore/pins.txt`, adds a public canary anchor, and configures
+`JAVA_TOOL_OPTIONS` to use the copy. The runner's JDK is never modified.
+`--verify-only` proves the hardened copy is the effective JSSE store by finding
+the canary through the default `TrustManagerFactory`; `--probe-tls` also checks
+that normal public TLS still works.
+
+The 12 unique public SPKI pins cover the 20-certificate fixture corpus: 4
+incident trust anchors and 16 intermediate CA certificates for 8 compromised
+intermediate keys (some keys appear in more than one certificate).
+`scripts/jdk-truststore/pins.txt` also documents the TLS G3 cross-certificate
+SHA-256 covered by the same SPKI pin.
+`emSign Root CA - G1` and `G2` are intentionally retained: OpenJDK's
+`CheckCerts` source labels them as unrelated to the compromised intermediate
+keys, and Mozilla retains G1. Removing them would be over-removal and could
+break unrelated chains. Oracle's sample `CheckCerts` gate also lists G1/G2 as
+bad roots and exits non-zero when they are present, while its root list does
+not include the incident TLS/CS roots used by this policy. CI therefore does
+not use `CheckCerts` as its gate: on Temurin 17.0.21+9, `CheckCerts` exits
+non-zero on the retained G1 root even though the incident pins are absent. The
+versioned SPKI pin list, the public-chain fixtures, and the canary are the
+authoritative gate.
+
+`AAA Certificate Services` is included because it anchors several of the
+compromised cross-signed intermediate chains. Removing it can also break
+unrelated chains that terminate at that root; the public TLS probe is the
+compatibility canary. If a dependency repository requires an AAA-rooted chain,
+report it instead of weakening the pin list.
+
+For local Java/Gradle TLS:
+
+```bash
+# Inspect the selected JDK's cacerts read-only (fails if incident anchors remain).
+./scripts/with-android-env.sh ./scripts/harden-jdk-truststore.sh --check-only
+
+# Print an eval-safe export that uses a private hardened copy.
+truststore_env="$(./scripts/with-android-env.sh ./scripts/harden-jdk-truststore.sh --print-env)" \
+  && eval "$truststore_env"
+```
+
+`--check-only` exits non-zero when the selected JDK still contains incident
+anchors (for example Temurin 17.0.20+8); that is expected and tells you to
+harden a copy. `--print-env` creates a private `mktemp` out-store directory and
+keeps it so the export remains usable; remove that directory after the shell
+session if you do not want it retained.
+
+Follow the [OpenJDK eMudhra guidance](https://openjdk.org/emudhra), Oracle's [mitigation instructions](https://ops.java/emudhra), and the [Adoptium Temurin assessment](https://adoptium.net/news/2026/10/temurin-october-2026-emudhra/) for
+vendor-specific updates. Run the tool's tests with:
+
+```bash
+./scripts/with-android-env.sh python3 -m unittest tests.test_jdk_truststore -v
+```
+
+The tests validate the public incident chains in
+`tests/fixtures/emudhra_public_chains.json` with an independent fixed-date PKIX
+validator, and include a synthetic normal chain as a positive control.
 
 ### Why builds fail with “JAVA_HOME is not set”
 
