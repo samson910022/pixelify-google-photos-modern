@@ -91,3 +91,13 @@ scripts/env.local.sh
 
 # Kotlin build tool working directory
 .kotlin/
+
+# Large archives and media test directories
+*.zip
+*.tar
+*.tar.*
+*.7z
+*.gz
+*.rar
+Photos/
+/Photos/

@@ -595,16 +595,23 @@ class ActivityMain : AppCompatActivity() {
             setupModernUi(pref)
         }
 
-        checkFirstRunOnboarding(pref)
-
-        // Show/record the changelog marker only from authoritative remote settings. The marker is
-        // deliberately outside OfflineSettingsHandoff's user-setting allowlist, so a local write
-        // would never converge and would replay the same changelog after the first bind. Record
-        // the marker before showing the dialog; `apply()` updates the remote in-memory map
-        // synchronously and only defers the binder/disk write, so a lost write merely replays
-        // the changelog on a later launch instead of blocking startup under the settings lock.
+        val firstRunDone = pref?.getBoolean(PREF_FIRST_RUN_COMPLETED, false) ?: false
         val thisVersion = BuildConfig.VERSION_CODE
-        if (AppVersionMarkerPolicy.shouldRecordVersion(pref, versionMarkerAuthoritative, thisVersion)) {
+        if (!firstRunDone) {
+            checkFirstRunOnboarding(pref)
+            if (versionMarkerAuthoritative) {
+                updateSettings { currentPrefs ->
+                    currentPrefs.edit().putInt(PREF_LAST_VERSION, thisVersion).apply()
+                    true
+                }
+            }
+        } else if (AppVersionMarkerPolicy.shouldRecordVersion(pref, versionMarkerAuthoritative, thisVersion)) {
+            // Show/record the changelog marker only from authoritative remote settings. The marker is
+            // deliberately outside OfflineSettingsHandoff's user-setting allowlist, so a local write
+            // would never converge and would replay the same changelog after the first bind. Record
+            // the marker before showing the dialog; `apply()` updates the remote in-memory map
+            // synchronously and only defers the binder/disk write, so a lost write merely replays
+            // the changelog on a later launch instead of blocking startup under the settings lock.
             val recorded = updateSettings { currentPrefs ->
                 currentPrefs.edit().putInt(PREF_LAST_VERSION, thisVersion).apply()
                 true
@@ -920,7 +927,10 @@ class ActivityMain : AppCompatActivity() {
                 .setMessage(message)
                 .setPositiveButton(R.string.onboarding_action_force_stop_and_launch) { _, _ ->
                     if (canEditSettings()) updateSettings { currentPrefs ->
-                        currentPrefs.edit().putBoolean(PREF_FIRST_RUN_COMPLETED, true).apply()
+                        currentPrefs.edit()
+                            .putBoolean(PREF_FIRST_RUN_COMPLETED, true)
+                            .putInt(PREF_LAST_VERSION, BuildConfig.VERSION_CODE)
+                            .apply()
                         true
                     }
                     forceStopScopedApps()
@@ -932,7 +942,10 @@ class ActivityMain : AppCompatActivity() {
                 }
                 .setNegativeButton(R.string.onboarding_action_got_it) { _, _ ->
                     if (canEditSettings()) updateSettings { currentPrefs ->
-                        currentPrefs.edit().putBoolean(PREF_FIRST_RUN_COMPLETED, true).apply()
+                        currentPrefs.edit()
+                            .putBoolean(PREF_FIRST_RUN_COMPLETED, true)
+                            .putInt(PREF_LAST_VERSION, BuildConfig.VERSION_CODE)
+                            .apply()
                         true
                     }
                 }
@@ -1046,7 +1059,15 @@ class ActivityMain : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle(R.string.version_head)
             .setMessage(R.string.version_desc)
-            .setPositiveButton(android.R.string.ok, null)
+            .setPositiveButton(R.string.onboarding_action_force_stop_and_launch) { _, _ ->
+                forceStopScopedApps()
+                findViewById<View>(android.R.id.content)?.postDelayed({
+                    if (!isFinishing && !isDestroyed) {
+                        openGooglePhotos()
+                    }
+                }, 500)
+            }
+            .setNegativeButton(android.R.string.ok, null)
             .show()
     }
 

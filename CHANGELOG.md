@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.5.0] - 2026-10-30
+
+### Added
+
+- **Pixel 11 Device Profiles**: Added official release-keys profiles for Pixel 11 (caiman/komodo family: Pixel 11, Pixel 11 Pro, Pixel 11 Pro XL, Pixel 11 Pro Fold).
+- **Device Model Backup Entitlements & Quality Warnings**: In-app guidance detailing Google Photos backup entitlements (Pixel XL original quality unlimited backup vs modern compressed Storage Saver / Express / Original quality) and verification guides.
+- **Upgrade Highlights Presentation**: Display key update notes on first launch after upgrading with quick action to force-stop and restart Google Photos.
+
+### Changed
+
+- Bumped version to `1.5.0` (`versionCode 11`).
+
+### Fixed
+
+- **Truthful Hook Telemetry & SAF Lifecycle**: Hardened diagnostic telemetry to reflect truthful hook outcomes, resolved SAF configuration import lifecycle races across activity recreation, and stabilized boot attribution.
+
+### Security
+
+- **Java TLS Hardening (CVE-2026-91403 / CVE-2026-114820)**: Implemented SPKI pin truststore hardening, canary verification, and independent 62-test security suite for CI build environment.
+
 ## [1.4.1] - 2026-08-23
 
 ### Fixed

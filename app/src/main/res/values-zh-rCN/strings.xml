@@ -19,8 +19,8 @@
     <string name="update_available">有可用的应用更新</string>
 
     <!-- 更新日志 -->
-    <string name="version_head">版本 1.4.1</string>
-    <string name="version_desc">解决了冷启动竞态条件导致模块状态误报为未激活的问题，清理了无效的 Unsafe 反射探测，并强化了跨线程并发契约。</string>
+    <string name="version_head">版本 1.5.0</string>
+    <string name="version_desc">新增 Pixel 11 系列设备配置文件、相册备份资格与画质指南、强化真实挂载诊断与遥测，以及固化 Java TLS 安全防护。</string>
     <string name="changelog">更新日志</string>
 
     <!-- 配置导入／导出 -->

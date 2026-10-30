@@ -19,8 +19,8 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.4.1</string>
-    <string name="version_desc">修復冷啟動時因競爭條件導致誤判模組未啟用的問題、清理無效的 Unsafe 反射探測，並強化跨執行緒併發契約與測試覆蓋。</string>
+    <string name="version_head">版本 1.5.0</string>
+    <string name="version_desc">新增 Pixel 11 系列裝置設定檔、相簿備份資格與畫質指引、強化真實掛載診斷與遙測，以及固化 Java TLS 安全防護。</string>
     <string name="changelog">變更記錄</string>
 
     <!-- 設定匯入／匯出 -->

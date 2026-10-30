@@ -77,4 +77,38 @@ class AppVersionMarkerPolicyTest {
             versionCode = versionCode,
         ))
     }
+
+    @Test
+    fun `first run initializes marker so changelog does not trigger subsequently on same version`() {
+        val prefs = MemorySharedPreferences()
+        // On first run, firstRunDone is false, so ActivityMain records versionCode into PREF_LAST_VERSION
+        prefs.edit().putInt(Constants.PREF_LAST_VERSION, versionCode).apply()
+
+        // Subsequent launch: firstRunDone is now true, shouldRecordVersion returns false
+        assertFalse(
+            AppVersionMarkerPolicy.shouldRecordVersion(
+                preferences = prefs,
+                versionMarkerAuthoritative = true,
+                versionCode = versionCode,
+            ),
+        )
+    }
+
+    @Test
+    fun `upgrading existing user with completed onboarding triggers changelog`() {
+        val prefs = MemorySharedPreferences(
+            mapOf(
+                Constants.PREF_FIRST_RUN_COMPLETED to true,
+                Constants.PREF_LAST_VERSION to versionCode - 1,
+            ),
+        )
+
+        assertTrue(
+            AppVersionMarkerPolicy.shouldRecordVersion(
+                preferences = prefs,
+                versionMarkerAuthoritative = true,
+                versionCode = versionCode,
+            ),
+        )
+    }
 }

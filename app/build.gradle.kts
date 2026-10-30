@@ -70,8 +70,8 @@ val releaseKeyAlias = releaseSigningValues.getValue("RELEASE_KEY_ALIAS")
 val releaseKeyPassword = releaseSigningValues.getValue("RELEASE_KEY_PASSWORD")
 
 // Single source for artifact base name: PixelifyInfinity-<versionName>-<buildType>.apk/.aab
-val appVersionCode = 10
-val appVersionName = "1.4.1"
+val appVersionCode = 11
+val appVersionName = "1.5.0"
 
 android {
     namespace = "io.github.samson910022.pixelifyphotos"

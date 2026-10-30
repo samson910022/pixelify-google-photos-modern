@@ -19,8 +19,8 @@
     <string name="update_available">アプリの更新があります</string>
 
     <!-- 変更履歴 -->
-    <string name="version_head">バージョン 1.4.1</string>
-    <string name="version_desc">コールド スタート時の競合によりモジュール状態が非アクティブと誤判定される問題を解決し、不要な Unsafe リフレクション プローブを削除して、スレッド間の並行処理コントラクトを強化しました。</string>
+    <string name="version_head">バージョン 1.5.0</string>
+    <string name="version_desc">Pixel 11 シリーズ端末プロファイル、バックアップ権限・画質ガイドの追加、フック状態の正確なテレメトリ診断、および Java TLS セキュリティの強化。</string>
     <string name="changelog">変更履歴</string>
 
     <!-- 設定のインポート／エクスポート -->
