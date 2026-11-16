@@ -968,4 +968,134 @@ class DiagnosticsReporterTest {
 
         verify(mockContext, timeout(2000)).sendBroadcast(any())
     }
+
+    @Test
+    fun `resolveBroadcastTokenWithRetries succeeds on first attempt without retry or unavailable warning`() {
+        var lookups = 0
+        var sleeps = 0
+        val token = DiagnosticsReporter.resolveBroadcastTokenWithRetries(
+            lookup = {
+                lookups++
+                "token-1"
+            },
+            sleep = {
+                sleeps++
+                true
+            },
+        )
+
+        assertEquals("token-1", token)
+        assertEquals(1, lookups)
+        assertEquals(0, sleeps)
+        mockedLog.verify(
+            { Log.w(eq("Pixelify"), eq("Diagnostics IPC token unavailable: module app has not synchronized a token to remote prefs")) },
+            Mockito.never(),
+        )
+        mockedLog.verify(
+            { Log.w(eq("Pixelify"), eq("Diagnostics IPC token lookup failed; remote report will remain unknown"), anyOrNull()) },
+            Mockito.never(),
+        )
+        mockedLog.verify(
+            { Log.w(eq("Pixelify"), eq("Diagnostics IPC token unavailable: module remote-preference source is not initialized")) },
+            Mockito.never(),
+        )
+    }
+
+    @Test
+    fun `resolveBroadcastTokenWithRetries retries transient null and returns success`() {
+        val lookups = AtomicInteger()
+        var sleeps = 0
+        val token = DiagnosticsReporter.resolveBroadcastTokenWithRetries(
+            lookup = {
+                if (lookups.getAndIncrement() == 0) null else "token-2"
+            },
+            sleep = {
+                sleeps++
+                true
+            },
+        )
+
+        assertEquals("token-2", token)
+        assertEquals(2, lookups.get())
+        assertEquals(1, sleeps)
+        mockedLog.verify(
+            { Log.w(eq("Pixelify"), eq("Diagnostics IPC token unavailable: module app has not synchronized a token to remote prefs")) },
+            Mockito.never(),
+        )
+    }
+
+    @Test
+    fun `resolveBroadcastTokenWithRetries retries transient lookup error path and returns success`() {
+        val lookups = AtomicInteger()
+        var sleeps = 0
+        val token = DiagnosticsReporter.resolveBroadcastTokenWithRetries(
+            maxAttempts = 3,
+            lookup = { attempt ->
+                if (lookups.getAndIncrement() == 0) {
+                    // Simulate production behavior: transient exception logged only on last attempt.
+                    null
+                } else {
+                    "token-3"
+                }
+            },
+            sleep = {
+                sleeps++
+                true
+            },
+        )
+
+        assertEquals("token-3", token)
+        assertEquals(2, lookups.get())
+        assertEquals(1, sleeps)
+    }
+
+    @Test
+    fun `resolveBroadcastTokenWithRetries exhausted attempts return null and emit final unavailable warning`() {
+        var lookups = 0
+        var sleeps = 0
+        val token = DiagnosticsReporter.resolveBroadcastTokenWithRetries(
+            maxAttempts = 3,
+            lookup = {
+                lookups++
+                null
+            },
+            sleep = {
+                sleeps++
+                true
+            },
+        )
+
+        assertNull(token)
+        assertEquals(3, lookups)
+        assertEquals(2, sleeps)
+        mockedLog.verify(
+            { Log.w(eq("Pixelify"), eq("Diagnostics IPC token unavailable: module app has not synchronized a token to remote prefs")) },
+            Mockito.times(1),
+        )
+    }
+
+    @Test
+    fun `resolveBroadcastTokenWithRetries aborts when sleep reports interruption`() {
+        var lookups = 0
+        var sleeps = 0
+        val token = DiagnosticsReporter.resolveBroadcastTokenWithRetries(
+            maxAttempts = 3,
+            lookup = {
+                lookups++
+                null
+            },
+            sleep = {
+                sleeps++
+                false
+            },
+        )
+
+        assertNull(token)
+        assertEquals(1, lookups)
+        assertEquals(1, sleeps)
+        mockedLog.verify(
+            { Log.w(eq("Pixelify"), eq("Diagnostics IPC token unavailable: module app has not synchronized a token to remote prefs")) },
+            Mockito.never(),
+        )
+    }
 }

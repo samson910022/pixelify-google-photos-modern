@@ -3790,4 +3790,63 @@ class DiagnosticsStoreTest {
 
         assertNull(DiagnosticsStore.getOrCreateToken(mockContext))
     }
+
+    @Test
+    fun `epoch-unknown active run rejects payloads that fabricate a non-blank run boot epoch`() {
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = System.nanoTime()
+        seedActiveRun(startedAt, generation)
+        preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH] = ""
+        preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT] = 1
+        preferenceValues[Constants.PREF_DIAG_VERIFY_OK] = true
+        val before = preferenceValues.toMap()
+
+        val fabricatedEpochEvent = authenticatedEventBundle(
+            startedAt = startedAt,
+            generation = generation,
+            sequence = 1L,
+            bootEpoch = "fabricated-epoch",
+            diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to false),
+        )
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                fabricatedEpochEvent,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(before, preferenceValues)
+
+        val fabricatedEpochVerify = authenticatedEventBundle(
+            startedAt = startedAt,
+            generation = generation,
+            sequence = 1L,
+            bootEpoch = "fabricated-epoch",
+            diagnostics = verifyFields(),
+        )
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_VERIFY,
+                fabricatedEpochVerify,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(before, preferenceValues)
+        assertEquals("", preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH])
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_VERIFY_OK])
+    }
 }
