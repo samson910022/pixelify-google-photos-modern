@@ -200,6 +200,43 @@ class AppTest {
     }
 
     @Test
+    fun `token-only convergence can be retried while settings remain ready`() {
+        val service = mock<XposedService>()
+        app.testSettingsHandoffOverride = { true }
+        var tokenAttempts = 0
+        app.testTokenConvergenceOverride = {
+            tokenAttempts++
+            tokenAttempts >= 3
+        }
+
+        app.onServiceBind(service)
+
+        assertEquals(ServicePhase.READY, App.serviceReadinessSnapshot().phase)
+        assertEquals(1, tokenAttempts)
+
+        val attemptGeneration = TestStatics.getStaticField<Long>(App::class.java, "serviceAttemptGeneration")
+        assertTrue(app.retryDiagnosticsTokenConvergence(service, attemptGeneration, maxAttempts = 5, delayMs = 0L))
+        assertTrue("token convergence should have been retried", tokenAttempts >= 3)
+        assertEquals(ServicePhase.READY, App.serviceReadinessSnapshot().phase)
+        assertTrue(App.isServiceReady())
+    }
+
+    @Test
+    fun `token-only retry stops when service attempt is no longer current`() {
+        val service = mock<XposedService>()
+        val staleService = mock<XposedService>()
+        app.testTokenConvergenceOverride = { false }
+        app.testSettingsHandoffOverride = { true }
+        app.onServiceBind(service)
+
+        val staleGeneration = TestStatics.getStaticField<Long>(App::class.java, "serviceAttemptGeneration")
+        app.onServiceBind(staleService)
+
+        assertFalse(app.retryDiagnosticsTokenConvergence(service, staleGeneration, maxAttempts = 2, delayMs = 0L))
+        assertEquals(ServicePhase.READY, App.serviceReadinessSnapshot().phase)
+    }
+
+    @Test
     fun `settings convergence failure remains connected error and never becomes ready`() {
         app.testTokenConvergenceOverride = { true }
         app.testSettingsHandoffOverride = { false }
