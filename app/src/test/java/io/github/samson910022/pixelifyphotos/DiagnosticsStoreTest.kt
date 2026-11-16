@@ -1590,7 +1590,7 @@ class DiagnosticsStoreTest {
     }
 
     @Test
-    fun `missing boot epoch seeds an empty unknown run and cannot authorize events`() {
+    fun `missing boot epoch seeds an unknown run and authorizes same-run events without claiming epoch`() {
         enablePersistedPrefs()
         preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
         DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
@@ -1617,7 +1617,7 @@ class DiagnosticsStoreTest {
         )
         assertEquals("unknown-epoch-run", preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_ID])
         assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
-        assertFalse(
+        assertTrue(
             DiagnosticsStore.applyDiagnostics(
                 mockContext,
                 Constants.METHOD_RECORD_DIAGNOSTICS,
@@ -1633,7 +1633,76 @@ class DiagnosticsStoreTest {
                 myUid = 10001,
             ),
         )
-        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_FEATURE_HOOK_STRING))
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+        assertFalse(
+            "boot epoch must remain unknown when it cannot be proven",
+            preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH),
+        )
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    runId = "different-run",
+                    bootEpoch = null,
+                    diagnostics = mapOf(Constants.PREF_DIAG_SYSPROPS_HOOK_GET to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_SYSPROPS_HOOK_GET))
+    }
+
+    @Test
+    fun `epoch-unknown verify payload without boot epoch is accepted for active run`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 910L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "unknown-epoch-verify-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        val verify = authenticatedEventBundle(
+            startedAt = startedAt,
+            generation = generation,
+            runId = "unknown-epoch-verify-run",
+            sequence = 1L,
+            bootEpoch = null,
+            diagnostics = verifyFields(),
+        )
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_VERIFY,
+                verify,
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_VERIFY_OK])
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
     }
 
     @Test
@@ -1728,6 +1797,25 @@ class DiagnosticsStoreTest {
                 myUid = 10001,
             ),
         )
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
+        // Epoch-unknown diagnostics remain accepted without claiming boot proof.
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    runId = "upgrade-run",
+                    bootEpoch = null,
+                    diagnostics = mapOf(Constants.PREF_DIAG_SYSPROPS_HOOK_GET to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_SYSPROPS_HOOK_GET])
         assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH))
 
         DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(

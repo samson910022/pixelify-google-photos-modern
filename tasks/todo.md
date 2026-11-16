@@ -17,12 +17,12 @@
 - [x] Diagnostics can report meaningful state under provider-invisible + fallback conditions without false verification claims.
 
 ## Phase 3: Payload schema rejection and transport correctness
-- [ ] Task 3.1: Reproduce/identify source of `invalid payload schema` from reporter/provider path; add regression coverage.
-- [ ] Task 3.2: Implement fix and validate event sequencing/batch behavior.
-- [ ] Task 3.3: Verify with phase-appropriate checks; independent review; fix/review loop until clean; commit.
+- [x] Task 3.1: Reproduce/identify source of `invalid payload schema` from reporter/provider path; add regression coverage.
+- [x] Task 3.2: Implement fix and validate event sequencing/batch behavior.
+- [x] Task 3.3: Verify with phase-appropriate checks; independent review; fix/review loop until clean; commit.
 
 ## Checkpoint: Transport/schema
-- [ ] No invalid-schema rejection for valid payloads; retries/batches behave correctly.
+- [x] No invalid-schema rejection for valid payloads; retries/batches behave correctly.
 
 ## Phase 4: Final integration, release-gate verification, and PR/acceptance
 - [ ] Task 4.1: Run required verification commands (per AGENTS), final comprehensive multi-subagent review, fix/review loop until clean.

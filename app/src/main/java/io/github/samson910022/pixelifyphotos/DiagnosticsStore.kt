@@ -497,9 +497,16 @@ object DiagnosticsStore {
         // A run accepted while the boot identity was unreadable has no stored epoch. A later
         // event that proves the store's current epoch may bind it one way; without that upgrade
         // the run would stay permanently unknown even after the OS identity became readable.
-        val bootEpochMatches = !runBootEpoch.isNullOrBlank() &&
-            (runBootEpoch == storedBootEpoch ||
-                (storedBootEpoch.isNullOrBlank() && runBootEpoch == currentBootEpoch))
+        // When the OS boot identity remains unreadable in both the store and payload, the
+        // run can still be diagnosed truthfully as epoch-unknown by matching the persisted
+        // active run identity without claiming current-boot proof.
+        val bootEpochMatches = if (currentBootEpoch == null) {
+            storedBootEpoch.isNullOrBlank() && runBootEpoch.isNullOrBlank()
+        } else {
+            !runBootEpoch.isNullOrBlank() &&
+                (runBootEpoch == storedBootEpoch ||
+                    (storedBootEpoch.isNullOrBlank() && runBootEpoch == currentBootEpoch))
+        }
         return origin == prefs.getString(Constants.PREF_DIAG_ACTIVE_PACKAGE, null) &&
             runId == prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_ID, null) &&
             runStartedAt > 0L &&
@@ -510,16 +517,22 @@ object DiagnosticsStore {
     }
 
     /**
-     * Returns this boot's epoch when the payload belongs to both the persisted run and this
-     * boot, so the caller can persist a one-way epoch upgrade for a run that started without one.
+     * Returns the OS boot epoch to bind when the payload belongs to the persisted run and
+     * this boot's identity is known, or an empty string when the run matches but the boot
+     * identity remains unknowable and must stay explicit. Returns null when the payload does
+     * not match the active run.
      */
     private fun matchedRunBootEpoch(
         context: Context,
         prefs: PreferenceReader,
         extras: DiagnosticPayload?,
     ): String? {
-        val currentBootEpoch = currentRunClock(context)?.bootEpochHash ?: return null
+        val currentBootEpoch = currentRunClock(context)?.bootEpochHash
         val payloadBootEpoch = extras?.getString(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH)
+        if (currentBootEpoch == null) {
+            if (!payloadBootEpoch.isNullOrBlank()) return null
+            return if (runIdentityMatches(prefs, extras, null)) "" else null
+        }
         if (payloadBootEpoch != currentBootEpoch) return null
         return if (runIdentityMatches(prefs, extras, currentBootEpoch)) currentBootEpoch else null
     }
@@ -1043,7 +1056,6 @@ object DiagnosticsStore {
                 Constants.EXTRA_DIAGNOSTICS_RUN_ID,
                 Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT,
                 Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION,
-                Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH,
             )
             if (!keys.containsAll(VERIFY_KEYS_TO_CLEAR + requiredVerifyIdentity)) return null
             val origin = values[Constants.EXTRA_DIAGNOSTICS_ORIGIN] as? String ?: return null
