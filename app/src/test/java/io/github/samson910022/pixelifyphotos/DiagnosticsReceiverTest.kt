@@ -485,6 +485,7 @@ class DiagnosticsReceiverTest {
                 Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION to generation,
                 Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT to 1,
                 Constants.PREF_DIAG_MODULE_LOADED_AT to startedAt,
+                Constants.PREF_DIAG_LAST_PACKAGE_LOADED to Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
             ),
         )
         val event = bundle(
@@ -512,6 +513,8 @@ class DiagnosticsReceiverTest {
         assertTrue(result.second)
         assertEquals("legacy-run", values[Constants.PREF_DIAG_ACTIVE_RUN_ID])
         assertEquals(false, values[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertEquals(startedAt, values[Constants.PREF_DIAG_MODULE_LOADED_AT])
+        assertEquals(Constants.PACKAGE_NAME_GOOGLE_PHOTOS, values[Constants.PREF_DIAG_LAST_PACKAGE_LOADED])
         assertEquals(true, values[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
 
         val verifyEvent = bundle(

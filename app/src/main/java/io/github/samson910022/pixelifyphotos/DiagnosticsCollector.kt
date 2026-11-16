@@ -132,6 +132,7 @@ object DiagnosticsCollector {
         val clockAnomaly: Boolean = false,
         val priorBootRun: Boolean = false,
         val currentnessUnknown: Boolean = false,
+        val tokenAuthenticated: Boolean = false,
     )
 
     /**
@@ -153,39 +154,53 @@ object DiagnosticsCollector {
         val hasLifecycleRecord = state.moduleLoadedAt != null || state.lastPackageLoaded != null ||
             state.lastPackageReady != null || state.verifyAt != null
         val signals = mutableListOf<MilestoneSignal>()
+        val tokenAuthenticated = hasTokenAuthenticatedRunIdentity(state)
         val bootRelation = bootRelation(state)
         val staleBootRun = bootRelation == BootRelation.PRIOR
         val currentnessUnknown = bootRelation == BootRelation.UNKNOWN && hasVerifiedOriginIdentity(state)
-        if (staleBootRun) signals += MilestoneSignal(MilestoneKind.PRIOR_BOOT_RUN)
+        val tokenCurrentnessUnknown = bootRelation == BootRelation.UNKNOWN && tokenAuthenticated
+        if (staleBootRun) signals += MilestoneSignal(
+            MilestoneKind.PRIOR_BOOT_RUN,
+            tokenAuthenticated = tokenAuthenticated,
+        )
         if (currentnessUnknown) signals += MilestoneSignal(MilestoneKind.BOOT_UNKNOWN_RUN)
+        if (tokenCurrentnessUnknown) signals += MilestoneSignal(
+            MilestoneKind.BOOT_UNKNOWN_RUN,
+            tokenAuthenticated = true,
+        )
         if (!hasLifecycleRecord) {
             signals += MilestoneSignal(
                 MilestoneKind.NO_RECORD,
                 priorBootRun = staleBootRun,
-                currentnessUnknown = currentnessUnknown,
+                currentnessUnknown = currentnessUnknown || tokenCurrentnessUnknown,
+                tokenAuthenticated = tokenAuthenticated,
             )
             return signals
         }
 
+        val runCurrentnessUnknown = currentnessUnknown || tokenCurrentnessUnknown
         if (state.moduleLoadedAt != null) {
             signals += MilestoneSignal(
                 MilestoneKind.MODULE_LOADED,
                 timestamp = state.moduleLoadedAt,
                 clockAnomaly = state.moduleLoadedAt > now,
-                currentnessUnknown = currentnessUnknown,
+                currentnessUnknown = runCurrentnessUnknown,
+                tokenAuthenticated = tokenAuthenticated,
             )
         }
         if (state.lastPackageLoaded != null) {
             signals += MilestoneSignal(
                 MilestoneKind.PACKAGE_LOADED,
                 pkg = state.lastPackageLoaded,
-                currentnessUnknown = currentnessUnknown,
+                currentnessUnknown = runCurrentnessUnknown,
+                tokenAuthenticated = tokenAuthenticated,
             )
             if (state.lastPackageReady == null) {
                 signals += MilestoneSignal(
                     MilestoneKind.PACKAGE_NOT_READY,
                     priorBootRun = staleBootRun,
-                    currentnessUnknown = currentnessUnknown,
+                    currentnessUnknown = runCurrentnessUnknown,
+                    tokenAuthenticated = tokenAuthenticated,
                 )
             } else {
                 signals += MilestoneSignal(
@@ -193,7 +208,8 @@ object DiagnosticsCollector {
                     pkg = state.lastPackageReady,
                     timestamp = state.lastPackageReadyAt,
                     clockAnomaly = state.lastPackageReadyAt?.let { it > now } == true,
-                    currentnessUnknown = currentnessUnknown,
+                    currentnessUnknown = runCurrentnessUnknown,
+                    tokenAuthenticated = tokenAuthenticated,
                 )
             }
         } else {
@@ -201,7 +217,8 @@ object DiagnosticsCollector {
                 signals += MilestoneSignal(
                     MilestoneKind.NO_PACKAGE_LOAD_RECORDED,
                     priorBootRun = staleBootRun,
-                    currentnessUnknown = currentnessUnknown,
+                    currentnessUnknown = runCurrentnessUnknown,
+                    tokenAuthenticated = tokenAuthenticated,
                 )
             }
             if (state.lastPackageReady != null) {
@@ -210,16 +227,50 @@ object DiagnosticsCollector {
                     pkg = state.lastPackageReady,
                     timestamp = state.lastPackageReadyAt,
                     clockAnomaly = state.lastPackageReadyAt?.let { it > now } == true,
-                    currentnessUnknown = currentnessUnknown,
+                    currentnessUnknown = runCurrentnessUnknown,
+                    tokenAuthenticated = tokenAuthenticated,
                 )
             }
         }
+        val verifyCurrentnessKnown = bootRelation != BootRelation.UNKNOWN
         if (state.verifyAt != null && staleBootRun) {
             signals += MilestoneSignal(
                 MilestoneKind.VERIFY_PRIOR_BOOT,
                 timestamp = state.verifyAt,
                 clockAnomaly = state.verifyAt > now,
+                tokenAuthenticated = tokenAuthenticated,
             )
+        } else if (state.verifyAt != null && tokenAuthenticated) {
+            if (!verifyCurrentnessKnown) {
+                signals += MilestoneSignal(
+                    MilestoneKind.VERIFY_BOOT_UNKNOWN,
+                    timestamp = state.verifyAt,
+                    clockAnomaly = state.verifyAt > now,
+                    tokenAuthenticated = true,
+                )
+            } else when (state.verifyOk) {
+                true -> signals += MilestoneSignal(
+                    MilestoneKind.VERIFY_OK,
+                    timestamp = state.verifyAt,
+                    nativeReady = state.nativeReady,
+                    clockAnomaly = state.verifyAt > now,
+                    tokenAuthenticated = true,
+                )
+                false -> signals += MilestoneSignal(
+                    MilestoneKind.VERIFY_FAILED,
+                    timestamp = state.verifyAt,
+                    failedFields = state.verifyFailed,
+                    nativeReady = state.nativeReady,
+                    clockAnomaly = state.verifyAt > now,
+                    tokenAuthenticated = true,
+                )
+                null -> signals += MilestoneSignal(
+                    MilestoneKind.VERIFY_UNEXPECTED,
+                    timestamp = state.verifyAt,
+                    clockAnomaly = state.verifyAt > now,
+                    tokenAuthenticated = true,
+                )
+            }
         } else if (state.verifyAt != null && !hasVerifiedOriginIdentity(state)) {
             signals += MilestoneSignal(
                 MilestoneKind.VERIFY_UNVERIFIED,
@@ -257,7 +308,8 @@ object DiagnosticsCollector {
             signals += MilestoneSignal(
                 MilestoneKind.VERIFY_NONE_BUT_READY,
                 priorBootRun = staleBootRun,
-                currentnessUnknown = currentnessUnknown,
+                currentnessUnknown = runCurrentnessUnknown,
+                tokenAuthenticated = tokenAuthenticated,
             )
         }
         return signals
@@ -274,12 +326,13 @@ object DiagnosticsCollector {
         now: Long = System.currentTimeMillis(),
     ): List<String> {
         val lines = milestoneSignals(state, now).map { englishMilestone(it) }
-        return if (state.diagnosticsAvailable && !hasVerifiedOriginIdentity(state) &&
-            (state.anyRecorded || state.verifyAt != null)
-        ) {
-            lines.map { "UNVERIFIED TELEMETRY (reported package attribution is not OS-verified): $it" }
-        } else {
-            lines
+        if (!state.diagnosticsAvailable || (!state.anyRecorded && state.verifyAt == null)) return lines
+        return when {
+            hasTokenAuthenticatedRunIdentity(state) ->
+                lines.map { "TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified): $it" }
+            !hasVerifiedOriginIdentity(state) ->
+                lines.map { "UNVERIFIED TELEMETRY (reported package attribution is not OS-verified): $it" }
+            else -> lines
         }
     }
 
@@ -287,31 +340,60 @@ object DiagnosticsCollector {
     fun hasVerifiedOriginIdentity(state: HookState): Boolean = state.activeOriginVerified &&
         !state.activePackage.isNullOrBlank() && !state.activeRunId.isNullOrBlank()
 
+    /**
+     * An accepted run identity whose sender was authenticated by token-only fallback,
+     * not by OS-verified package/UID binding. Useful for diagnosis but never OS proof.
+     */
+    fun hasTokenAuthenticatedRunIdentity(state: HookState): Boolean =
+        state.diagnosticsAvailable && !state.activeOriginVerified &&
+            !state.activePackage.isNullOrBlank() && !state.activeRunId.isNullOrBlank() &&
+            (state.activeRunStartedAt ?: 0L) > 0L
+
+    /** Any accepted run identity with enough metadata to relate telemetry to a run. */
+    private fun hasAcceptedRunIdentity(state: HookState): Boolean =
+        hasVerifiedOriginIdentity(state) || hasTokenAuthenticatedRunIdentity(state)
+
     enum class BootRelation { CURRENT, PRIOR, UNKNOWN }
 
-    /** Relates an OS-verified active run to this boot without conflating missing data with a mismatch. */
+    /** Relates an accepted active run to this boot without conflating missing data with a mismatch. */
     fun bootRelation(state: HookState): BootRelation {
-        if (!hasVerifiedOriginIdentity(state)) return BootRelation.UNKNOWN
+        if (!hasAcceptedRunIdentity(state)) return BootRelation.UNKNOWN
         val runBootEpoch = state.activeRunBootEpoch?.takeIf(String::isNotBlank) ?: return BootRelation.UNKNOWN
         val currentBootEpoch = state.currentBootEpoch?.takeIf(String::isNotBlank) ?: return BootRelation.UNKNOWN
         return if (runBootEpoch == currentBootEpoch) BootRelation.CURRENT else BootRelation.PRIOR
     }
 
-    /** A verified origin belongs to the current boot only when unique OS boot epochs match. */
-    fun hasVerifiedRunIdentity(state: HookState): Boolean = bootRelation(state) == BootRelation.CURRENT
+    /** An OS-verified origin belongs to the current boot only when unique OS boot epochs match. */
+    fun hasVerifiedRunIdentity(state: HookState): Boolean =
+        hasVerifiedOriginIdentity(state) && bootRelation(state) == BootRelation.CURRENT
 
     /** A verified persisted run from an earlier OS boot is historical, never current evidence. */
-    fun hasStaleBootRunIdentity(state: HookState): Boolean = bootRelation(state) == BootRelation.PRIOR
+    fun hasStaleBootRunIdentity(state: HookState): Boolean =
+        hasVerifiedOriginIdentity(state) && bootRelation(state) == BootRelation.PRIOR
 
     /** OS-verified origin with an active run whose currentness cannot be established. */
     fun hasUnknownBootRunIdentity(state: HookState): Boolean =
         hasVerifiedOriginIdentity(state) && bootRelation(state) == BootRelation.UNKNOWN
 
+    /** Token-authenticated unverified run attributable to the current boot by epoch match. */
+    fun hasTokenAuthenticatedCurrentRun(state: HookState): Boolean =
+        hasTokenAuthenticatedRunIdentity(state) && bootRelation(state) == BootRelation.CURRENT
+
+    fun hasTokenAuthenticatedPriorBootRun(state: HookState): Boolean =
+        hasTokenAuthenticatedRunIdentity(state) && bootRelation(state) == BootRelation.PRIOR
+
+    fun hasTokenAuthenticatedUnknownBootRun(state: HookState): Boolean =
+        hasTokenAuthenticatedRunIdentity(state) && bootRelation(state) == BootRelation.UNKNOWN
+
     private fun englishMilestone(signal: MilestoneSignal): String = when (signal.kind) {
         MilestoneKind.NO_RECORD -> if (signal.priorBootRun) {
             "No lifecycle milestones were recorded for this prior-boot run. Hook registration results, if available, are shown separately."
         } else if (signal.currentnessUnknown) {
-            "No lifecycle milestones were recorded for an OS-verified run whose current boot could not be established. This is unknown historical data, not evidence about the current run."
+            if (signal.tokenAuthenticated) {
+                "No lifecycle milestones were recorded for a token-authenticated run whose current boot could not be established. This is historical/unknown data with unverified sender identity, not current OS-verified evidence."
+            } else {
+                "No lifecycle milestones were recorded for an OS-verified run whose current boot could not be established. This is unknown historical data, not evidence about the current run."
+            }
         } else
             "No lifecycle milestones have been recorded yet. Hook registration results, if available, are shown separately. Open Google Photos once, wait a few seconds, then reopen this screen."
         MilestoneKind.DIAGNOSTICS_UNAVAILABLE ->
@@ -319,26 +401,36 @@ object DiagnosticsCollector {
         MilestoneKind.DIAGNOSTICS_TRANSPORT_UNAVAILABLE ->
             "Diagnostics data is unavailable because the diagnostics auth token is not synchronized to remote preferences. The hooked process cannot deliver telemetry, so an empty result cannot be inferred. Restart LSPosed or toggle the module to rebind the manager service, then reopen Google Photos and this screen."
         MilestoneKind.PRIOR_BOOT_RUN ->
-            "Historical/prior-boot diagnostics from an OS-verified origin; these records are not current evidence."
+            if (signal.tokenAuthenticated) {
+                "Historical/prior-boot diagnostics from a token-authenticated fallback run (sender identity not OS-verified); these records are not current OS-verified evidence."
+            } else {
+                "Historical/prior-boot diagnostics from an OS-verified origin; these records are not current evidence."
+            }
         MilestoneKind.BOOT_UNKNOWN_RUN ->
-            "OS-verified origin; the run's boot could not be matched to the current boot. Lifecycle and hook data below have unverified currentness and are not current evidence."
+            if (signal.tokenAuthenticated) {
+                "Token-authenticated fallback run (sender identity not OS-verified); the run's boot could not be matched to the current boot. Lifecycle and hook data below have unverified currentness and are not current OS-verified evidence."
+            } else {
+                "OS-verified origin; the run's boot could not be matched to the current boot. Lifecycle and hook data below have unverified currentness and are not current evidence."
+            }
         MilestoneKind.MODULE_LOADED ->
             if (signal.currentnessUnknown) {
                 "Module-loaded record is historical/unverified for currentness (${formatTimestamp(signal.timestamp)}); run boot is unknown."
             } else {
-                "Module loaded in a scoped process (${formatTimestamp(signal.timestamp)})."
+                "Module loaded in a scoped process (${formatTimestamp(signal.timestamp)})." +
+                    if (signal.tokenAuthenticated) " Sender identity is token-authenticated but not OS-verified." else ""
             }
         MilestoneKind.NO_PACKAGE_LOAD_RECORDED -> if (signal.priorBootRun) {
             "No package-load callback was recorded for that prior-boot run. Missing data alone does not establish whether a callback occurred or why it is missing."
         } else if (signal.currentnessUnknown) {
-            "No package-load callback was recorded for an OS-verified run whose currentness is unknown. Missing data does not describe the current run or establish why the record is missing."
+            "No package-load callback was recorded for a run whose currentness is unknown. Missing data does not describe the current run or establish why the record is missing."
         } else
             "No package-load callback was recorded for this run. Check the configured scope and reopen the target app; absence of a record alone does not establish whether a callback occurred or why it is missing."
         MilestoneKind.PACKAGE_LOADED ->
             if (signal.currentnessUnknown) {
                 "Historical/unverified-currentness package-load record: ${signal.pkg} (run boot unknown; not current evidence)."
             } else {
-                "Package-load callback observed: ${signal.pkg}."
+                "Package-load callback observed: ${signal.pkg}." +
+                    if (signal.tokenAuthenticated) " Sender identity is token-authenticated but not OS-verified." else ""
             }
         MilestoneKind.PACKAGE_NOT_READY -> if (signal.priorBootRun) {
             "Package was loaded; a package-ready callback was not recorded for that prior-boot run. This does not establish whether the callback occurred or why it is missing."
@@ -350,14 +442,21 @@ object DiagnosticsCollector {
             if (signal.currentnessUnknown) {
                 "Historical/unverified-currentness package-ready record: ${signal.pkg} (${formatTimestamp(signal.timestamp)}; run boot unknown). This is not current evidence."
             } else {
-                "Last package-ready callback observed: ${signal.pkg} (${formatTimestamp(signal.timestamp)}). This is lifecycle evidence only; see registration results below."
+                "Last package-ready callback observed: ${signal.pkg} (${formatTimestamp(signal.timestamp)}). This is lifecycle evidence only; see registration results below." +
+                    if (signal.tokenAuthenticated) " Sender identity is token-authenticated but not OS-verified." else ""
             }
         MilestoneKind.VERIFY_OK -> if (signal.clockAnomaly) {
             "Build-field VERIFY has a future timestamp (${formatTimestamp(signal.timestamp)}); stale and not treated as a current result."
+        } else if (signal.tokenAuthenticated) {
+            "Last Build-field VERIFY readback passed (token-authenticated fallback, sender identity not OS-verified; nativeReady=${signal.nativeReady ?: "unknown"}); this does not verify feature hooks or Photos behavior."
         } else
             "Last Build-field VERIFY readback passed (nativeReady=${signal.nativeReady ?: "unknown"}); this does not verify feature hooks or Photos behavior."
         MilestoneKind.VERIFY_FAILED -> if (signal.clockAnomaly) {
             "Build-field VERIFY has a future timestamp (${formatTimestamp(signal.timestamp)}); stale and not treated as a current result."
+        } else if (signal.tokenAuthenticated) {
+            "Last Build-field VERIFY readback failed (token-authenticated fallback, sender identity not OS-verified): " +
+                signal.failedFields.joinToString().ifEmpty { "unknown fields" } +
+                " (nativeReady=${signal.nativeReady ?: "unknown"}). See the copied diagnostics report or enable verbose logging."
         } else
             "Last Build-field VERIFY readback failed: " +
                 signal.failedFields.joinToString().ifEmpty { "unknown fields" } +
@@ -368,9 +467,17 @@ object DiagnosticsCollector {
             "Legacy or unverified-origin VERIFY data has no OS-verified run identity; result is unknown."
         }
         MilestoneKind.VERIFY_PRIOR_BOOT ->
-            "Prior-boot VERIFY from an OS-verified origin is historical; its result is unknown, not current."
+            if (signal.tokenAuthenticated) {
+                "Prior-boot VERIFY from a token-authenticated fallback run is historical (sender identity not OS-verified); its result is not current OS-verified evidence."
+            } else {
+                "Prior-boot VERIFY from an OS-verified origin is historical; its result is unknown, not current."
+            }
         MilestoneKind.VERIFY_BOOT_UNKNOWN ->
-            "VERIFY has an OS-verified origin, but the run's boot could not be matched to the current boot; result is unknown."
+            if (signal.tokenAuthenticated) {
+                "VERIFY is from a token-authenticated fallback run (sender identity not OS-verified), but the run's boot could not be matched to the current boot; result is not current OS-verified evidence."
+            } else {
+                "VERIFY has an OS-verified origin, but the run's boot could not be matched to the current boot; result is unknown."
+            }
         MilestoneKind.VERIFY_UNEXPECTED -> if (signal.clockAnomaly) {
             "VERIFY has a future timestamp (${formatTimestamp(signal.timestamp)}); stale clock anomaly."
         } else
@@ -413,6 +520,7 @@ object DiagnosticsCollector {
         val featureInvocation: InvocationStatus,
         val systemPropertiesInvocation: InvocationStatus,
         val originVerified: Boolean,
+        val tokenAuthenticatedRun: Boolean = false,
     )
 
     private const val REGISTRATION_FRESHNESS_MS = 24L * 60L * 60L * 1000L
@@ -448,7 +556,11 @@ object DiagnosticsCollector {
     }
 
     fun registrationModel(state: HookState, now: Long): HookRegistrationModel {
-        val hasVerifiedRunIdentity = state.diagnosticsAvailable && hasVerifiedRunIdentity(state)
+        val verifiedCurrentRun = state.diagnosticsAvailable && hasVerifiedRunIdentity(state)
+        val tokenAuthenticated = state.diagnosticsAvailable && hasTokenAuthenticatedRunIdentity(state)
+        val tokenCurrentRun = state.diagnosticsAvailable && hasTokenAuthenticatedCurrentRun(state)
+        val tokenPriorBootRun = state.diagnosticsAvailable && hasTokenAuthenticatedPriorBootRun(state)
+        val tokenCurrentnessUnknown = state.diagnosticsAvailable && hasTokenAuthenticatedUnknownBootRun(state)
         val featureOutcomes = listOf(
             state.featureHookHasSystemFeature,
             state.featureHookHasSystemFeatureWithFlags,
@@ -476,20 +588,17 @@ object DiagnosticsCollector {
                 )
             }
 
-        val feature = if (hasVerifiedRunIdentity) {
-            assessRegistrations(state.featureHooksAt, featureOutcomes, now)
-        } else if (staleBootRun) {
-            priorBootAssessment(state.featureHooksAt, featureOutcomes)
-        } else if (currentnessUnknown) {
-            RegistrationAssessment(
+        val feature = when {
+            verifiedCurrentRun || tokenCurrentRun -> assessRegistrations(state.featureHooksAt, featureOutcomes, now)
+            staleBootRun || tokenPriorBootRun -> priorBootAssessment(state.featureHooksAt, featureOutcomes)
+            currentnessUnknown || tokenCurrentnessUnknown -> RegistrationAssessment(
                 RegistrationStatus.CURRENTNESS_UNKNOWN,
                 0,
                 featureOutcomes.size,
                 state.featureHooksAt,
                 outcomesRecorded = featureOutcomes.any { it != null },
             )
-        } else {
-            RegistrationAssessment(
+            else -> RegistrationAssessment(
                 RegistrationStatus.UNKNOWN,
                 0,
                 featureOutcomes.size,
@@ -497,20 +606,17 @@ object DiagnosticsCollector {
                 outcomesRecorded = featureOutcomes.any { it != null },
             )
         }
-        val systemProperties = if (hasVerifiedRunIdentity) {
-            assessRegistrations(state.systemPropsHooksAt, systemPropertiesOutcomes, now)
-        } else if (staleBootRun) {
-            priorBootAssessment(state.systemPropsHooksAt, systemPropertiesOutcomes)
-        } else if (currentnessUnknown) {
-            RegistrationAssessment(
+        val systemProperties = when {
+            verifiedCurrentRun || tokenCurrentRun -> assessRegistrations(state.systemPropsHooksAt, systemPropertiesOutcomes, now)
+            staleBootRun || tokenPriorBootRun -> priorBootAssessment(state.systemPropsHooksAt, systemPropertiesOutcomes)
+            currentnessUnknown || tokenCurrentnessUnknown -> RegistrationAssessment(
                 RegistrationStatus.CURRENTNESS_UNKNOWN,
                 0,
                 systemPropertiesOutcomes.size,
                 state.systemPropsHooksAt,
                 outcomesRecorded = systemPropertiesOutcomes.any { it != null },
             )
-        } else {
-            RegistrationAssessment(
+            else -> RegistrationAssessment(
                 RegistrationStatus.UNKNOWN,
                 0,
                 systemPropertiesOutcomes.size,
@@ -521,25 +627,20 @@ object DiagnosticsCollector {
         return HookRegistrationModel(
             feature = feature,
             systemProperties = systemProperties,
-            featureInvocation = if (hasVerifiedRunIdentity) {
-                assessInvocation(state.featureInterceptorAt, now)
-            } else if (staleBootRun && state.featureInterceptorAt != null) {
-                InvocationStatus.STALE
-            } else if (currentnessUnknown) {
-                InvocationStatus.CURRENTNESS_UNKNOWN
-            } else {
-                InvocationStatus.UNKNOWN
+            featureInvocation = when {
+                verifiedCurrentRun || tokenCurrentRun -> assessInvocation(state.featureInterceptorAt, now)
+                (staleBootRun || tokenPriorBootRun) && state.featureInterceptorAt != null -> InvocationStatus.STALE
+                currentnessUnknown || tokenCurrentnessUnknown -> InvocationStatus.CURRENTNESS_UNKNOWN
+                else -> InvocationStatus.UNKNOWN
             },
-            systemPropertiesInvocation = if (hasVerifiedRunIdentity) {
-                assessInvocation(state.systemPropsInterceptorAt, now)
-            } else if (staleBootRun && state.systemPropsInterceptorAt != null) {
-                InvocationStatus.STALE
-            } else if (currentnessUnknown) {
-                InvocationStatus.CURRENTNESS_UNKNOWN
-            } else {
-                InvocationStatus.UNKNOWN
+            systemPropertiesInvocation = when {
+                verifiedCurrentRun || tokenCurrentRun -> assessInvocation(state.systemPropsInterceptorAt, now)
+                (staleBootRun || tokenPriorBootRun) && state.systemPropsInterceptorAt != null -> InvocationStatus.STALE
+                currentnessUnknown || tokenCurrentnessUnknown -> InvocationStatus.CURRENTNESS_UNKNOWN
+                else -> InvocationStatus.UNKNOWN
             },
             originVerified = state.diagnosticsAvailable && hasVerifiedOriginIdentity(state),
+            tokenAuthenticatedRun = tokenAuthenticated,
         )
     }
 
@@ -566,10 +667,15 @@ object DiagnosticsCollector {
     /** Registration is not proof of execution; no combined "hook success" flag is exposed. */
     fun formatHookRegistrationText(state: HookState, now: Long): List<String> {
         val model = registrationModel(state, now)
+        val tokenAuthenticated = hasTokenAuthenticatedRunIdentity(state)
         fun rowOutcome(value: Boolean?, assessment: RegistrationAssessment): String =
             when (assessment.status) {
                 RegistrationStatus.STALE -> "unknown (stale run/timestamp)"
-                RegistrationStatus.CURRENTNESS_UNKNOWN -> "unknown (OS-verified origin, run currentness unverified)"
+                RegistrationStatus.CURRENTNESS_UNKNOWN -> if (tokenAuthenticated) {
+                    "unknown (token-authenticated run, currentness unverified)"
+                } else {
+                    "unknown (OS-verified origin, run currentness unverified)"
+                }
                 RegistrationStatus.UNKNOWN -> "unknown"
                 else -> formatOutcome(value)
             }
@@ -580,6 +686,12 @@ object DiagnosticsCollector {
                 "historical/prior-boot verified origin: ${state.activePackage ?: "unknown"}"
             hasVerifiedOriginIdentity(state) ->
                 "OS-verified origin; current boot unknown: ${state.activePackage ?: "unknown"}"
+            hasTokenAuthenticatedCurrentRun(state) ->
+                "token-authenticated fallback (sender identity not OS-verified): ${state.activePackage ?: "unknown"}"
+            hasTokenAuthenticatedPriorBootRun(state) ->
+                "historical/prior-boot token-authenticated fallback (sender identity not OS-verified): ${state.activePackage ?: "unknown"}"
+            hasTokenAuthenticatedRunIdentity(state) ->
+                "token-authenticated fallback; current boot unknown (sender identity not OS-verified): ${state.activePackage ?: "unknown"}"
             else -> "unknown/unverified (reported origin: ${state.activePackage ?: "unknown"})"
         }
         val pidDescription = when {
@@ -588,6 +700,7 @@ object DiagnosticsCollector {
             hasStaleBootRunIdentity(state) ->
                 "historical/prior-boot OS-observed PID: ${state.processPid ?: "unknown"} (not current)"
             hasVerifiedOriginIdentity(state) -> "unknown (run boot not verified)"
+            tokenAuthenticated -> "unavailable (token-authenticated fallback has no OS-observed sender PID)"
             else -> "unknown/unverified"
         }
         return listOf(
@@ -609,7 +722,7 @@ object DiagnosticsCollector {
 
     private fun formatRegistration(assessment: RegistrationAssessment, now: Long): String = when (assessment.status) {
         RegistrationStatus.UNKNOWN -> "unknown/unavailable (registration outcomes unavailable)"
-        RegistrationStatus.CURRENTNESS_UNKNOWN -> "unknown (OS-verified origin; run currentness unverified)" +
+        RegistrationStatus.CURRENTNESS_UNKNOWN -> "unknown (run currentness unverified)" +
             if (assessment.outcomesRecorded) " (recorded outcomes not treated as current)" else " (no current outcomes established)"
         RegistrationStatus.STALE -> if (assessment.outcomesRecorded) {
             "stale last report (${assessment.successful}/${assessment.total} marked registered)"
@@ -629,7 +742,7 @@ object DiagnosticsCollector {
 
     private fun formatInvocation(status: InvocationStatus, recordedAt: Long?, now: Long): String = when (status) {
         InvocationStatus.UNKNOWN -> "unknown"
-        InvocationStatus.CURRENTNESS_UNKNOWN -> "unknown (OS-verified origin; run currentness unverified)"
+        InvocationStatus.CURRENTNESS_UNKNOWN -> "unknown (run currentness unverified)"
         InvocationStatus.STALE -> "stale observation (${formatTimestamp(recordedAt, now)})"
         InvocationStatus.NOT_OBSERVED -> "not observed (may not have been called; absence is not proof)"
         InvocationStatus.OBSERVED -> "observed at least once (${formatTimestamp(recordedAt, now)})"
@@ -653,6 +766,7 @@ object DiagnosticsCollector {
         val reportState = state
         val verifiedRunIdentity = hasVerifiedRunIdentity(state)
         val verifiedOriginIdentity = hasVerifiedOriginIdentity(state)
+        val tokenAuthenticatedRun = hasTokenAuthenticatedRunIdentity(state)
         val entitlement = selectedDevice?.let(DeviceProps::getBackupEntitlement)
         val entitlementSummary = when (entitlement) {
             DeviceProps.BackupEntitlement.UNLIMITED_ORIGINAL ->
@@ -694,6 +808,12 @@ object DiagnosticsCollector {
                 "HISTORICAL (prior-boot, OS-verified origin: ${reportState.activePackage ?: "unknown"})"
             verifiedOriginIdentity ->
                 "OS-verified origin, current boot unknown: ${reportState.activePackage ?: "unknown"}"
+            hasTokenAuthenticatedCurrentRun(state) ->
+                "TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified): ${reportState.activePackage ?: "unknown"}"
+            hasTokenAuthenticatedPriorBootRun(state) ->
+                "HISTORICAL (prior-boot, token-authenticated fallback, sender identity not OS-verified): ${reportState.activePackage ?: "unknown"}"
+            hasTokenAuthenticatedRunIdentity(state) ->
+                "TOKEN-AUTHENTICATED FALLBACK (current boot unknown, sender identity not OS-verified): ${reportState.activePackage ?: "unknown"}"
             else -> "UNVERIFIED (reported origin: ${reportState.activePackage ?: "unknown"})"
         }
         val pidDescription = when {
@@ -702,6 +822,7 @@ object DiagnosticsCollector {
             hasStaleBootRunIdentity(state) ->
                 "historical/prior-boot PID (not current): ${state.processPid ?: "unknown"}"
             verifiedOriginIdentity -> "unknown (run boot not verified)"
+            tokenAuthenticatedRun -> "unavailable (token-authenticated fallback has no OS-observed sender PID)"
             else -> "unknown/unverified"
         }
         sb.appendLine(
@@ -719,24 +840,32 @@ object DiagnosticsCollector {
         sb.appendLine("Hook registration and runtime observation:")
         formatHookRegistrationText(reportState, now).forEach { sb.appendLine(it) }
         sb.appendLine()
-        val hasUnverifiedRun = state.diagnosticsAvailable && (state.anyRecorded || state.verifyAt != null) &&
-            !verifiedOriginIdentity
-        val priorBootVerify = hasStaleBootRunIdentity(state)
-        val bootUnknownVerify = verifiedOriginIdentity && !verifiedRunIdentity && !priorBootVerify
+        val tokenCurrentRun = hasTokenAuthenticatedCurrentRun(state)
+        val tokenPriorBootRun = hasTokenAuthenticatedPriorBootRun(state)
+        val hasLegacyUnverifiedRun = state.diagnosticsAvailable && (state.anyRecorded || state.verifyAt != null) &&
+            !verifiedOriginIdentity && !tokenAuthenticatedRun
+        val priorBootVerify = hasStaleBootRunIdentity(state) || tokenPriorBootRun
+        val bootUnknownVerify = (verifiedOriginIdentity && !verifiedRunIdentity && !hasStaleBootRunIdentity(state)) ||
+            (tokenAuthenticatedRun && !tokenCurrentRun && !tokenPriorBootRun)
         val verifyLabel = when {
             !state.diagnosticsAvailable -> "Last VERIFY: ${unavailableDiagnosticsDescription(state)}"
-            priorBootVerify -> "Last VERIFY (HISTORICAL PRIOR-BOOT, OS-VERIFIED ORIGIN)"
-            bootUnknownVerify -> "Last VERIFY (current boot unknown)"
-            hasUnverifiedRun -> "Last VERIFY (UNVERIFIED TELEMETRY)"
+            hasStaleBootRunIdentity(state) -> "Last VERIFY (HISTORICAL PRIOR-BOOT, OS-VERIFIED ORIGIN)"
+            tokenPriorBootRun -> "Last VERIFY (HISTORICAL PRIOR-BOOT, TOKEN-AUTHENTICATED FALLBACK)"
+            verifiedOriginIdentity && !verifiedRunIdentity -> "Last VERIFY (current boot unknown, OS-verified origin)"
+            tokenAuthenticatedRun && !tokenCurrentRun -> "Last VERIFY (current boot unknown, token-authenticated fallback)"
+            tokenCurrentRun -> "Last VERIFY (token-authenticated fallback, sender identity not OS-verified)"
+            hasLegacyUnverifiedRun -> "Last VERIFY (UNVERIFIED TELEMETRY)"
             else -> "Last VERIFY"
         }
         sb.appendLine(
             when {
                 !state.diagnosticsAvailable -> "Last VERIFY: ${unavailableDiagnosticsDescription(state)}"
                 state.verifyAt != null -> "$verifyLabel: ${formatTimestamp(state.verifyAt, now)}"
-                priorBootVerify -> "$verifyLabel: no VERIFY record for that prior-boot run; this does not describe the current run"
+                hasStaleBootRunIdentity(state) -> "$verifyLabel: no VERIFY record for that prior-boot run; this does not describe the current run"
+                tokenPriorBootRun -> "$verifyLabel: no VERIFY record for that token-authenticated fallback run from a prior boot; sender identity is not OS-verified and this does not describe the current run"
                 bootUnknownVerify -> "$verifyLabel: no VERIFY record can be established as current; run relation is unknown"
-                hasUnverifiedRun -> "$verifyLabel: no VERIFY record has a verified current-run relation"
+                tokenCurrentRun -> "$verifyLabel: not recorded yet"
+                hasLegacyUnverifiedRun -> "$verifyLabel: no VERIFY record has a verified current-run relation"
                 verifiedRunIdentity -> "Last VERIFY (verified current run): not recorded yet"
                 else -> "Last VERIFY: no record or OS-verified run relationship is available"
             }
@@ -744,16 +873,25 @@ object DiagnosticsCollector {
         if (state.diagnosticsAvailable && state.verifyAt != null) {
             val staleVerify = state.verifyAt > now
             val verifyResult = when {
-                hasUnverifiedRun -> "unknown (origin is not OS-verified)"
-                priorBootVerify -> "unknown (prior-boot verified origin; historical, not current)"
-                bootUnknownVerify -> "unknown (OS-verified origin, but current boot was not established)"
                 staleVerify -> "unknown (clock anomaly; stale)"
+                hasLegacyUnverifiedRun -> "unknown (origin is not OS-verified)"
+                hasStaleBootRunIdentity(state) -> "unknown (prior-boot verified origin; historical, not current)"
+                tokenPriorBootRun -> "historical (prior-boot token-authenticated fallback; not current OS-verified evidence)"
+                verifiedOriginIdentity && !verifiedRunIdentity -> "unknown (OS-verified origin, but current boot was not established)"
+                tokenAuthenticatedRun && !tokenCurrentRun -> "unknown (token-authenticated fallback; current boot not established)"
+                tokenCurrentRun -> state.verifyOk?.let {
+                    if (it) "OK (token-authenticated fallback, sender identity not OS-verified)"
+                    else "FAIL (token-authenticated fallback, sender identity not OS-verified)"
+                } ?: "unknown (token-authenticated fallback, sender identity not OS-verified)"
                 else -> state.verifyOk?.let { if (it) "OK" else "FAIL" } ?: "unknown"
             }
             val valuePrefix = when {
-                hasUnverifiedRun -> "UNVERIFIED telemetry: "
-                priorBootVerify -> "historical/prior-boot: "
-                bootUnknownVerify -> "historical (current boot unknown): "
+                hasLegacyUnverifiedRun -> "UNVERIFIED telemetry: "
+                hasStaleBootRunIdentity(state) -> "historical/prior-boot: "
+                tokenPriorBootRun -> "historical/prior-boot token-authenticated fallback: "
+                verifiedOriginIdentity && !verifiedRunIdentity -> "historical (current boot unknown): "
+                tokenAuthenticatedRun && !tokenCurrentRun -> "token-authenticated fallback (current boot unknown): "
+                tokenCurrentRun -> "token-authenticated fallback (sender identity not OS-verified): "
                 else -> ""
             }
             sb.appendLine(

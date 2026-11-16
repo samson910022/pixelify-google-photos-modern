@@ -619,8 +619,10 @@ object DiagnosticsStore {
             // rejected above), and event sequencing is left untouched.
             if (incomingOriginVerified) {
                 markActiveRunVerified(prefs, editor, activeOriginVerified, callingPid)
-                // The token-only start path deliberately does not seed package-specific
-                // lifecycle observations. The verified replay of the same run may.
+            }
+            // Keep token-authenticated fallback runs diagnosable on replay and ensure a
+            // verified replay still has start lifecycle observations available.
+            if (incomingOriginVerified || tokenOnlyBroadcastAllowed) {
                 seedStartDiagnostics(editor, extras)
             }
             return true
@@ -642,8 +644,11 @@ object DiagnosticsStore {
             editor.putInt(Constants.PREF_DIAG_ACTIVE_BINDER_PID, callingPid)
         }
 
-        // Only an OS-bound origin may seed package-specific lifecycle observations.
-        if (incomingOriginVerified) {
+        // OS-verified origins may always seed lifecycle observations. Token-authenticated
+        // fallback starts (SDK < 34, provider-invisible) must also persist the same
+        // origin-consistent start facts so diagnostics stay diagnosable, while the run
+        // remains explicitly unverified (ACTIVE_ORIGIN_VERIFIED stays false).
+        if (incomingOriginVerified || tokenOnlyBroadcastAllowed) {
             seedStartDiagnostics(editor, extras)
         }
         return true

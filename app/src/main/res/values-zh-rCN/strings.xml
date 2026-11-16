@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">未知（来源经 OS 验证的上次启动 VERIFY；这是历史记录，不代表当前结果）</string>
     <string name="diagnostics_verify_boot_unknown">未知（来源经 OS 验证，但无法确认是否属于当前启动）</string>
     <string name="diagnostics_verify_no_record_prior_boot">历史记录（上次启动、来源经 OS 验证）：该运行没有 VERIFY 记录；这不能说明当前运行的状态。</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">历史记录（上次启动、token 验证 fallback，来源身份未经 OS 验证）：该运行没有 VERIFY 记录；这不能说明当前运行的状态。</string>
     <string name="diagnostics_verify_no_record_boot_unknown">来源经 OS 验证，但启动 epoch 不可用或无法匹配；无法将 VERIFY 记录判定为当前结果。</string>
     <string name="diagnostics_verify_no_verified_run">没有 VERIFY 记录可关联到经 OS 验证的运行；当前运行状态未知。</string>
     <string name="diagnostics_verify_no_run_identity">没有 VERIFY 记录或经 OS 验证的运行身份；当前运行状态未知。</string>
@@ -235,4 +236,10 @@
     <string name="diagnostics_unverified_telemetry">未验证遥测（来源／包名未经 OS 验证）：%1$s</string>
     <string name="diagnostics_process_pid">OS 观察到的发送方 PID（可用时为 Binder）：%1$s</string>
     <string name="diagnostics_registration_caveat">全部注册也不代表 Google 相册调用了目标 API。观察到拦截器进入只表示它曾进入，不代表调用来自 Google 相册或返回了模拟值。</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">令牌验证的回退遥测（发送方身份未经 OS 验证）：%1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">令牌验证的回退遥测（发送方身份未经 OS 验证）：%1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">此令牌验证的回退运行尚未记录 VERIFY。发送方身份未经 OS 验证。</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">软件包已加载，但此令牌验证的回退运行尚未记录 package-ready 和 VERIFY。发送方身份未经 OS 验证。</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">此令牌验证的回退运行的启动信息未知，无法将 VERIFY 视为当前记录。发送方身份未经 OS 验证。</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">不可用（令牌验证的回退遥测）</string>
 </resources>

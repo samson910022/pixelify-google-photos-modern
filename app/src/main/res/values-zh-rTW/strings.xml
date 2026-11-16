@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">未知（來源經 OS 驗證的前次開機 VERIFY；這是歷史記錄，不代表目前結果）</string>
     <string name="diagnostics_verify_boot_unknown">未知（來源經 OS 驗證，但無法確認是否屬於目前開機）</string>
     <string name="diagnostics_verify_no_record_prior_boot">歷史記錄（前次開機、來源經 OS 驗證）：該執行沒有 VERIFY 記錄；這不能說明目前執行的狀態。</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">歷史記錄（前次開機、token 驗證 fallback，來源身分未經 OS 驗證）：該執行沒有 VERIFY 記錄；這不能說明目前執行的狀態。</string>
     <string name="diagnostics_verify_no_record_boot_unknown">來源經 OS 驗證，但開機 epoch 無法使用或配對；無法將 VERIFY 記錄判定為目前結果。</string>
     <string name="diagnostics_verify_no_verified_run">沒有 VERIFY 記錄可關聯至經 OS 驗證的執行；目前執行狀態未知。</string>
     <string name="diagnostics_verify_no_run_identity">沒有 VERIFY 記錄或經 OS 驗證的執行身分；目前執行狀態未知。</string>
@@ -235,4 +236,10 @@
     <string name="diagnostics_unverified_telemetry">未驗證遙測（來源／套件未經 OS 驗證）：%1$s</string>
     <string name="diagnostics_process_pid">OS 觀察到的傳送方 PID（可用時為 Binder）：%1$s</string>
     <string name="diagnostics_registration_caveat">全部註冊也不代表 Google 相簿呼叫了目標 API。觀察到攔截器進入只代表它曾進入，不代表呼叫來自 Google 相簿或回傳了模擬值。</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">權杖驗證的備援遙測（傳送端身分未經 OS 驗證）：%1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">權杖驗證的備援遙測（傳送端身分未經 OS 驗證）：%1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">此權杖驗證的備援執行尚未記錄 VERIFY。傳送端身分未經 OS 驗證。</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">套件已載入，但此權杖驗證的備援執行尚未記錄 package-ready 與 VERIFY。傳送端身分未經 OS 驗證。</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">此權杖驗證的備援執行的開機資訊未知，無法將 VERIFY 視為目前記錄。傳送端身分未經 OS 驗證。</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">無法取得（權杖驗證的備援遙測）</string>
 </resources>

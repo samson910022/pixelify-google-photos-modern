@@ -9,12 +9,12 @@
 - [x] Token unavailable symptom addressed in code/tests; no security regression.
 
 ## Phase 2: Provider-invisible fallback diagnosability (SDK 33 / Vector)
-- [ ] Task 2.1: Trace why token-only fallback batches yield unverified run with no usable milestones/registrations in UI/store; define truthful-but-useful state transitions.
-- [ ] Task 2.2: Implement minimal store/receiver/reporter/UI-policy adjustments so authenticated fallback telemetry can be diagnosed (clearly marked unverified/token-authenticated) when OS-verified path unavailable.
-- [ ] Task 2.3: Verify with phase-appropriate checks; independent review; fix/review loop until clean; commit.
+- [x] Task 2.1: Trace why token-only fallback batches yield unverified run with no usable milestones/registrations in UI/store; define truthful-but-useful state transitions.
+- [x] Task 2.2: Implement minimal store/receiver/reporter/UI-policy adjustments so authenticated fallback telemetry can be diagnosed (clearly marked unverified/token-authenticated) when OS-verified path unavailable.
+- [x] Task 2.3: Verify with phase-appropriate checks; independent review; fix/review loop until clean; commit.
 
 ## Checkpoint: Fallback diagnosability
-- [ ] Diagnostics can report meaningful state under provider-invisible + fallback conditions without false verification claims.
+- [x] Diagnostics can report meaningful state under provider-invisible + fallback conditions without false verification claims.
 
 ## Phase 3: Payload schema rejection and transport correctness
 - [ ] Task 3.1: Reproduce/identify source of `invalid payload schema` from reporter/provider path; add regression coverage.

@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">不明（OS 検証済み origin の前回起動時 VERIFY。履歴であり現在の結果ではありません）</string>
     <string name="diagnostics_verify_boot_unknown">不明（origin は OS 検証済みですが、現在の起動との一致を確認できません）</string>
     <string name="diagnostics_verify_no_record_prior_boot">履歴（前回起動・OS 検証済み origin）: その run の VERIFY 記録はありません。現在の run については示しません。</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">履歴（前回起動・token 認証 fallback、送信元の身元は OS 未検証）: その run の VERIFY 記録はありません。現在の run については示しません。</string>
     <string name="diagnostics_verify_no_record_boot_unknown">origin は OS 検証済みですが、起動 epoch を利用できないか一致を確認できません。VERIFY 記録を現在の結果とは判定できません。</string>
     <string name="diagnostics_verify_no_verified_run">VERIFY 記録を OS 検証済み run に関連付けられません。現在の run の状態は不明です。</string>
     <string name="diagnostics_verify_no_run_identity">VERIFY 記録も OS 検証済み run ID もありません。現在の run の状態は不明です。</string>
@@ -235,4 +236,10 @@
     <string name="diagnostics_unverified_telemetry">未検証テレメトリー（origin／package は OS 未検証）: %1$s</string>
     <string name="diagnostics_process_pid">OS が観測した送信元 PID（利用可能な場合は Binder）: %1$s</string>
     <string name="diagnostics_registration_caveat">すべて登録済みでも、Google フォトが対象 API を呼び出した証明にはなりません。進入の観測はインターセプターに入ったことだけを示し、Google フォトからの呼び出しや偽装値の返却を証明しません。</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">トークン認証フォールバック（送信元の身元は OS 未検証）: %1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">トークン認証フォールバック（送信元の身元は OS 未検証）: %1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">このトークン認証フォールバック run では VERIFY がまだ記録されていません。送信元の身元は OS 未検証です。</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">パッケージは読み込まれましたが、このトークン認証フォールバック run では package-ready と VERIFY がまだ記録されていません。送信元の身元は OS 未検証です。</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">このトークン認証フォールバック run の起動情報が不明なため、VERIFY を現在の記録として確定できません。送信元の身元は OS 未検証です。</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">利用不可（トークン認証フォールバック）</string>
 </resources>

@@ -2225,11 +2225,15 @@ class DiagnosticsStoreTest {
         )
         assertEquals(false, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
         assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_BINDER_PID))
-        assertFalse(
-            "token-only start must not claim package-specific lifecycle observations",
-            preferenceValues.containsKey(Constants.PREF_DIAG_MODULE_LOADED_AT),
+        assertEquals(
+            "token-authenticated fallback start should seed diagnosable lifecycle observations while remaining unverified",
+            startedAt,
+            preferenceValues[Constants.PREF_DIAG_MODULE_LOADED_AT],
         )
-        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_LAST_PACKAGE_LOADED))
+        assertEquals(
+            Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            preferenceValues[Constants.PREF_DIAG_LAST_PACKAGE_LOADED],
+        )
 
         assertTrue(
             DiagnosticsStore.applyDiagnostics(
@@ -2263,7 +2267,7 @@ class DiagnosticsStoreTest {
         assertEquals(true, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
         assertEquals(4321, preferenceValues[Constants.PREF_DIAG_ACTIVE_BINDER_PID])
         assertEquals(
-            "the verified replay seeds lifecycle observations the token-only start omitted",
+            "the verified replay keeps lifecycle observations available for the same run",
             startedAt,
             preferenceValues[Constants.PREF_DIAG_MODULE_LOADED_AT],
         )

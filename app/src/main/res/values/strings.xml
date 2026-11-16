@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">unknown (prior-boot VERIFY from an OS-verified origin; historical, not current)</string>
     <string name="diagnostics_verify_boot_unknown">unknown (OS-verified origin, but current boot could not be confirmed)</string>
     <string name="diagnostics_verify_no_record_prior_boot">Historical prior-boot run (OS-verified origin): no VERIFY record was recorded for that run; this says nothing about the current run.</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">Historical prior-boot token-authenticated fallback run (sender identity not OS-verified): no VERIFY record was recorded for that run; this says nothing about the current run.</string>
     <string name="diagnostics_verify_no_record_boot_unknown">OS-verified run, but its boot epoch is unavailable or cannot be matched: no VERIFY record can be classified as current.</string>
     <string name="diagnostics_verify_no_verified_run">No VERIFY record can be linked to an OS-verified run; current-run status is unknown.</string>
     <string name="diagnostics_verify_no_run_identity">No VERIFY record or OS-verified run identity is available; current-run status is unknown.</string>
@@ -235,4 +236,10 @@
     <string name="diagnostics_unverified_telemetry">UNVERIFIED TELEMETRY (origin/package not OS-verified): %1$s</string>
     <string name="diagnostics_process_pid">OS-observed sender PID (Binder when available): %1$s</string>
     <string name="diagnostics_registration_caveat">All registrations do not prove Google Photos called a target API. An observed entry only proves an interceptor was entered, not that it ran for Google Photos or returned a spoofed value.</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">token-authenticated fallback (sender identity not OS-verified): %1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified): %1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">No VERIFY record has been recorded yet for this token-authenticated fallback run. Sender identity is not OS-verified.</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">Package loaded, but package-ready and VERIFY were not recorded yet for this token-authenticated fallback run. Sender identity is not OS-verified.</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">No VERIFY record can be established as current for this token-authenticated fallback run because the run boot is unknown. Sender identity is not OS-verified.</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">unavailable (token-authenticated fallback)</string>
 </resources>
