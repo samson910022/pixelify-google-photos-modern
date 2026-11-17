@@ -1,12 +1,14 @@
 # Changelog
 
-## [1.5.1] - 2026-11-17
+## [1.5.1] - 2026-11-18
 
 ### Fixed
 
 - **Diagnostics token sync resilience**: Added bounded token-only convergence retry while module settings are ready and reporter-side token lookup retries to reduce `Diagnostics IPC token unavailable` / `report not dispatched` failures caused by unsynchronized remote tokens.
-- **Truthful fallback diagnostics on provider-invisible paths**: Token-authenticated fallback telemetry is now recorded and presented as diagnosable when the diagnostics provider is unavailable (for example SDK < 34 cases), without claiming OS-verified sender identity/PID or current-run proof.
-- **Epoch-unknown VERIFY handling**: Diagnostics store/reporting now accepts epoch-unknown run/VERIFY payloads without invalid-schema rejection or fabricated/bound boot epochs, while keeping currentness labeling truthful.
+- **Truthful fallback diagnostics on provider-invisible paths**: Token-authenticated fallback telemetry is now recorded and presented as diagnosable when the diagnostics provider is unavailable (for example SDK < 34 cases), without claiming OS-verified sender identity/PID or current-run proof. Milestone and VERIFY-card text now disclaims token-authenticated fallback once, consistently across English and all translated UIs (no double prefix, no OS-verified-origin wording for token runs).
+- **Epoch-unknown VERIFY handling**: VERIFY payloads without a boot epoch are accepted when the epoch is unavailable instead of failing schema validation, without fabricating or binding boot epochs, while keeping currentness labeling truthful; epoch-unknown run-bound events are accepted likewise when the boot epoch is unreadable but the numeric boot counter is readable (blank payload and stored epochs, exact run identity, and no contradicting counter); when the OS boot clock is unusable altogether, such events fail closed (rejected).
+- **Boot identity fail-closed**: the kernel boot-time (`/proc/stat` `btime`) fallback now rejects a zero `btime`, so a dead-RTC device cannot present prior-boot runs as current-boot evidence; affected devices report unknown currentness instead of matching across reboots.
+- **Boot-boundary epoch binding**: an exact replay of an epoch-unknown run now binds the blank stored epoch one way once the OS boot identity becomes readable, instead of wiping prior VERIFY/sequence state; an epoch-null start replay is idempotent for the same run identity.
 - **Diagnostics regression coverage**: Expanded unit coverage for token convergence/retry, fallback provenance and labeling, and epoch-unknown schema/run-matching behavior.
 
 ### Changed

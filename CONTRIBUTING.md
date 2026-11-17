@@ -192,6 +192,7 @@ When preparing a release, maintainers must update all applicable version surface
 - `app/build.gradle.kts`
 - `update_info.json`
 - `CHANGELOG.md`
+- `scripts/check-publication-readiness.py`
 - user-visible release notes in Android string resources, when used
 
 The app's stable signing identity and maintainer-only release procedure are documented in [docs/RELEASE_SIGNING.md](docs/RELEASE_SIGNING.md). Contributors do not need the release key. Xposed mirror preparation is documented separately in [docs/XPOSED_REPOSITORY.md](docs/XPOSED_REPOSITORY.md). A future public launch must also complete the separate [maintainer publication checklist](docs/PUBLICATION_CHECKLIST.md).
