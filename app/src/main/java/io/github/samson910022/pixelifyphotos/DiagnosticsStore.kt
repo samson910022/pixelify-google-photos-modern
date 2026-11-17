@@ -526,7 +526,7 @@ object DiagnosticsStore {
     /**
      * True iff a valid non-negative stored boot count and a known clock boot count differ.
      * An absent stored count or an absent clock count carries no contradiction signal.
-     * A blank stored epoch means the persisted count (if any) was written at the same acceptance; when the stored epoch is non-blank the epoch comparison stays decisive, but this signal is still reported so callers can log or cross-check it.
+     * A blank stored epoch means the persisted count (if any) was written at the same acceptance; when the stored epoch is non-blank the epoch comparison stays decisive; callers may log or cross-check the signal.
      */
     private fun bootCountContradicts(prefs: PreferenceReader, runClock: RunClock): Boolean {
         val storedBootCount = prefs.getInt(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT, -1)
@@ -636,7 +636,7 @@ object DiagnosticsStore {
         // rejecting it would drop the batch even though nothing is replaced. In
         // production this branch is reachable only when the boot counter is readable
         // (currentRunClock rejects the start when both the counter and the epoch are
-        // missing); the runClock.bootCount != null guard is test-seam belt-and-braces.
+        // missing); the runClock.bootCount != null guard is test-seam belt-and-braces (the payload gate at the top of this function rejects an unavailable counter in production).
         if (currentBootEpoch == null) {
             val storedRunId = prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_ID, null)
             if (!storedRunId.isNullOrBlank()) {

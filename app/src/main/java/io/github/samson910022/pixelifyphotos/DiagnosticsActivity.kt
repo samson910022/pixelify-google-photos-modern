@@ -539,8 +539,6 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         }
         val trustedRunIdentity = DiagnosticsCollector.hasVerifiedRunIdentity(state)
         val verifiedOrigin = DiagnosticsCollector.hasVerifiedOriginIdentity(state)
-        val priorBoot = DiagnosticsCollector.hasStaleBootRunIdentity(state) ||
-            DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state)
         val tokenAuthenticatedRun = DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state)
         val tokenCurrentRun = DiagnosticsCollector.hasTokenAuthenticatedCurrentRun(state)
         val legacyUnverifiedVerify = !verifiedOrigin && !tokenAuthenticatedRun

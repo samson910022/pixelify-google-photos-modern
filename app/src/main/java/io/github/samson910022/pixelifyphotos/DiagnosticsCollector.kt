@@ -520,8 +520,6 @@ object DiagnosticsCollector {
         val systemProperties: RegistrationAssessment,
         val featureInvocation: InvocationStatus,
         val systemPropertiesInvocation: InvocationStatus,
-        val originVerified: Boolean,
-        val tokenAuthenticatedRun: Boolean = false,
     )
 
     private const val REGISTRATION_FRESHNESS_MS = 24L * 60L * 60L * 1000L
@@ -558,7 +556,6 @@ object DiagnosticsCollector {
 
     fun registrationModel(state: HookState, now: Long): HookRegistrationModel {
         val verifiedCurrentRun = state.diagnosticsAvailable && hasVerifiedRunIdentity(state)
-        val tokenAuthenticated = state.diagnosticsAvailable && hasTokenAuthenticatedRunIdentity(state)
         val tokenCurrentRun = state.diagnosticsAvailable && hasTokenAuthenticatedCurrentRun(state)
         val tokenPriorBootRun = state.diagnosticsAvailable && hasTokenAuthenticatedPriorBootRun(state)
         val tokenCurrentnessUnknown = state.diagnosticsAvailable && hasTokenAuthenticatedUnknownBootRun(state)
@@ -640,8 +637,6 @@ object DiagnosticsCollector {
                 currentnessUnknown || tokenCurrentnessUnknown -> InvocationStatus.CURRENTNESS_UNKNOWN
                 else -> InvocationStatus.UNKNOWN
             },
-            originVerified = state.diagnosticsAvailable && hasVerifiedOriginIdentity(state),
-            tokenAuthenticatedRun = tokenAuthenticated,
         )
     }
 
@@ -845,7 +840,6 @@ object DiagnosticsCollector {
         val tokenPriorBootRun = hasTokenAuthenticatedPriorBootRun(state)
         val hasLegacyUnverifiedRun = state.diagnosticsAvailable && (state.anyRecorded || state.verifyAt != null) &&
             !verifiedOriginIdentity && !tokenAuthenticatedRun
-        val priorBootVerify = hasStaleBootRunIdentity(state) || tokenPriorBootRun
         val bootUnknownVerify = (verifiedOriginIdentity && !verifiedRunIdentity && !hasStaleBootRunIdentity(state)) ||
             (tokenAuthenticatedRun && !tokenCurrentRun && !tokenPriorBootRun)
         val verifyLabel = when {
