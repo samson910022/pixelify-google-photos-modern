@@ -179,7 +179,14 @@ object DiagnosticsStore {
     internal var testRunClock: RunClock? = null
 
     private fun currentRunClock(context: Context): RunClock? {
-        testRunClock?.let { return it }
+        // The test seam must fail closed exactly like production: an unusable clock
+        // (fully unreadable, or a non-positive nanos reading) yields no evidence.
+        testRunClock?.let {
+            if (it.elapsedRealtimeNanos > 0L && (it.bootEpochHash != null || it.bootCount != null)) {
+                return it
+            }
+            return null
+        }
         return runCatching {
             val bootCount = runCatching {
                 Settings.Global.getInt(
@@ -517,6 +524,37 @@ object DiagnosticsStore {
     }
 
     /**
+     * True iff a valid non-negative stored boot count and a known clock boot count differ.
+     * An absent stored count or an absent clock count carries no contradiction signal.
+     * A blank stored epoch means the persisted count (if any) was written at the same acceptance; when the stored epoch is non-blank the epoch comparison stays decisive, but this signal is still reported so callers can log or cross-check it.
+     */
+    private fun bootCountContradicts(prefs: PreferenceReader, runClock: RunClock): Boolean {
+        val storedBootCount = prefs.getInt(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT, -1)
+        return storedBootCount >= 0 && runClock.bootCount != null &&
+            storedBootCount != runClock.bootCount
+    }
+
+    /**
+     * Exact re-send of the persisted active run identity: same origin, run id, start time,
+     * and generation. This is the identity proof demanded of idempotent start replays; it
+     * says nothing about boot epochs on its own.
+     */
+    private fun exactRunIdentityMatches(
+        prefs: PreferenceReader,
+        origin: String?,
+        runId: String?,
+        startedAt: Long,
+        generation: Long,
+    ): Boolean {
+        return origin == prefs.getString(Constants.PREF_DIAG_ACTIVE_PACKAGE, null) &&
+            runId == prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_ID, null) &&
+            startedAt > 0L &&
+            startedAt == prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L) &&
+            generation > 0L &&
+            generation == prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION, 0L)
+    }
+
+    /**
      * Returns the OS boot epoch to bind when the payload belongs to the persisted run and
      * this boot's identity is known, or an empty string when the run matches but the boot
      * identity remains unknowable and must stay explicit. Returns null when the payload does
@@ -527,13 +565,24 @@ object DiagnosticsStore {
         prefs: PreferenceReader,
         extras: DiagnosticPayload?,
     ): String? {
-        val currentBootEpoch = currentRunClock(context)?.bootEpochHash
+        // Without a usable OS boot clock there is no evidence to match against, so every
+        // epoch-unknown event fails closed (covers every remote run-bound write).
+        val runClock = currentRunClock(context) ?: return null
+        val currentBootEpoch = runClock.bootEpochHash
+        val storedBootEpoch = prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, null)
         val payloadBootEpoch = extras?.getString(Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_EPOCH)
         if (currentBootEpoch == null) {
             if (!payloadBootEpoch.isNullOrBlank()) return null
+            if (bootCountContradicts(prefs, runClock)) return null
             return if (runIdentityMatches(prefs, extras, null)) "" else null
         }
         if (payloadBootEpoch != currentBootEpoch) return null
+        // A blank stored epoch must not be one-way-bound across a reboot on a contradictory
+        // counter; a stored non-blank epoch keeps the epoch comparison as the decisive check.
+        if (bootCountContradicts(prefs, runClock)) {
+            if (storedBootEpoch.isNullOrBlank()) return null
+            Log.w(TAG, "Diagnostics boot counter moved across reboot; keeping the bound epoch decisive")
+        }
         return if (runIdentityMatches(prefs, extras, currentBootEpoch)) currentBootEpoch else null
     }
 
@@ -546,6 +595,7 @@ object DiagnosticsStore {
         if (currentBootEpoch.isNullOrBlank()) return
         if (prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, null).isNullOrBlank()) {
             editor.putString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, currentBootEpoch)
+            Log.d(TAG, "Staged one-way bind of persisted boot epoch")
         }
     }
 
@@ -599,7 +649,6 @@ object DiagnosticsStore {
                     startedAt = startedAt,
                     generation = generation,
                     runClock = runClock,
-                    storedRunId = storedRunId,
                     verifiedOrigin = verifiedOrigin,
                     callingPid = callingPid,
                     tokenOnlyBroadcastAllowed = tokenOnlyBroadcastAllowed,
@@ -632,6 +681,36 @@ object DiagnosticsStore {
             Log.w(TAG, "Rejecting unverified run start to preserve active verified diagnostics")
             return false
         }
+        // A run first accepted while the OS boot identity was unreadable persists with a
+        // blank stored epoch. Once the identity becomes readable in the same boot, an exact
+        // replay of that run must not fall through to the replacement branch below (that
+        // would wipe event sequences and VERIFY evidence for an identical-identity resend).
+        // Bind the blank epoch one way and treat the replay as idempotent instead.
+        // A token-authenticated exact replay also binds the epoch one way, consistent
+        // with the event paths.
+        // Replacement and sequence wipe are reserved for genuine successor runs.
+        if (currentBootEpoch != null && !activeId.isNullOrBlank() &&
+            activeBootEpoch.isNullOrBlank() &&
+            exactRunIdentityMatches(prefs, origin, runId, startedAt, generation)
+        ) {
+            if (bootCountContradicts(prefs, runClock)) {
+                // Identity match across a contradictory counter is forgery-shaped: a
+                // prior-boot run must be neither resurrected nor replaced.
+                Log.w(TAG, "Rejecting exact-identity replay across a contradictory boot counter")
+                return false
+            }
+            bindActiveRunEpoch(prefs, editor, currentBootEpoch)
+            acceptReplayedRun(
+                prefs = prefs,
+                editor = editor,
+                extras = extras,
+                incomingOriginVerified = incomingOriginVerified,
+                activeOriginVerified = activeOriginVerified,
+                callingPid = callingPid,
+                tokenOnlyBroadcastAllowed = tokenOnlyBroadcastAllowed,
+            )
+            return true
+        }
         // The current OS epoch is authoritative before any numeric ordering.
         // A different prior epoch can be replaced even when BOOT_COUNT regresses.
         val incomingIsOlder = sameEpoch && activeGeneration > generation
@@ -642,10 +721,7 @@ object DiagnosticsStore {
         // A same-run replay is handled below; these predicates describe a different
         // (older or conflicting) run and must never upgrade the active run.
         if (incomingIsOlder || sameGenerationDifferentRun) return false
-        if (sameEpoch && activeGeneration == generation &&
-            activeId == runId && activeOrigin == origin &&
-            prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L) == startedAt
-        ) {
+        if (sameEpoch && exactRunIdentityMatches(prefs, origin, runId, startedAt, generation)) {
             // Idempotent start replay. A start first accepted through the token-only
             // fallback can later be re-sent by the OS-verified Provider with the exact
             // same run identity; that evidence must upgrade the run one way. An
@@ -708,7 +784,6 @@ object DiagnosticsStore {
         startedAt: Long,
         generation: Long,
         runClock: RunClock,
-        storedRunId: String,
         verifiedOrigin: String?,
         callingPid: Int?,
         tokenOnlyBroadcastAllowed: Boolean,
@@ -723,19 +798,12 @@ object DiagnosticsStore {
         }
         // A missing or negative stored count carries no contradiction signal; only a
         // valid non-negative stored count that differs from a known clock count does.
-        val storedBootCount = prefs.getInt(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT, -1)
-        if (storedBootCount >= 0 && runClock.bootCount != null &&
-            storedBootCount != runClock.bootCount
-        ) {
+        if (bootCountContradicts(prefs, runClock)) {
             return false
         }
-        val storedStartedAt = prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L)
-        val storedGeneration = prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION, 0L)
-        val identityMatches = origin == prefs.getString(Constants.PREF_DIAG_ACTIVE_PACKAGE, null) &&
-            runId == storedRunId &&
-            startedAt > 0L && startedAt == storedStartedAt &&
-            generation > 0L && generation == storedGeneration
-        if (!identityMatches) return false
+        if (!exactRunIdentityMatches(prefs, origin, runId, startedAt, generation)) {
+            return false
+        }
         val activeOriginVerified = prefs.getBoolean(Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED, false)
         val incomingOriginVerified = verifiedOrigin == origin
         if (activeOriginVerified && !incomingOriginVerified) {
