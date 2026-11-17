@@ -19,7 +19,7 @@
     <string name="update_available">有可用的应用更新</string>
 
     <!-- 更新日志 -->
-    <string name="version_head">版本 1.5.0</string>
+    <string name="version_head">版本 1.5.1</string>
     <string name="version_desc">新增 Pixel 11 系列设备配置文件、相册备份资格与画质指南、强化真实挂载诊断与遥测，以及固化 Java TLS 安全防护。</string>
     <string name="changelog">更新日志</string>
 
