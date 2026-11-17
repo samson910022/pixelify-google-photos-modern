@@ -548,15 +548,22 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             DiagnosticsCollector.hasStaleBootRunIdentity(state) ->
                 getString(R.string.diagnostics_verify_prior_boot)
             DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state) ->
-                getString(R.string.diagnostics_verify_prior_boot)
+                getString(R.string.diagnostics_verify_prior_boot_token)
             verifiedOrigin && !trustedRunIdentity ->
                 getString(R.string.diagnostics_verify_boot_unknown)
             tokenAuthenticatedRun && !tokenCurrentRun ->
-                getString(R.string.diagnostics_verify_boot_unknown)
+                getString(R.string.diagnostics_verify_boot_unknown_token)
             legacyUnverifiedVerify ->
                 getString(R.string.diagnostics_verify_unverified)
             state.verifyAt > System.currentTimeMillis() ->
-                getString(R.string.diagnostics_verify_stale)
+                if (tokenCurrentRun) {
+                    getString(
+                        R.string.diagnostics_token_authenticated_fallback_telemetry,
+                        getString(R.string.diagnostics_verify_stale),
+                    )
+                } else {
+                    getString(R.string.diagnostics_verify_stale)
+                }
             state.verifyOk == true -> if (tokenCurrentRun) {
                 getString(R.string.diagnostics_token_authenticated_fallback_telemetry, getString(R.string.diagnostics_verify_ok))
             } else {
@@ -576,7 +583,11 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
                     state.verifyFailed.joinToString().ifEmpty { getString(R.string.diagnostics_unknown) }
                 )
             }
-            else -> getString(R.string.diagnostics_unknown)
+            else -> if (tokenCurrentRun) {
+                getString(R.string.diagnostics_token_authenticated_fallback_telemetry, getString(R.string.diagnostics_unknown))
+            } else {
+                getString(R.string.diagnostics_unknown)
+            }
         }
         fun presentValue(value: String?): String = when {
             legacyUnverifiedVerify -> getString(
@@ -615,7 +626,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
                 appendLine(getString(
                     R.string.diagnostics_token_authenticated_fallback_telemetry,
                     getString(
-                        R.string.diagnostics_prior_boot_origin,
+                        R.string.diagnostics_prior_boot_origin_token,
                         state.activePackage ?: getString(R.string.diagnostics_unknown),
                     ),
                 ))
@@ -624,7 +635,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             } else if (tokenAuthenticatedRun && !tokenCurrentRun) {
                 appendLine(getString(
                     R.string.diagnostics_token_authenticated_fallback_telemetry,
-                    getString(R.string.diagnostics_boot_unknown_origin),
+                    getString(R.string.diagnostics_boot_unknown_origin_token),
                 ))
             } else if (legacyUnverifiedVerify) {
                 appendLine(
@@ -757,7 +768,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
                         getString(
                             R.string.diagnostics_token_authenticated_fallback_telemetry,
                             getString(
-                                R.string.diagnostics_origin_prior_boot,
+                                R.string.diagnostics_origin_prior_boot_token,
                                 state.activePackage ?: getString(R.string.diagnostics_unknown),
                             ),
                         )
@@ -765,7 +776,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
                         getString(
                             R.string.diagnostics_token_authenticated_fallback_telemetry,
                             getString(
-                                R.string.diagnostics_origin_boot_unknown,
+                                R.string.diagnostics_origin_boot_unknown_token,
                                 state.activePackage ?: getString(R.string.diagnostics_unknown),
                             ),
                         )
@@ -848,14 +859,30 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         MilestoneKind.NO_RECORD -> getString(
             when {
                 signal.priorBootRun -> R.string.diagnostics_milestone_no_record_prior_boot
-                signal.currentnessUnknown -> R.string.diagnostics_milestone_no_record_boot_unknown
+                signal.currentnessUnknown -> if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_no_record_boot_unknown_token
+                } else {
+                    R.string.diagnostics_milestone_no_record_boot_unknown
+                }
                 else -> R.string.diagnostics_milestone_no_record
             },
         )
         MilestoneKind.DIAGNOSTICS_UNAVAILABLE -> getString(R.string.diagnostics_data_unavailable)
         MilestoneKind.DIAGNOSTICS_TRANSPORT_UNAVAILABLE -> getString(R.string.diagnostics_data_token_unavailable)
-        MilestoneKind.PRIOR_BOOT_RUN -> getString(R.string.diagnostics_milestone_prior_boot)
-        MilestoneKind.BOOT_UNKNOWN_RUN -> getString(R.string.diagnostics_milestone_boot_unknown)
+        MilestoneKind.PRIOR_BOOT_RUN -> getString(
+            if (signal.tokenAuthenticated) {
+                R.string.diagnostics_milestone_prior_boot_token
+            } else {
+                R.string.diagnostics_milestone_prior_boot
+            },
+        )
+        MilestoneKind.BOOT_UNKNOWN_RUN -> getString(
+            if (signal.tokenAuthenticated) {
+                R.string.diagnostics_milestone_boot_unknown_token
+            } else {
+                R.string.diagnostics_milestone_boot_unknown
+            },
+        )
         MilestoneKind.MODULE_LOADED ->
             currentnessUnknownMilestone(
                 signal,
@@ -864,7 +891,11 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         MilestoneKind.NO_PACKAGE_LOAD_RECORDED -> getString(
             when {
                 signal.priorBootRun -> R.string.diagnostics_milestone_no_package_prior_boot
-                signal.currentnessUnknown -> R.string.diagnostics_milestone_no_package_boot_unknown
+                signal.currentnessUnknown -> if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_no_package_boot_unknown_token
+                } else {
+                    R.string.diagnostics_milestone_no_package_boot_unknown
+                }
                 else -> R.string.diagnostics_milestone_no_package
             },
         )
@@ -906,9 +937,21 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         MilestoneKind.VERIFY_UNVERIFIED ->
             getString(R.string.diagnostics_milestone_verify_unverified)
         MilestoneKind.VERIFY_PRIOR_BOOT ->
-            getString(R.string.diagnostics_milestone_verify_prior_boot)
+            getString(
+                if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_verify_prior_boot_token
+                } else {
+                    R.string.diagnostics_milestone_verify_prior_boot
+                },
+            )
         MilestoneKind.VERIFY_BOOT_UNKNOWN ->
-            getString(R.string.diagnostics_milestone_verify_boot_unknown)
+            getString(
+                if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_verify_boot_unknown_token
+                } else {
+                    R.string.diagnostics_milestone_verify_boot_unknown
+                },
+            )
         MilestoneKind.VERIFY_UNEXPECTED -> if (signal.clockAnomaly) {
             getString(R.string.diagnostics_milestone_verify_stale, formatTs(signal.timestamp))
         } else
@@ -921,9 +964,7 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             },
         )
         }
-        return if (signal.tokenAuthenticated && signal.kind != MilestoneKind.VERIFY_UNVERIFIED) {
-            getString(R.string.diagnostics_token_authenticated_fallback_telemetry, base)
-        } else base
+        return base
     }
 
     private fun currentnessUnknownMilestone(signal: MilestoneSignal, message: String): String =

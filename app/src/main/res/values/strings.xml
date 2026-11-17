@@ -227,7 +227,7 @@
     <string name="diagnostics_sysprops_invocation">SystemProperties interceptor entered: %1$s</string>
     <string name="diagnostics_invocation_observed">observed at least once (%1$s)</string>
     <string name="diagnostics_invocation_unknown">unknown (no trustworthy run/origin identity)</string>
-    <string name="diagnostics_invocation_currentness_unknown">unknown (OS-verified origin; run currentness unverified)</string>
+    <string name="diagnostics_invocation_currentness_unknown">unknown (run currentness unverified)</string>
     <string name="diagnostics_invocation_not_observed">not observed (may not have been called; absence is not proof)</string>
     <string name="diagnostics_invocation_stale">stale observation (%1$s)</string>
     <string name="diagnostics_registration_origin">Registration origin: %1$s (run %2$s; started %3$s)</string>
@@ -242,4 +242,16 @@
     <string name="diagnostics_verify_token_authenticated_no_package_ready">Package loaded, but package-ready and VERIFY were not recorded yet for this token-authenticated fallback run. Sender identity is not OS-verified.</string>
     <string name="diagnostics_verify_token_authenticated_boot_unknown">No VERIFY record can be established as current for this token-authenticated fallback run because the run boot is unknown. Sender identity is not OS-verified.</string>
     <string name="diagnostics_pid_token_authenticated_fallback">unavailable (token-authenticated fallback)</string>
+    <string name="diagnostics_milestone_prior_boot_token">Historical/prior-boot diagnostics from a token-authenticated fallback run (sender identity not OS-verified); these records are not current evidence.</string>
+    <string name="diagnostics_milestone_boot_unknown_token">Token-authenticated fallback run (sender identity not OS-verified); the run\'s boot could not be matched to the current boot. Lifecycle and hook data below have unverified currentness and are not current OS-verified evidence.</string>
+    <string name="diagnostics_milestone_no_record_boot_unknown_token">No lifecycle milestones were recorded for a token-authenticated run whose current boot could not be established. This is historical/unknown data with unverified sender identity, not current OS-verified evidence.</string>
+    <string name="diagnostics_milestone_no_package_boot_unknown_token">No package-load callback was recorded for a run whose currentness is unknown. Missing data does not describe the current run or establish why the record is missing.</string>
+    <string name="diagnostics_milestone_verify_prior_boot_token">Prior-boot VERIFY from a token-authenticated fallback run (sender identity not OS-verified); these records are not current evidence.</string>
+    <string name="diagnostics_milestone_verify_boot_unknown_token">VERIFY is from a token-authenticated fallback run (sender identity not OS-verified), but the run\'s boot could not be matched to the current boot; result is unknown.</string>
+    <string name="diagnostics_prior_boot_origin_token">Historical/prior-boot origin: %1$s (not current evidence)</string>
+    <string name="diagnostics_boot_unknown_origin_token">Origin; current boot could not be confirmed.</string>
+    <string name="diagnostics_origin_prior_boot_token">historical/prior-boot origin: %1$s</string>
+    <string name="diagnostics_origin_boot_unknown_token">origin; current boot could not be confirmed: %1$s</string>
+    <string name="diagnostics_verify_prior_boot_token">unknown (prior-boot VERIFY from a token-authenticated fallback run; historical, not current)</string>
+    <string name="diagnostics_verify_boot_unknown_token">unknown (token-authenticated fallback origin; current boot could not be confirmed)</string>
 </resources>

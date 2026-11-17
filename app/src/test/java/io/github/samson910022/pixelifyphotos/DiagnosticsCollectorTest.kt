@@ -487,6 +487,26 @@ class DiagnosticsCollectorTest {
     }
 
     @Test
+    fun `token-authenticated run with no recorded data prefixes every milestone line`() {
+        val state = HookState(
+            diagnosticsAvailable = true,
+            activePackage = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            activeRunId = "token-empty-report-run",
+            activeRunStartedAt = 1_000L,
+            activeOriginVerified = false,
+            activeRunBootEpoch = null,
+            currentBootEpoch = null,
+        )
+
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state))
+        val result = DiagnosticsCollector.interpretMilestones(state, now = 2_000L)
+        assertTrue(result.isNotEmpty())
+        result.forEach {
+            assertTrue("every line must carry the token disclaimer: it=$it", it.startsWith("TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified):"))
+        }
+    }
+
+    @Test
     fun `module loaded with no package callback is evidence bounded`() {
         val lines = DiagnosticsCollector.interpretMilestones(HookState(moduleLoadedAt = 1L))
         assertEquals(2, lines.size)

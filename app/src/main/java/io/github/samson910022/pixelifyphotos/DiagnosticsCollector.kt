@@ -326,7 +326,8 @@ object DiagnosticsCollector {
         now: Long = System.currentTimeMillis(),
     ): List<String> {
         val lines = milestoneSignals(state, now).map { englishMilestone(it) }
-        if (!state.diagnosticsAvailable || (!state.anyRecorded && state.verifyAt == null)) return lines
+        if (!state.diagnosticsAvailable) return lines
+        if (!hasAcceptedRunIdentity(state) && !state.anyRecorded && state.verifyAt == null) return lines
         return when {
             hasTokenAuthenticatedRunIdentity(state) ->
                 lines.map { "TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified): $it" }
