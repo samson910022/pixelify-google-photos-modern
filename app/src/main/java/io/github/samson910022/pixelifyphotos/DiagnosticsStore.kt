@@ -581,10 +581,31 @@ object DiagnosticsStore {
         }
 
         // Without a unique OS epoch a start is safe only when it cannot replace
-        // existing data. Subsequent run-bound events also fail closed as unknown.
-        if (currentBootEpoch == null &&
-            !prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_ID, null).isNullOrBlank()
-        ) return false
+        // existing data. A start that exactly replays the persisted run is the one
+        // safe exception: callers resend the start with every dependent batch, and
+        // rejecting it would drop the batch even though nothing is replaced. In
+        // production this branch is reachable only when the boot counter is readable
+        // (currentRunClock rejects the start when both the counter and the epoch are
+        // missing); the runClock.bootCount != null guard is test-seam belt-and-braces.
+        if (currentBootEpoch == null) {
+            val storedRunId = prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_ID, null)
+            if (!storedRunId.isNullOrBlank()) {
+                return acceptEpochUnknownReplay(
+                    prefs = prefs,
+                    editor = editor,
+                    extras = extras,
+                    origin = origin,
+                    runId = runId,
+                    startedAt = startedAt,
+                    generation = generation,
+                    runClock = runClock,
+                    storedRunId = storedRunId,
+                    verifiedOrigin = verifiedOrigin,
+                    callingPid = callingPid,
+                    tokenOnlyBroadcastAllowed = tokenOnlyBroadcastAllowed,
+                )
+            }
+        }
 
         val activeGeneration = prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION, 0L)
         val activeBootEpoch = prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, null)
@@ -630,14 +651,15 @@ object DiagnosticsStore {
             // same run identity; that evidence must upgrade the run one way. An
             // unverified replay must never downgrade an already verified run (that is
             // rejected above), and event sequencing is left untouched.
-            if (incomingOriginVerified) {
-                markActiveRunVerified(prefs, editor, activeOriginVerified, callingPid)
-            }
-            // Keep token-authenticated fallback runs diagnosable on replay and ensure a
-            // verified replay still has start lifecycle observations available.
-            if (incomingOriginVerified || tokenOnlyBroadcastAllowed) {
-                seedStartDiagnostics(editor, extras)
-            }
+            acceptReplayedRun(
+                prefs = prefs,
+                editor = editor,
+                extras = extras,
+                incomingOriginVerified = incomingOriginVerified,
+                activeOriginVerified = activeOriginVerified,
+                callingPid = callingPid,
+                tokenOnlyBroadcastAllowed = tokenOnlyBroadcastAllowed,
+            )
             return true
         }
 
@@ -665,6 +687,97 @@ object DiagnosticsStore {
             seedStartDiagnostics(editor, extras)
         }
         return true
+    }
+
+    /**
+     * Decides whether an epoch-less start may be accepted as an idempotent replay of
+     * the persisted run while the boot identity is unreadable. Acceptance is strictly
+     * limited to an exact re-send of the active run: a different or successor run can
+     * never replace protected state, and a known boot-count contradiction rejects even
+     * an exact replay (a payload that matches the clock while the stored count does
+     * not would otherwise smuggle a pre-reboot run into this boot). A non-blank stored
+     * boot epoch fails closed as well: a run once bound to a readable epoch cannot be
+     * re-proven while the identity is unreadable.
+     */
+    private fun acceptEpochUnknownReplay(
+        prefs: PreferenceReader,
+        editor: SharedPreferences.Editor,
+        extras: DiagnosticPayload,
+        origin: String,
+        runId: String,
+        startedAt: Long,
+        generation: Long,
+        runClock: RunClock,
+        storedRunId: String,
+        verifiedOrigin: String?,
+        callingPid: Int?,
+        tokenOnlyBroadcastAllowed: Boolean,
+    ): Boolean {
+        // Mirror runIdentityMatches: epoch-null handling requires a blank stored epoch.
+        // A run that started with a readable epoch and the epoch later became unreadable
+        // cannot be proven anything about in this boot; accepting the standalone replay
+        // would asymmetrically commit the one-way upgrade while the dependent batch
+        // event is rejected.
+        if (!prefs.getString(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH, null).isNullOrBlank()) {
+            return false
+        }
+        // A missing or negative stored count carries no contradiction signal; only a
+        // valid non-negative stored count that differs from a known clock count does.
+        val storedBootCount = prefs.getInt(Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT, -1)
+        if (storedBootCount >= 0 && runClock.bootCount != null &&
+            storedBootCount != runClock.bootCount
+        ) {
+            return false
+        }
+        val storedStartedAt = prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_STARTED_AT, 0L)
+        val storedGeneration = prefs.getLong(Constants.PREF_DIAG_ACTIVE_RUN_GENERATION, 0L)
+        val identityMatches = origin == prefs.getString(Constants.PREF_DIAG_ACTIVE_PACKAGE, null) &&
+            runId == storedRunId &&
+            startedAt > 0L && startedAt == storedStartedAt &&
+            generation > 0L && generation == storedGeneration
+        if (!identityMatches) return false
+        val activeOriginVerified = prefs.getBoolean(Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED, false)
+        val incomingOriginVerified = verifiedOrigin == origin
+        if (activeOriginVerified && !incomingOriginVerified) {
+            // Mirror the verified-protection rejection used for known epochs: an
+            // unverified replay must not touch a verified run.
+            Log.w(TAG, "Rejecting unverified run start to preserve active verified diagnostics")
+            return false
+        }
+        acceptReplayedRun(
+            prefs = prefs,
+            editor = editor,
+            extras = extras,
+            incomingOriginVerified = incomingOriginVerified,
+            activeOriginVerified = activeOriginVerified,
+            callingPid = callingPid,
+            tokenOnlyBroadcastAllowed = tokenOnlyBroadcastAllowed,
+        )
+        return true
+    }
+
+    /**
+     * Applies the shared one-way semantics for an idempotent replay of the active
+     * run: OS-verified evidence may upgrade the run one way, never downgrade it.
+     * Replays never touch event sequencing or replace run state.
+     */
+    private fun acceptReplayedRun(
+        prefs: PreferenceReader,
+        editor: SharedPreferences.Editor,
+        extras: DiagnosticPayload,
+        incomingOriginVerified: Boolean,
+        activeOriginVerified: Boolean,
+        callingPid: Int?,
+        tokenOnlyBroadcastAllowed: Boolean,
+    ) {
+        // Keep token-authenticated fallback runs diagnosable on replay and ensure a
+        // verified replay still has start lifecycle observations available.
+        if (incomingOriginVerified) {
+            markActiveRunVerified(prefs, editor, activeOriginVerified, callingPid)
+        }
+        if (incomingOriginVerified || tokenOnlyBroadcastAllowed) {
+            seedStartDiagnostics(editor, extras)
+        }
     }
 
     /** Seeds the start-only lifecycle observations shared by new and upgraded runs. */
