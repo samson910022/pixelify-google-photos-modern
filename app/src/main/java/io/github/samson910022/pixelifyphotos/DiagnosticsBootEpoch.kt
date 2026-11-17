@@ -25,7 +25,8 @@ internal object DiagnosticsBootEpoch {
      * diagnostics on a supported Android release. It is best-effort: a device whose
      * kernel reports an unchanging boot time (for example a dead RTC reporting 0 every
      * boot) cannot be distinguished by this fallback, and a wall-clock step may cause
-     * a run to appear as prior-boot.
+     * a run to appear as prior-boot. A zero or non-positive `btime` is treated as
+     * unavailable (dead-RTC fail-closed), so it never yields a constant epoch hash.
      */
     fun currentHash(): String? = bootIdHash() ?: procStatBootTimeHash()
 
@@ -39,12 +40,17 @@ internal object DiagnosticsBootEpoch {
         }
     }.getOrNull()
 
-    /** Extracts the validated `btime` value from `/proc/stat`; exposed for deterministic tests. */
+    /**
+     * Extracts the validated `btime` value from `/proc/stat`; exposed for deterministic tests.
+     * A zero or non-positive `btime` is treated as unavailable (dead-RTC fail-closed),
+     * so only a strictly positive value is returned.
+     */
     internal fun parseBootTimeLine(lines: Sequence<String>): String? =
         lines.firstOrNull { it.startsWith("btime ") }
             ?.removePrefix("btime ")
             ?.trim()
             ?.takeIf { bootTimePattern.matches(it) }
+            ?.takeIf { raw -> runCatching { raw.toLong() }.getOrNull()?.let { it > 0L } == true }
 
     internal fun hashBootId(bootId: String): String? {
         val normalized = bootId.trim()
