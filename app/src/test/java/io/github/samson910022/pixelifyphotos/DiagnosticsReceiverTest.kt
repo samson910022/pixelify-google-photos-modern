@@ -878,6 +878,84 @@ class DiagnosticsReceiverTest {
         verify(mockEditor, times(1)).apply()
     }
 
+    @Test
+    fun `receiver-level epoch-unknown batch persists and discards correctly`() {
+        // The OS boot identity is unreadable on this boot; the payload must therefore
+        // omit the epoch and carry the current numeric counter. The receiver's bundle()
+        // helper auto-injects the test epoch whenever the counter is present, so build
+        // the nested bundles with an explicit local helper that does not inject it.
+        fun epochUnknownBundle(values: Map<String, Any?>): Bundle {
+            val completeValues = values.toMutableMap()
+            val extras = mock<Bundle>()
+            whenever(extras.keySet()).thenAnswer { completeValues.keys }
+            whenever(extras.get(any())).thenAnswer { completeValues[it.getArgument<String>(0)] }
+            whenever(extras.getString(any())).thenAnswer { completeValues[it.getArgument<String>(0)] as? String }
+            whenever(extras.getLong(any(), any())).thenAnswer {
+                completeValues[it.getArgument<String>(0)] as? Long ?: it.getArgument(1)
+            }
+            whenever(extras.getInt(any(), any())).thenAnswer {
+                completeValues[it.getArgument<String>(0)] as? Int ?: it.getArgument(1)
+            }
+            doAnswer { completeValues.remove(it.getArgument<String>(0)); null }
+                .whenever(extras).remove(any())
+            return extras
+        }
+
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE,
+            bootEpochHash = null,
+        )
+        val token = "epoch-unknown-batch-token"
+        val values = installMapBackedPrefs(mapOf(Constants.PREF_DIAG_BROADCAST_TOKEN to token))
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 347L
+        val runId = "epoch-unknown-batch-run"
+        val start = epochUnknownBundle(
+            mapOf(
+                Constants.EXTRA_DIAGNOSTICS_TOKEN to token,
+                Constants.EXTRA_DIAGNOSTICS_ORIGIN to Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+                Constants.EXTRA_DIAGNOSTICS_RUN_ID to runId,
+                Constants.EXTRA_DIAGNOSTICS_RUN_STARTED_AT to startedAt,
+                Constants.EXTRA_DIAGNOSTICS_RUN_GENERATION to generation,
+                Constants.EXTRA_DIAGNOSTICS_RUN_BOOT_COUNT to 1,
+            ),
+        )
+        val event = epochUnknownBundle(
+            eventValues(token, runId, startedAt, generation, 1L) +
+                (Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+        )
+        val envelope = bundle(
+            mapOf(
+                Constants.EXTRA_DIAGNOSTICS_METHOD to Constants.METHOD_RECORD_DIAGNOSTICS_BATCH,
+                Constants.EXTRA_DIAGNOSTICS_BATCH_START to start,
+                Constants.EXTRA_DIAGNOSTICS_BATCH_EVENT_METHOD to Constants.METHOD_RECORD_DIAGNOSTICS,
+                Constants.EXTRA_DIAGNOSTICS_BATCH_EVENT to event,
+            ),
+        )
+        val intent = mock<Intent>()
+        whenever(intent.action).thenReturn(Constants.ACTION_RECORD_DIAGNOSTICS)
+        whenever(intent.extras).thenReturn(envelope)
+
+        receiver.onReceive(mockContext, intent)
+
+        assertEquals(runId, values[Constants.PREF_DIAG_ACTIVE_RUN_ID])
+        assertEquals(true, values[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+        assertEquals(1L, values["PREF_DIAG_EVENT_SEQUENCE:${Constants.PREF_DIAG_FEATURE_HOOK_STRING}"])
+        verify(mockEditor, times(1)).apply()
+
+        val beforeReplay = values.toMap()
+
+        // A second identical call is a full replay: the strict sequence gate rejects the
+        // event, the accepted start replay's staged upgrade is discarded with it, and
+        // nothing is committed.
+        receiver.onReceive(mockContext, intent)
+
+        assertEquals(beforeReplay, values)
+        assertEquals(1L, values["PREF_DIAG_EVENT_SEQUENCE:${Constants.PREF_DIAG_FEATURE_HOOK_STRING}"])
+        verify(mockEditor, times(1)).apply()
+    }
+
     private fun broadcastIntent(method: String, values: Map<String, Any?>): Intent {
         val extras = bundle(values + (Constants.EXTRA_DIAGNOSTICS_METHOD to method))
         return mock<Intent>().also { intent ->

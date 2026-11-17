@@ -5244,4 +5244,242 @@ class DiagnosticsStoreTest {
         assertEquals("", preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH])
         assertEquals(true, preferenceValues[Constants.PREF_DIAG_VERIFY_OK])
     }
+
+    @Test
+    fun `epoch-unknown event on an epoch-bound run fails closed when the boot identity becomes unreadable`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        val startedAt = System.currentTimeMillis() - 1_000L
+        seedActiveRun(startedAt, 900L)
+        preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT] = 1
+        // The stored epoch is non-blank while the OS boot identity became unreadable.
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val before = preferenceValues.toMap()
+
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = 900L,
+                    sequence = 1L,
+                    bootEpoch = null,
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_VERIFY,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = 900L,
+                    sequence = 2L,
+                    bootEpoch = null,
+                    diagnostics = verifyFields(),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_CLEAR_VERIFY,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = 900L,
+                    sequence = 3L,
+                    bootEpoch = null,
+                    diagnostics = emptyMap(),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(before, preferenceValues)
+    }
+
+    @Test
+    fun `non-blank stored epoch matching the clock keeps the epoch decisive despite a contradictory count`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        val startedAt = System.currentTimeMillis() - 1_000L
+        seedActiveRun(startedAt, 900L)
+        preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_COUNT] = 1
+        // The numeric counter moved across a reboot while the epoch identity stayed
+        // readable and unchanged; the epoch comparison is decisive and the
+        // contradiction is only a cross-check signal.
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 2,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = testBootEpoch,
+        )
+
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = 900L,
+                    sequence = 1L,
+                    bootCount = 2,
+                    bootEpoch = testBootEpoch,
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+        assertEquals(testBootEpoch, preferenceValues[Constants.PREF_DIAG_ACTIVE_RUN_BOOT_EPOCH])
+    }
+
+    @Test
+    fun `epoch-null start replay after the boot counter advances is rejected standalone`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 1,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 930L
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "epoch-null-standalone-contradiction-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        // The boot identity is still unreadable but the numeric counter advanced; an
+        // exact prior-boot replay must not be resurrected in this boot.
+        DiagnosticsStore.testRunClock = DiagnosticsStore.RunClock(
+            bootCount = 2,
+            elapsedRealtimeNanos = Long.MAX_VALUE - 1L,
+            bootEpochHash = null,
+        )
+        val beforeReplay = preferenceValues.toMap()
+        assertFalse(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    runId = "epoch-null-standalone-contradiction-run",
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootCount = 2,
+                    bootEpoch = null,
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+            ),
+        )
+        assertEquals(beforeReplay, preferenceValues)
+    }
+
+    @Test
+    fun `provider-verified replay in a known epoch discards its staged upgrade when the event replays`() {
+        enablePersistedPrefs()
+        preferenceValues[Constants.PREF_DIAG_BROADCAST_TOKEN] = "test-run-token"
+        // Default seam clock: epoch "test-epoch-1", bootCount = 1.
+        val startedAt = System.currentTimeMillis() - 1_000L
+        val generation = 931L
+        // Step 1: a token-only start persists as explicitly unverified in a known epoch.
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_START_DIAGNOSTICS_RUN,
+                authenticatedStartBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = testBootEpoch,
+                ),
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+        assertEquals(false, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        // Step 2: an event batch through the same token-only identity applies fresh
+        // sequence 1.
+        assertTrue(
+            DiagnosticsStore.applyDiagnostics(
+                mockContext,
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    sequence = 1L,
+                    bootEpoch = testBootEpoch,
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = null,
+                callingPackages = null,
+                myUid = null,
+                allowTokenOnlyUnverifiedOrigin = true,
+            ),
+        )
+        val before = preferenceValues.toMap()
+        // The same replay now arrives through the OS-verified Provider identity of the
+        // same run: its accepted start would stage the one-way upgrade
+        // (PREF_DIAG_ACTIVE_ORIGIN_VERIFIED = true, PREF_DIAG_ACTIVE_BINDER_PID = 4321).
+        // The strict-sequence gate rejects the event replay, and the start replay's
+        // staged one-way upgrade is discarded with it; nothing persists.
+        assertEquals(
+            false to false,
+            DiagnosticsStore.applyDiagnosticsBatch(
+                mockContext,
+                authenticatedStartBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    bootEpoch = testBootEpoch,
+                ),
+                Constants.METHOD_RECORD_DIAGNOSTICS,
+                authenticatedEventBundle(
+                    startedAt = startedAt,
+                    generation = generation,
+                    sequence = 1L,
+                    bootEpoch = testBootEpoch,
+                    diagnostics = mapOf(Constants.PREF_DIAG_FEATURE_HOOK_STRING to true),
+                ),
+                callingUid = 10002,
+                callingPackages = arrayOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+                myUid = 10001,
+                callingPid = 4321,
+            ),
+        )
+        assertEquals(
+            1L,
+            preferenceValues["PREF_DIAG_EVENT_SEQUENCE:${Constants.PREF_DIAG_FEATURE_HOOK_STRING}"],
+        )
+        assertEquals(false, preferenceValues[Constants.PREF_DIAG_ACTIVE_ORIGIN_VERIFIED])
+        assertFalse(preferenceValues.containsKey(Constants.PREF_DIAG_ACTIVE_BINDER_PID))
+        assertEquals(before, preferenceValues)
+        assertEquals(true, preferenceValues[Constants.PREF_DIAG_FEATURE_HOOK_STRING])
+    }
 }
