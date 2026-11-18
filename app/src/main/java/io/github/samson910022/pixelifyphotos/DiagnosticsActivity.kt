@@ -283,17 +283,22 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             getString(DeviceProps.getBackupEntitlement(selectedDevice).descResId)
         }
 
-        val hasUnverifiedRun = snapshot.diagnosticsReadable && snapshot.state.anyRecorded &&
-            !DiagnosticsCollector.hasVerifiedOriginIdentity(snapshot.state)
-        val milestoneLines = DiagnosticsCollector.milestoneSignals(snapshot.state).map {
+        val state = snapshot.state
+        val tokenAuthenticatedRun = DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state)
+        val hasLegacyUnverifiedRun = snapshot.diagnosticsReadable && state.anyRecorded &&
+            !DiagnosticsCollector.hasVerifiedOriginIdentity(state) && !tokenAuthenticatedRun
+        val milestoneLines = DiagnosticsCollector.milestoneSignals(state).map {
             val line = localizedMilestone(it)
-            if (hasUnverifiedRun) {
-                getString(
-                    R.string.diagnostics_unverified_telemetry,
-                    "${snapshot.state.activePackage ?: snapshot.state.verifyPackage ?: getString(R.string.diagnostics_unknown)} — $line",
+            when {
+                tokenAuthenticatedRun -> getString(
+                    R.string.diagnostics_token_authenticated_fallback_telemetry,
+                    "${state.activePackage ?: state.verifyPackage ?: getString(R.string.diagnostics_unknown)} — $line",
                 )
-            } else {
-                line
+                hasLegacyUnverifiedRun -> getString(
+                    R.string.diagnostics_unverified_telemetry,
+                    "${state.activePackage ?: state.verifyPackage ?: getString(R.string.diagnostics_unknown)} — $line",
+                )
+                else -> line
             }
         }
         findViewById<TextView>(R.id.diagnostics_milestones_text)?.text =
@@ -512,12 +517,20 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             return when (DiagnosticsVerifyCardPolicy.noRecordStatus(state)) {
                 DiagnosticsVerifyCardPolicy.NoRecordStatus.PRIOR_BOOT ->
                     getString(R.string.diagnostics_verify_no_record_prior_boot)
+                DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_PRIOR_BOOT ->
+                    getString(R.string.diagnostics_verify_no_record_token_authenticated_prior_boot)
                 DiagnosticsVerifyCardPolicy.NoRecordStatus.BOOT_UNKNOWN ->
                     getString(R.string.diagnostics_verify_no_record_boot_unknown)
+                DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_BOOT_UNKNOWN ->
+                    getString(R.string.diagnostics_verify_token_authenticated_boot_unknown)
                 DiagnosticsVerifyCardPolicy.NoRecordStatus.UNVERIFIED_RUN ->
                     getString(R.string.diagnostics_verify_no_verified_run)
+                DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_CURRENT_RUN_NOT_READY ->
+                    getString(R.string.diagnostics_verify_token_authenticated_no_package_ready)
                 DiagnosticsVerifyCardPolicy.NoRecordStatus.CURRENT_RUN_NOT_READY ->
                     getString(R.string.diagnostics_verify_no_package_ready)
+                DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_CURRENT_RUN ->
+                    getString(R.string.diagnostics_verify_token_authenticated_not_recorded)
                 DiagnosticsVerifyCardPolicy.NoRecordStatus.CURRENT_RUN ->
                     getString(R.string.diagnostics_verify_not_recorded)
                 DiagnosticsVerifyCardPolicy.NoRecordStatus.NO_RUN_IDENTITY ->
@@ -526,54 +539,114 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         }
         val trustedRunIdentity = DiagnosticsCollector.hasVerifiedRunIdentity(state)
         val verifiedOrigin = DiagnosticsCollector.hasVerifiedOriginIdentity(state)
-        val priorBoot = DiagnosticsCollector.hasStaleBootRunIdentity(state)
-        val unverifiedVerify = !verifiedOrigin
-        val result = if (priorBoot) {
-            getString(R.string.diagnostics_verify_prior_boot)
-        } else if (verifiedOrigin && !trustedRunIdentity) {
-            getString(R.string.diagnostics_verify_boot_unknown)
-        } else if (unverifiedVerify) {
-            getString(R.string.diagnostics_verify_unverified)
-        } else if (state.verifyAt > System.currentTimeMillis()) {
-            getString(R.string.diagnostics_verify_stale)
-        } else when (state.verifyOk) {
-            true -> getString(R.string.diagnostics_verify_ok)
-            false -> getString(
-                R.string.diagnostics_verify_failed,
-                state.verifyFailed.joinToString().ifEmpty { getString(R.string.diagnostics_unknown) }
-            )
-            null -> getString(R.string.diagnostics_unknown)
+        val tokenAuthenticatedRun = DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state)
+        val tokenCurrentRun = DiagnosticsCollector.hasTokenAuthenticatedCurrentRun(state)
+        val legacyUnverifiedVerify = !verifiedOrigin && !tokenAuthenticatedRun
+        val result = when {
+            DiagnosticsCollector.hasStaleBootRunIdentity(state) ->
+                getString(R.string.diagnostics_verify_prior_boot)
+            DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state) ->
+                getString(R.string.diagnostics_verify_prior_boot_token)
+            verifiedOrigin && !trustedRunIdentity ->
+                getString(R.string.diagnostics_verify_boot_unknown)
+            tokenAuthenticatedRun && !tokenCurrentRun ->
+                getString(R.string.diagnostics_verify_boot_unknown_token)
+            legacyUnverifiedVerify ->
+                getString(R.string.diagnostics_verify_unverified)
+            state.verifyAt > System.currentTimeMillis() ->
+                if (tokenCurrentRun) {
+                    getString(
+                        R.string.diagnostics_token_authenticated_fallback_telemetry,
+                        getString(R.string.diagnostics_verify_stale),
+                    )
+                } else {
+                    getString(R.string.diagnostics_verify_stale)
+                }
+            state.verifyOk == true -> if (tokenCurrentRun) {
+                getString(R.string.diagnostics_token_authenticated_fallback_telemetry, getString(R.string.diagnostics_verify_ok))
+            } else {
+                getString(R.string.diagnostics_verify_ok)
+            }
+            state.verifyOk == false -> if (tokenCurrentRun) {
+                getString(
+                    R.string.diagnostics_token_authenticated_fallback_telemetry,
+                    getString(
+                        R.string.diagnostics_verify_failed,
+                        state.verifyFailed.joinToString().ifEmpty { getString(R.string.diagnostics_unknown) }
+                    )
+                )
+            } else {
+                getString(
+                    R.string.diagnostics_verify_failed,
+                    state.verifyFailed.joinToString().ifEmpty { getString(R.string.diagnostics_unknown) }
+                )
+            }
+            else -> if (tokenCurrentRun) {
+                getString(R.string.diagnostics_token_authenticated_fallback_telemetry, getString(R.string.diagnostics_unknown))
+            } else {
+                getString(R.string.diagnostics_unknown)
+            }
         }
         fun presentValue(value: String?): String = when {
-            unverifiedVerify -> getString(
+            legacyUnverifiedVerify -> getString(
                 R.string.diagnostics_unverified_telemetry,
                 value ?: getString(R.string.diagnostics_unknown),
             )
-            priorBoot -> getString(
+            DiagnosticsCollector.hasStaleBootRunIdentity(state) -> getString(
                 R.string.diagnostics_prior_boot_value,
                 value ?: getString(R.string.diagnostics_unknown),
+            )
+            DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state) -> getString(
+                R.string.diagnostics_token_authenticated_fallback_telemetry,
+                getString(R.string.diagnostics_prior_boot_value, value ?: getString(R.string.diagnostics_unknown)),
             )
             verifiedOrigin && !trustedRunIdentity -> getString(
                 R.string.diagnostics_boot_unknown_value,
                 value ?: getString(R.string.diagnostics_unknown),
             )
+            tokenAuthenticatedRun && !tokenCurrentRun -> getString(
+                R.string.diagnostics_token_authenticated_fallback_telemetry,
+                getString(R.string.diagnostics_boot_unknown_value, value ?: getString(R.string.diagnostics_unknown)),
+            )
+            tokenCurrentRun -> getString(
+                R.string.diagnostics_token_authenticated_fallback_telemetry,
+                value ?: getString(R.string.diagnostics_unknown),
+            )
             else -> value ?: getString(R.string.diagnostics_unknown)
         }
         return buildString {
-            if (priorBoot) {
+            if (DiagnosticsCollector.hasStaleBootRunIdentity(state)) {
                 appendLine(getString(
                     R.string.diagnostics_prior_boot_origin,
                     state.activePackage ?: getString(R.string.diagnostics_unknown),
                 ))
+            } else if (DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state)) {
+                appendLine(getString(
+                    R.string.diagnostics_token_authenticated_fallback_telemetry,
+                    getString(
+                        R.string.diagnostics_prior_boot_origin_token,
+                        state.activePackage ?: getString(R.string.diagnostics_unknown),
+                    ),
+                ))
             } else if (verifiedOrigin && !trustedRunIdentity) {
                 appendLine(getString(R.string.diagnostics_boot_unknown_origin))
-            } else if (unverifiedVerify) {
+            } else if (tokenAuthenticatedRun && !tokenCurrentRun) {
+                appendLine(getString(
+                    R.string.diagnostics_token_authenticated_fallback_telemetry,
+                    getString(R.string.diagnostics_boot_unknown_origin_token),
+                ))
+            } else if (legacyUnverifiedVerify) {
                 appendLine(
                     getString(
                         R.string.diagnostics_unverified_telemetry,
                         state.activePackage ?: state.verifyPackage ?: getString(R.string.diagnostics_unknown),
                     )
                 )
+            } else if (tokenCurrentRun) {
+                appendLine(getString(
+                    R.string.diagnostics_token_authenticated_fallback_origin,
+                    state.activePackage ?: state.verifyPackage ?: getString(R.string.diagnostics_unknown),
+                ))
             }
             appendLine(getString(R.string.diagnostics_verify_result, result))
             appendLine(getString(R.string.diagnostics_verify_device, presentValue(state.verifyDevice)))
@@ -671,40 +744,64 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         return listOf(
             getString(
                 R.string.diagnostics_registration_origin,
-                if (DiagnosticsCollector.hasVerifiedRunIdentity(state)) {
-                    state.activePackage ?: getString(R.string.diagnostics_unknown)
-                } else if (DiagnosticsCollector.hasStaleBootRunIdentity(state)) {
-                    getString(
-                        R.string.diagnostics_origin_prior_boot,
-                        state.activePackage ?: getString(R.string.diagnostics_unknown),
-                    )
-                } else if (DiagnosticsCollector.hasVerifiedOriginIdentity(state)) {
-                    getString(
-                        R.string.diagnostics_origin_boot_unknown,
-                        state.activePackage ?: getString(R.string.diagnostics_unknown),
-                    )
-                } else {
-                    getString(
-                        R.string.diagnostics_origin_unverified,
-                        state.activePackage ?: getString(R.string.diagnostics_unknown),
-                    )
+                when {
+                    DiagnosticsCollector.hasVerifiedRunIdentity(state) ->
+                        state.activePackage ?: getString(R.string.diagnostics_unknown)
+                    DiagnosticsCollector.hasStaleBootRunIdentity(state) ->
+                        getString(
+                            R.string.diagnostics_origin_prior_boot,
+                            state.activePackage ?: getString(R.string.diagnostics_unknown),
+                        )
+                    DiagnosticsCollector.hasVerifiedOriginIdentity(state) ->
+                        getString(
+                            R.string.diagnostics_origin_boot_unknown,
+                            state.activePackage ?: getString(R.string.diagnostics_unknown),
+                        )
+                    DiagnosticsCollector.hasTokenAuthenticatedCurrentRun(state) ->
+                        getString(
+                            R.string.diagnostics_token_authenticated_fallback_origin,
+                            state.activePackage ?: getString(R.string.diagnostics_unknown),
+                        )
+                    DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state) ->
+                        getString(
+                            R.string.diagnostics_token_authenticated_fallback_telemetry,
+                            getString(
+                                R.string.diagnostics_origin_prior_boot_token,
+                                state.activePackage ?: getString(R.string.diagnostics_unknown),
+                            ),
+                        )
+                    DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state) ->
+                        getString(
+                            R.string.diagnostics_token_authenticated_fallback_telemetry,
+                            getString(
+                                R.string.diagnostics_origin_boot_unknown_token,
+                                state.activePackage ?: getString(R.string.diagnostics_unknown),
+                            ),
+                        )
+                    else ->
+                        getString(
+                            R.string.diagnostics_origin_unverified,
+                            state.activePackage ?: getString(R.string.diagnostics_unknown),
+                        )
                 },
                 state.activeRunId ?: getString(R.string.diagnostics_unknown),
                 DiagnosticsCollector.formatTimestamp(state.activeRunStartedAt),
             ),
             getString(
                 R.string.diagnostics_process_pid,
-                if (DiagnosticsCollector.hasVerifiedRunIdentity(state)) {
-                    state.processPid?.toString() ?: getString(R.string.diagnostics_unknown)
-                } else if (DiagnosticsCollector.hasStaleBootRunIdentity(state)) {
-                    getString(
-                        R.string.diagnostics_pid_prior_boot,
-                        state.processPid?.toString() ?: getString(R.string.diagnostics_unknown),
-                    )
-                } else if (DiagnosticsCollector.hasVerifiedOriginIdentity(state)) {
-                    getString(R.string.diagnostics_pid_boot_unknown)
-                } else {
-                    getString(R.string.diagnostics_unverified)
+                when {
+                    DiagnosticsCollector.hasVerifiedRunIdentity(state) ->
+                        state.processPid?.toString() ?: getString(R.string.diagnostics_unknown)
+                    DiagnosticsCollector.hasStaleBootRunIdentity(state) ->
+                        getString(
+                            R.string.diagnostics_pid_prior_boot,
+                            state.processPid?.toString() ?: getString(R.string.diagnostics_unknown),
+                        )
+                    DiagnosticsCollector.hasVerifiedOriginIdentity(state) ->
+                        getString(R.string.diagnostics_pid_boot_unknown)
+                    DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state) ->
+                        getString(R.string.diagnostics_pid_token_authenticated_fallback)
+                    else -> getString(R.string.diagnostics_unverified)
                 },
             ),
             summary(R.string.diagnostics_feature_registration, feature),
@@ -755,18 +852,35 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
             if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
 
-    private fun localizedMilestone(signal: MilestoneSignal): String = when (signal.kind) {
+    private fun localizedMilestone(signal: MilestoneSignal): String {
+        val base = when (signal.kind) {
         MilestoneKind.NO_RECORD -> getString(
             when {
                 signal.priorBootRun -> R.string.diagnostics_milestone_no_record_prior_boot
-                signal.currentnessUnknown -> R.string.diagnostics_milestone_no_record_boot_unknown
+                signal.currentnessUnknown -> if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_no_record_boot_unknown_token
+                } else {
+                    R.string.diagnostics_milestone_no_record_boot_unknown
+                }
                 else -> R.string.diagnostics_milestone_no_record
             },
         )
         MilestoneKind.DIAGNOSTICS_UNAVAILABLE -> getString(R.string.diagnostics_data_unavailable)
         MilestoneKind.DIAGNOSTICS_TRANSPORT_UNAVAILABLE -> getString(R.string.diagnostics_data_token_unavailable)
-        MilestoneKind.PRIOR_BOOT_RUN -> getString(R.string.diagnostics_milestone_prior_boot)
-        MilestoneKind.BOOT_UNKNOWN_RUN -> getString(R.string.diagnostics_milestone_boot_unknown)
+        MilestoneKind.PRIOR_BOOT_RUN -> getString(
+            if (signal.tokenAuthenticated) {
+                R.string.diagnostics_milestone_prior_boot_token
+            } else {
+                R.string.diagnostics_milestone_prior_boot
+            },
+        )
+        MilestoneKind.BOOT_UNKNOWN_RUN -> getString(
+            if (signal.tokenAuthenticated) {
+                R.string.diagnostics_milestone_boot_unknown_token
+            } else {
+                R.string.diagnostics_milestone_boot_unknown
+            },
+        )
         MilestoneKind.MODULE_LOADED ->
             currentnessUnknownMilestone(
                 signal,
@@ -775,7 +889,11 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         MilestoneKind.NO_PACKAGE_LOAD_RECORDED -> getString(
             when {
                 signal.priorBootRun -> R.string.diagnostics_milestone_no_package_prior_boot
-                signal.currentnessUnknown -> R.string.diagnostics_milestone_no_package_boot_unknown
+                signal.currentnessUnknown -> if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_no_package_boot_unknown_token
+                } else {
+                    R.string.diagnostics_milestone_no_package_boot_unknown
+                }
                 else -> R.string.diagnostics_milestone_no_package
             },
         )
@@ -817,9 +935,21 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
         MilestoneKind.VERIFY_UNVERIFIED ->
             getString(R.string.diagnostics_milestone_verify_unverified)
         MilestoneKind.VERIFY_PRIOR_BOOT ->
-            getString(R.string.diagnostics_milestone_verify_prior_boot)
+            getString(
+                if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_verify_prior_boot_token
+                } else {
+                    R.string.diagnostics_milestone_verify_prior_boot
+                },
+            )
         MilestoneKind.VERIFY_BOOT_UNKNOWN ->
-            getString(R.string.diagnostics_milestone_verify_boot_unknown)
+            getString(
+                if (signal.tokenAuthenticated) {
+                    R.string.diagnostics_milestone_verify_boot_unknown_token
+                } else {
+                    R.string.diagnostics_milestone_verify_boot_unknown
+                },
+            )
         MilestoneKind.VERIFY_UNEXPECTED -> if (signal.clockAnomaly) {
             getString(R.string.diagnostics_milestone_verify_stale, formatTs(signal.timestamp))
         } else
@@ -831,6 +961,8 @@ class DiagnosticsActivity : AppCompatActivity(R.layout.activity_diagnostics) {
                 else -> R.string.diagnostics_milestone_verify_none
             },
         )
+        }
+        return base
     }
 
     private fun currentnessUnknownMilestone(signal: MilestoneSignal, message: String): String =

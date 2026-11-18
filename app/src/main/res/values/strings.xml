@@ -19,7 +19,7 @@
     <string name="update_available">App update available</string>
 
     <!-- Changelog -->
-    <string name="version_head">Version 1.5.0</string>
+    <string name="version_head">Version 1.5.1</string>
     <string name="version_desc">Added Pixel 11 device profiles, backup entitlement and quality guides, truthful hook telemetry, and Java TLS hardening.</string>
     <string name="changelog">Change log</string>
 
@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">unknown (prior-boot VERIFY from an OS-verified origin; historical, not current)</string>
     <string name="diagnostics_verify_boot_unknown">unknown (OS-verified origin, but current boot could not be confirmed)</string>
     <string name="diagnostics_verify_no_record_prior_boot">Historical prior-boot run (OS-verified origin): no VERIFY record was recorded for that run; this says nothing about the current run.</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">Historical prior-boot token-authenticated fallback run (sender identity not OS-verified): no VERIFY record was recorded for that run; this says nothing about the current run.</string>
     <string name="diagnostics_verify_no_record_boot_unknown">OS-verified run, but its boot epoch is unavailable or cannot be matched: no VERIFY record can be classified as current.</string>
     <string name="diagnostics_verify_no_verified_run">No VERIFY record can be linked to an OS-verified run; current-run status is unknown.</string>
     <string name="diagnostics_verify_no_run_identity">No VERIFY record or OS-verified run identity is available; current-run status is unknown.</string>
@@ -226,7 +227,7 @@
     <string name="diagnostics_sysprops_invocation">SystemProperties interceptor entered: %1$s</string>
     <string name="diagnostics_invocation_observed">observed at least once (%1$s)</string>
     <string name="diagnostics_invocation_unknown">unknown (no trustworthy run/origin identity)</string>
-    <string name="diagnostics_invocation_currentness_unknown">unknown (OS-verified origin; run currentness unverified)</string>
+    <string name="diagnostics_invocation_currentness_unknown">unknown (run currentness unverified)</string>
     <string name="diagnostics_invocation_not_observed">not observed (may not have been called; absence is not proof)</string>
     <string name="diagnostics_invocation_stale">stale observation (%1$s)</string>
     <string name="diagnostics_registration_origin">Registration origin: %1$s (run %2$s; started %3$s)</string>
@@ -235,4 +236,22 @@
     <string name="diagnostics_unverified_telemetry">UNVERIFIED TELEMETRY (origin/package not OS-verified): %1$s</string>
     <string name="diagnostics_process_pid">OS-observed sender PID (Binder when available): %1$s</string>
     <string name="diagnostics_registration_caveat">All registrations do not prove Google Photos called a target API. An observed entry only proves an interceptor was entered, not that it ran for Google Photos or returned a spoofed value.</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">token-authenticated fallback (sender identity not OS-verified): %1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified): %1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">No VERIFY record has been recorded yet for this token-authenticated fallback run. Sender identity is not OS-verified.</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">Package loaded, but package-ready and VERIFY were not recorded yet for this token-authenticated fallback run. Sender identity is not OS-verified.</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">No VERIFY record can be established as current for this token-authenticated fallback run because the run boot is unknown. Sender identity is not OS-verified.</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">unavailable (token-authenticated fallback)</string>
+    <string name="diagnostics_milestone_prior_boot_token">Historical/prior-boot diagnostics from a token-authenticated fallback run (sender identity not OS-verified); these records are not current evidence.</string>
+    <string name="diagnostics_milestone_boot_unknown_token">Token-authenticated fallback run (sender identity not OS-verified); the run\'s boot could not be matched to the current boot. Lifecycle and hook data below have unverified currentness and are not current OS-verified evidence.</string>
+    <string name="diagnostics_milestone_no_record_boot_unknown_token">No lifecycle milestones were recorded for a token-authenticated run whose current boot could not be established. This is historical/unknown data with unverified sender identity, not current OS-verified evidence.</string>
+    <string name="diagnostics_milestone_no_package_boot_unknown_token">No package-load callback was recorded for a run whose currentness is unknown. Missing data does not describe the current run or establish why the record is missing.</string>
+    <string name="diagnostics_milestone_verify_prior_boot_token">Prior-boot VERIFY from a token-authenticated fallback run (sender identity not OS-verified); these records are not current evidence.</string>
+    <string name="diagnostics_milestone_verify_boot_unknown_token">VERIFY is from a token-authenticated fallback run (sender identity not OS-verified), but the run\'s boot could not be matched to the current boot; result is unknown.</string>
+    <string name="diagnostics_prior_boot_origin_token">Historical/prior-boot origin: %1$s (not current evidence)</string>
+    <string name="diagnostics_boot_unknown_origin_token">Origin; current boot could not be confirmed.</string>
+    <string name="diagnostics_origin_prior_boot_token">historical/prior-boot origin: %1$s</string>
+    <string name="diagnostics_origin_boot_unknown_token">origin; current boot could not be confirmed: %1$s</string>
+    <string name="diagnostics_verify_prior_boot_token">unknown (prior-boot VERIFY from a token-authenticated fallback run; historical, not current)</string>
+    <string name="diagnostics_verify_boot_unknown_token">unknown (token-authenticated fallback origin; current boot could not be confirmed)</string>
 </resources>

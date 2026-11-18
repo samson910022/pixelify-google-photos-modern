@@ -38,6 +38,12 @@ class DiagnosticsBootEpochTest {
     }
 
     @Test
+    fun `parseBootTimeLine rejects a zero btime so dead-RTC devices fail closed`() {
+        assertNull(DiagnosticsBootEpoch.parseBootTimeLine(sequenceOf("btime 0")))
+        assertEquals("1234567890", DiagnosticsBootEpoch.parseBootTimeLine(sequenceOf("btime 1234567890")))
+    }
+
+    @Test
     fun `proc stat boot time is a validated deterministic fallback identity`() {
         val hash = DiagnosticsBootEpoch.hashBootTime("1700000000")
 

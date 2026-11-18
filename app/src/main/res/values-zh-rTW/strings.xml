@@ -19,7 +19,7 @@
     <string name="update_available">有可用的 App 更新</string>
 
     <!-- 變更記錄 -->
-    <string name="version_head">版本 1.5.0</string>
+    <string name="version_head">版本 1.5.1</string>
     <string name="version_desc">新增 Pixel 11 系列裝置設定檔、相簿備份資格與畫質指引、強化真實掛載診斷與遙測，以及固化 Java TLS 安全防護。</string>
     <string name="changelog">變更記錄</string>
 
@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">未知（來源經 OS 驗證的前次開機 VERIFY；這是歷史記錄，不代表目前結果）</string>
     <string name="diagnostics_verify_boot_unknown">未知（來源經 OS 驗證，但無法確認是否屬於目前開機）</string>
     <string name="diagnostics_verify_no_record_prior_boot">歷史記錄（前次開機、來源經 OS 驗證）：該執行沒有 VERIFY 記錄；這不能說明目前執行的狀態。</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">歷史記錄（前次開機、token 驗證 fallback，來源身分未經 OS 驗證）：該執行沒有 VERIFY 記錄；這不能說明目前執行的狀態。</string>
     <string name="diagnostics_verify_no_record_boot_unknown">來源經 OS 驗證，但開機 epoch 無法使用或配對；無法將 VERIFY 記錄判定為目前結果。</string>
     <string name="diagnostics_verify_no_verified_run">沒有 VERIFY 記錄可關聯至經 OS 驗證的執行；目前執行狀態未知。</string>
     <string name="diagnostics_verify_no_run_identity">沒有 VERIFY 記錄或經 OS 驗證的執行身分；目前執行狀態未知。</string>
@@ -226,7 +227,7 @@
     <string name="diagnostics_sysprops_invocation">SystemProperties 攔截器進入狀態：%1$s</string>
     <string name="diagnostics_invocation_observed">至少觀察到一次（%1$s）</string>
     <string name="diagnostics_invocation_unknown">未知（缺少可信的執行／來源身分）</string>
-    <string name="diagnostics_invocation_currentness_unknown">未知（來源經 OS 驗證；執行記錄目前性未驗證）</string>
+    <string name="diagnostics_invocation_currentness_unknown">未知（執行記錄目前性未驗證）</string>
     <string name="diagnostics_invocation_not_observed">未觀察到（可能尚未呼叫；未觀察到不代表沒有發生）</string>
     <string name="diagnostics_invocation_stale">觀察記錄已過期（%1$s）</string>
     <string name="diagnostics_registration_origin">註冊來源：%1$s（run %2$s；開始於 %3$s）</string>
@@ -235,4 +236,22 @@
     <string name="diagnostics_unverified_telemetry">未驗證遙測（來源／套件未經 OS 驗證）：%1$s</string>
     <string name="diagnostics_process_pid">OS 觀察到的傳送方 PID（可用時為 Binder）：%1$s</string>
     <string name="diagnostics_registration_caveat">全部註冊也不代表 Google 相簿呼叫了目標 API。觀察到攔截器進入只代表它曾進入，不代表呼叫來自 Google 相簿或回傳了模擬值。</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">權杖驗證的備援遙測（傳送端身分未經 OS 驗證）：%1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">權杖驗證的備援遙測（傳送端身分未經 OS 驗證）：%1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">此權杖驗證的備援執行尚未記錄 VERIFY。傳送端身分未經 OS 驗證。</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">套件已載入，但此權杖驗證的備援執行尚未記錄 package-ready 與 VERIFY。傳送端身分未經 OS 驗證。</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">此權杖驗證的備援執行的開機資訊未知，無法將 VERIFY 視為目前記錄。傳送端身分未經 OS 驗證。</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">無法取得（權杖驗證的備援遙測）</string>
+    <string name="diagnostics_milestone_prior_boot_token">這是傳送端身分未經 OS 驗證的權杖驗證備援執行的歷史／前次開機記錄；這些記錄不代表目前證據。</string>
+    <string name="diagnostics_milestone_boot_unknown_token">這是傳送端身分未經 OS 驗證的權杖驗證備援執行；無法將執行記錄與目前開機配對。下方生命週期與 Hook 資料的目前性未驗證，不是目前的 OS 驗證證據。</string>
+    <string name="diagnostics_milestone_no_record_boot_unknown_token">對於無法確定目前開機的權杖驗證執行，未記錄任何生命週期里程碑。這是傳送端身分未經驗證的歷史／未知資料，不是目前的 OS 驗證證據。</string>
+    <string name="diagnostics_milestone_no_package_boot_unknown_token">目前性未知的執行未記錄 package-load 回呼。缺少記錄不能說明目前執行或記錄缺失的原因。</string>
+    <string name="diagnostics_milestone_verify_prior_boot_token">傳送端身分未經 OS 驗證的權杖驗證備援執行的前次開機 VERIFY 屬於歷史記錄；這些記錄不代表目前證據。</string>
+    <string name="diagnostics_milestone_verify_boot_unknown_token">VERIFY 來自傳送端身分未經 OS 驗證的權杖驗證備援執行，但無法將執行記錄與目前開機配對；結果未知。</string>
+    <string name="diagnostics_prior_boot_origin_token">歷史／前次開機的來源：%1$s（不是目前證據）</string>
+    <string name="diagnostics_boot_unknown_origin_token">來源；無法確認目前開機。</string>
+    <string name="diagnostics_origin_prior_boot_token">歷史／前次開機的來源：%1$s</string>
+    <string name="diagnostics_origin_boot_unknown_token">來源；目前開機無法確認：%1$s</string>
+    <string name="diagnostics_verify_prior_boot_token">未知（傳送端身分未經 OS 驗證的權杖驗證備援執行的前次開機 VERIFY；這是歷史記錄，不代表目前結果）</string>
+    <string name="diagnostics_verify_boot_unknown_token">未知（權杖驗證的備援來源；無法確認是否屬於目前開機）</string>
 </resources>

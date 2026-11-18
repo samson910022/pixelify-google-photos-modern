@@ -218,6 +218,7 @@ class ConstantsTest {
         val required = setOf(
             "diagnostics_verify_no_package_ready",
             "diagnostics_verify_no_record_prior_boot",
+            "diagnostics_verify_no_record_token_authenticated_prior_boot",
             "diagnostics_verify_no_record_boot_unknown",
             "diagnostics_verify_no_verified_run",
             "diagnostics_verify_no_run_identity",

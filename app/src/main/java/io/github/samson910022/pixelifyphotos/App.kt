@@ -80,8 +80,7 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
         // independent: a token failure only degrades diagnostics/telemetry and must
         // never block settings readiness, listener draining, or the settings UI.
         val tokenConverged = runCatching {
-            testTokenConvergenceOverride?.invoke(service)
-                ?: DiagnosticsStore.convergeBroadcastToken(this, service)
+            attemptDiagnosticsTokenConvergence(service)
         }.getOrDefault(false)
         if (!tokenConverged) {
             android.util.Log.w(
@@ -124,6 +123,49 @@ class App : Application(), XposedServiceHelper.OnServiceListener {
                 android.util.Log.w(TAG, "Service-bound listener failed: ${t.message}")
             }
         }
+        if (settingsConverged && !tokenConverged && testTokenConvergenceOverride == null) {
+            requestDiagnosticsTokenConvergenceRetry(service, attemptGeneration)
+        }
+    }
+
+    private fun attemptDiagnosticsTokenConvergence(service: XposedService): Boolean =
+        testTokenConvergenceOverride?.invoke(service)
+            ?: DiagnosticsStore.convergeBroadcastToken(this, service)
+
+    private fun requestDiagnosticsTokenConvergenceRetry(service: XposedService, attemptGeneration: Long) {
+        Thread({
+            retryDiagnosticsTokenConvergence(service, attemptGeneration)
+        }, "pixelify-diagnostics-token-convergence-retry").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    @VisibleForTesting
+    internal fun retryDiagnosticsTokenConvergence(
+        service: XposedService,
+        attemptGeneration: Long,
+        maxAttempts: Int = 20,
+        delayMs: Long = 250L,
+    ): Boolean {
+        repeat(maxAttempts) { attempt ->
+            val shouldContinue = synchronized(serviceStateLock) {
+                mService === service &&
+                    serviceAttemptGeneration == attemptGeneration &&
+                    servicePhase == ServicePhase.READY
+            }
+            if (!shouldContinue) return false
+            if (attemptDiagnosticsTokenConvergence(service)) return true
+            if (attempt < maxAttempts - 1) {
+                try {
+                    Thread.sleep(delayMs)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return false
+                }
+            }
+        }
+        return false
     }
 
     /**

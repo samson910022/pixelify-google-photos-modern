@@ -19,7 +19,7 @@
     <string name="update_available">有可用的应用更新</string>
 
     <!-- 更新日志 -->
-    <string name="version_head">版本 1.5.0</string>
+    <string name="version_head">版本 1.5.1</string>
     <string name="version_desc">新增 Pixel 11 系列设备配置文件、相册备份资格与画质指南、强化真实挂载诊断与遥测，以及固化 Java TLS 安全防护。</string>
     <string name="changelog">更新日志</string>
 
@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">未知（来源经 OS 验证的上次启动 VERIFY；这是历史记录，不代表当前结果）</string>
     <string name="diagnostics_verify_boot_unknown">未知（来源经 OS 验证，但无法确认是否属于当前启动）</string>
     <string name="diagnostics_verify_no_record_prior_boot">历史记录（上次启动、来源经 OS 验证）：该运行没有 VERIFY 记录；这不能说明当前运行的状态。</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">历史记录（上次启动、token 验证 fallback，来源身份未经 OS 验证）：该运行没有 VERIFY 记录；这不能说明当前运行的状态。</string>
     <string name="diagnostics_verify_no_record_boot_unknown">来源经 OS 验证，但启动 epoch 不可用或无法匹配；无法将 VERIFY 记录判定为当前结果。</string>
     <string name="diagnostics_verify_no_verified_run">没有 VERIFY 记录可关联到经 OS 验证的运行；当前运行状态未知。</string>
     <string name="diagnostics_verify_no_run_identity">没有 VERIFY 记录或经 OS 验证的运行身份；当前运行状态未知。</string>
@@ -226,7 +227,7 @@
     <string name="diagnostics_sysprops_invocation">SystemProperties 拦截器进入状态：%1$s</string>
     <string name="diagnostics_invocation_observed">至少观察到一次（%1$s）</string>
     <string name="diagnostics_invocation_unknown">未知（缺少可信的运行／来源身份）</string>
-    <string name="diagnostics_invocation_currentness_unknown">未知（来源经 OS 验证；运行记录当前性未验证）</string>
+    <string name="diagnostics_invocation_currentness_unknown">未知（运行记录当前性未验证）</string>
     <string name="diagnostics_invocation_not_observed">未观察到（可能尚未调用；未观察到不代表没有发生）</string>
     <string name="diagnostics_invocation_stale">观察记录已过期（%1$s）</string>
     <string name="diagnostics_registration_origin">注册来源：%1$s（run %2$s；开始于 %3$s）</string>
@@ -235,4 +236,22 @@
     <string name="diagnostics_unverified_telemetry">未验证遥测（来源／包名未经 OS 验证）：%1$s</string>
     <string name="diagnostics_process_pid">OS 观察到的发送方 PID（可用时为 Binder）：%1$s</string>
     <string name="diagnostics_registration_caveat">全部注册也不代表 Google 相册调用了目标 API。观察到拦截器进入只表示它曾进入，不代表调用来自 Google 相册或返回了模拟值。</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">令牌验证的回退遥测（发送方身份未经 OS 验证）：%1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">令牌验证的回退遥测（发送方身份未经 OS 验证）：%1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">此令牌验证的回退运行尚未记录 VERIFY。发送方身份未经 OS 验证。</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">软件包已加载，但此令牌验证的回退运行尚未记录 package-ready 和 VERIFY。发送方身份未经 OS 验证。</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">此令牌验证的回退运行的启动信息未知，无法将 VERIFY 视为当前记录。发送方身份未经 OS 验证。</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">不可用（令牌验证的回退遥测）</string>
+    <string name="diagnostics_milestone_prior_boot_token">这是发送方身份未经 OS 验证的令牌验证的回退运行的历史／上次启动记录；这些记录不代表当前证据。</string>
+    <string name="diagnostics_milestone_boot_unknown_token">这是发送方身份未经 OS 验证的令牌验证的回退运行；无法将运行记录与当前启动匹配。下方生命周期和 Hook 数据的当前性未验证，不是当前的 OS 验证证据。</string>
+    <string name="diagnostics_milestone_no_record_boot_unknown_token">对于无法确定当前启动的令牌验证运行，未记录任何生命周期里程碑。这是发送方身份未经验证的历史／未知数据，不是当前的 OS 验证证据。</string>
+    <string name="diagnostics_milestone_no_package_boot_unknown_token">当前性未知的运行没有记录 package-load 回调。缺少记录不能说明当前运行或记录缺失的原因。</string>
+    <string name="diagnostics_milestone_verify_prior_boot_token">发送方身份未经 OS 验证的令牌验证的回退运行的上次启动 VERIFY 属于历史记录；这些记录不代表当前证据。</string>
+    <string name="diagnostics_milestone_verify_boot_unknown_token">VERIFY 来自发送方身份未经 OS 验证的令牌验证的回退运行，但无法将运行记录与当前启动匹配；结果未知。</string>
+    <string name="diagnostics_prior_boot_origin_token">历史／上次启动的来源：%1$s（不是当前证据）</string>
+    <string name="diagnostics_boot_unknown_origin_token">来源；无法确认当前启动。</string>
+    <string name="diagnostics_origin_prior_boot_token">历史／上次启动的来源：%1$s</string>
+    <string name="diagnostics_origin_boot_unknown_token">来源；当前启动无法确认：%1$s</string>
+    <string name="diagnostics_verify_prior_boot_token">未知（发送方身份未经 OS 验证的令牌验证的回退运行的上次启动 VERIFY；这是历史记录，不代表当前结果）</string>
+    <string name="diagnostics_verify_boot_unknown_token">未知（令牌验证的回退来源；无法确认是否属于当前启动）</string>
 </resources>

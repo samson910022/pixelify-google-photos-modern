@@ -86,7 +86,7 @@ class DiagnosticsCollectorTest {
             real = emptyMap(),
             target = emptyMap(),
         )
-        assertTrue(report.contains("Last VERIFY (current boot unknown): no VERIFY record can be established as current"))
+        assertTrue(report.contains("Last VERIFY (current boot unknown, OS-verified origin): no VERIFY record can be established as current"))
         assertTrue(report.contains("run relation is unknown"))
         assertFalse(report.contains("not recorded yet"))
     }
@@ -123,6 +123,41 @@ class DiagnosticsCollectorTest {
             target = emptyMap(),
         )
         assertTrue(report.contains("Last VERIFY (verified current run): not recorded yet"))
+    }
+
+    @Test
+    fun `no VERIFY card and copied report qualify token-authenticated prior boot fallback without VERIFY`() {
+        val state = HookState(
+            diagnosticsAvailable = true,
+            activePackage = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            activeRunId = "token-prior-run-no-verify",
+            activeRunStartedAt = 1_000L,
+            activeOriginVerified = false,
+            activeRunBootEpoch = "prior-epoch",
+            currentBootEpoch = "current-epoch",
+            moduleLoadedAt = 1_000L,
+            lastPackageLoaded = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReady = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReadyAt = 1_100L,
+        )
+
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state))
+        assertEquals(
+            DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_PRIOR_BOOT,
+            DiagnosticsVerifyCardPolicy.noRecordStatus(state),
+        )
+        val report = DiagnosticsCollector.formatReportText(
+            state = state,
+            serviceConnected = false,
+            scope = null,
+            selectedDevice = null,
+            real = emptyMap(),
+            target = emptyMap(),
+        )
+        assertTrue(report.contains("Last VERIFY (HISTORICAL PRIOR-BOOT, TOKEN-AUTHENTICATED FALLBACK): no VERIFY record for that token-authenticated fallback run from a prior boot"))
+        assertTrue(report.contains("sender identity is not OS-verified"))
+        assertFalse(report.contains("OS-VERIFIED ORIGIN): no VERIFY record for that prior-boot run; this does not describe the current run"))
+        assertFalse(report.contains("not recorded yet"))
     }
 
     @Test
@@ -449,6 +484,26 @@ class DiagnosticsCollectorTest {
         val lines = DiagnosticsCollector.interpretMilestones(HookState())
         assertEquals(1, lines.size)
         assertTrue(lines[0].contains("No lifecycle milestones have been recorded yet"))
+    }
+
+    @Test
+    fun `token-authenticated run with no recorded data prefixes every milestone line`() {
+        val state = HookState(
+            diagnosticsAvailable = true,
+            activePackage = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            activeRunId = "token-empty-report-run",
+            activeRunStartedAt = 1_000L,
+            activeOriginVerified = false,
+            activeRunBootEpoch = null,
+            currentBootEpoch = null,
+        )
+
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state))
+        val result = DiagnosticsCollector.interpretMilestones(state, now = 2_000L)
+        assertTrue(result.isNotEmpty())
+        result.forEach {
+            assertTrue("every line must carry the token disclaimer: it=$it", it.startsWith("TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified):"))
+        }
     }
 
     @Test
@@ -1119,6 +1174,38 @@ class DiagnosticsCollectorTest {
         assertTrue(copiedReport.contains("Result: unknown (origin is not OS-verified)"))
         assertFalse(copiedReport.contains("Photos hooks confirmed"))
 
+        val tokenAuthenticatedFallback = unverified.copy(
+            activeRunStartedAt = now - 10_000L,
+            activeRunBootEpoch = "epoch-1",
+            currentBootEpoch = "epoch-1",
+            activeRunBootCount = 1,
+            currentBootCount = 1,
+            moduleLoadedAt = now - 9_000L,
+            lastPackageLoaded = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReady = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReadyAt = now - 8_000L,
+            verifyAt = now - 7_000L,
+            verifyDevice = "Pixel XL",
+            verifyPackage = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            verifyOk = true,
+            nativeReady = true,
+            systemPropsHooked = true,
+        )
+        val fallbackReport = DiagnosticsCollector.formatReportText(
+            state = tokenAuthenticatedFallback,
+            serviceConnected = true,
+            scope = listOf(Constants.PACKAGE_NAME_GOOGLE_PHOTOS),
+            selectedDevice = "Pixel XL",
+            real = emptyMap(),
+            target = emptyMap(),
+        )
+        assertTrue(fallbackReport.contains("TOKEN-AUTHENTICATED FALLBACK"))
+        assertTrue(fallbackReport.contains("sender identity not OS-verified"))
+        assertTrue(fallbackReport.contains("Feature hooks: all registered (3/3)"))
+        assertTrue(fallbackReport.contains("Feature interceptor entered: observed at least once"))
+        assertTrue(fallbackReport.contains("OK (token-authenticated fallback, sender identity not OS-verified)"))
+        assertFalse(fallbackReport.contains("Target run origin: UNVERIFIED (reported origin:"))
+
         val verifiedNoInvocation = DiagnosticsCollector.formatHookRegistrationText(
             unverified.copy(
                 activeOriginVerified = true,
@@ -1126,6 +1213,7 @@ class DiagnosticsCollectorTest {
                 currentBootCount = 1,
                 activeRunBootEpoch = "epoch-1",
                 currentBootEpoch = "epoch-1",
+                activeRunStartedAt = now - 10_000L,
                 processPid = 1234,
                 featureInterceptorAt = null,
             ),
@@ -1299,5 +1387,146 @@ class DiagnosticsCollectorTest {
         assertFalse(FieldCheck("A", "x", "y").pass)
         assertFalse(FieldCheck("A", null, "x").pass)
         assertFalse(FieldCheck("A", "x", null).pass)
+    }
+
+    @Test
+    fun `token-authenticated current-boot package-ready run with no VERIFY is reported as not recorded yet`() {
+        val state = HookState(
+            diagnosticsAvailable = true,
+            activePackage = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            activeRunId = "token-current-ready-no-verify",
+            activeRunStartedAt = 1_000L,
+            activeOriginVerified = false,
+            activeRunBootEpoch = "current-epoch",
+            currentBootEpoch = "current-epoch",
+            moduleLoadedAt = 1_000L,
+            lastPackageLoaded = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReady = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReadyAt = 1_100L,
+        )
+
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state))
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedCurrentRun(state))
+        assertFalse(DiagnosticsCollector.hasTokenAuthenticatedUnknownBootRun(state))
+        assertFalse(DiagnosticsCollector.hasTokenAuthenticatedPriorBootRun(state))
+        assertEquals(
+            DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_CURRENT_RUN,
+            DiagnosticsVerifyCardPolicy.noRecordStatus(state),
+        )
+
+        val signals = DiagnosticsCollector.milestoneSignals(state, now = 2_000L)
+        assertTrue(signals.any { it.kind == DiagnosticsCollector.MilestoneKind.PACKAGE_LOADED && it.tokenAuthenticated })
+        assertTrue(signals.any { it.kind == DiagnosticsCollector.MilestoneKind.PACKAGE_READY && it.tokenAuthenticated })
+        val noVerify = signals.single { it.kind == DiagnosticsCollector.MilestoneKind.VERIFY_NONE_BUT_READY }
+        assertTrue(noVerify.tokenAuthenticated)
+        assertFalse(noVerify.priorBootRun)
+        assertFalse(noVerify.currentnessUnknown)
+
+        val report = DiagnosticsCollector.formatReportText(
+            state = state,
+            serviceConnected = false,
+            scope = null,
+            selectedDevice = null,
+            real = emptyMap(),
+            target = emptyMap(),
+        )
+        assertTrue(report.contains("Last VERIFY (token-authenticated fallback, sender identity not OS-verified): not recorded yet"))
+        assertTrue(report.contains("Package-ready ran but no VERIFY result was recorded"))
+        assertTrue(report.contains("TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified)"))
+        assertTrue(report.contains("sender identity not OS-verified"))
+        assertFalse(report.contains("OS-verified origin"))
+        assertFalse(report.contains("current boot unknown"))
+        assertFalse(report.contains("does not describe the current run"))
+    }
+
+    @Test
+    fun `token-authenticated current-boot package-loaded-not-ready run with no VERIFY is not-ready`() {
+        val state = HookState(
+            diagnosticsAvailable = true,
+            activePackage = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            activeRunId = "token-current-not-ready-no-verify",
+            activeRunStartedAt = 1_000L,
+            activeOriginVerified = false,
+            activeRunBootEpoch = "current-epoch",
+            currentBootEpoch = "current-epoch",
+            moduleLoadedAt = 1_000L,
+            lastPackageLoaded = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReady = null,
+        )
+
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedCurrentRun(state))
+        assertEquals(
+            DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_CURRENT_RUN_NOT_READY,
+            DiagnosticsVerifyCardPolicy.noRecordStatus(state),
+        )
+
+        val signals = DiagnosticsCollector.milestoneSignals(state, now = 2_000L)
+        assertTrue(signals.any { it.kind == DiagnosticsCollector.MilestoneKind.PACKAGE_LOADED && it.tokenAuthenticated })
+        val notReady = signals.single { it.kind == DiagnosticsCollector.MilestoneKind.PACKAGE_NOT_READY }
+        assertTrue(notReady.tokenAuthenticated)
+        assertFalse(notReady.currentnessUnknown)
+        assertTrue(signals.none { it.kind == DiagnosticsCollector.MilestoneKind.VERIFY_NONE_BUT_READY })
+
+        val report = DiagnosticsCollector.formatReportText(
+            state = state,
+            serviceConnected = false,
+            scope = null,
+            selectedDevice = null,
+            real = emptyMap(),
+            target = emptyMap(),
+        )
+        assertTrue(report.contains("Package loaded; package-ready callback not observed yet"))
+        assertTrue(report.contains("Package-load callback observed: ${Constants.PACKAGE_NAME_GOOGLE_PHOTOS}"))
+        assertTrue(report.contains("TOKEN-AUTHENTICATED FALLBACK (sender identity not OS-verified)"))
+        assertTrue(report.contains("Last VERIFY (token-authenticated fallback, sender identity not OS-verified): not recorded yet"))
+        assertFalse(report.contains("OS-verified origin"))
+    }
+
+    @Test
+    fun `token-authenticated boot-unknown run with no VERIFY is distinct from OS-verified boot-unknown`() {
+        val state = HookState(
+            diagnosticsAvailable = true,
+            activePackage = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            activeRunId = "token-boot-unknown-no-verify",
+            activeRunStartedAt = 1_000L,
+            activeOriginVerified = false,
+            activeRunBootCount = 1,
+            currentBootCount = 1,
+            activeRunBootEpoch = null,
+            currentBootEpoch = null,
+            moduleLoadedAt = 1_000L,
+            lastPackageLoaded = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReady = Constants.PACKAGE_NAME_GOOGLE_PHOTOS,
+            lastPackageReadyAt = 1_100L,
+        )
+
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedRunIdentity(state))
+        assertTrue(DiagnosticsCollector.hasTokenAuthenticatedUnknownBootRun(state))
+        assertFalse(DiagnosticsCollector.hasTokenAuthenticatedCurrentRun(state))
+        assertEquals(DiagnosticsCollector.BootRelation.UNKNOWN, DiagnosticsCollector.bootRelation(state))
+        assertEquals(
+            DiagnosticsVerifyCardPolicy.NoRecordStatus.TOKEN_AUTHENTICATED_BOOT_UNKNOWN,
+            DiagnosticsVerifyCardPolicy.noRecordStatus(state),
+        )
+
+        val signals = DiagnosticsCollector.milestoneSignals(state, now = 2_000L)
+        assertTrue(signals.any { it.kind == DiagnosticsCollector.MilestoneKind.BOOT_UNKNOWN_RUN && it.tokenAuthenticated })
+        val noVerify = signals.single { it.kind == DiagnosticsCollector.MilestoneKind.VERIFY_NONE_BUT_READY }
+        assertTrue(noVerify.tokenAuthenticated)
+        assertTrue(noVerify.currentnessUnknown)
+
+        val report = DiagnosticsCollector.formatReportText(
+            state = state,
+            serviceConnected = false,
+            scope = null,
+            selectedDevice = null,
+            real = emptyMap(),
+            target = emptyMap(),
+        )
+        assertTrue(report.contains("Last VERIFY (current boot unknown, token-authenticated fallback): no VERIFY record can be established as current; run relation is unknown"))
+        assertTrue(report.contains("Token-authenticated fallback run (sender identity not OS-verified); the run's boot could not be matched to the current boot"))
+        assertTrue(report.contains("TOKEN-AUTHENTICATED FALLBACK (current boot unknown, sender identity not OS-verified):"))
+        assertFalse(report.contains("OS-verified origin; the run's boot could not be matched to the current boot"))
+        assertFalse(report.contains("not recorded yet"))
     }
 }

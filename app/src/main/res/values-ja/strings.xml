@@ -19,7 +19,7 @@
     <string name="update_available">アプリの更新があります</string>
 
     <!-- 変更履歴 -->
-    <string name="version_head">バージョン 1.5.0</string>
+    <string name="version_head">バージョン 1.5.1</string>
     <string name="version_desc">Pixel 11 シリーズ端末プロファイル、バックアップ権限・画質ガイドの追加、フック状態の正確なテレメトリ診断、および Java TLS セキュリティの強化。</string>
     <string name="changelog">変更履歴</string>
 
@@ -156,6 +156,7 @@
     <string name="diagnostics_verify_prior_boot">不明（OS 検証済み origin の前回起動時 VERIFY。履歴であり現在の結果ではありません）</string>
     <string name="diagnostics_verify_boot_unknown">不明（origin は OS 検証済みですが、現在の起動との一致を確認できません）</string>
     <string name="diagnostics_verify_no_record_prior_boot">履歴（前回起動・OS 検証済み origin）: その run の VERIFY 記録はありません。現在の run については示しません。</string>
+    <string name="diagnostics_verify_no_record_token_authenticated_prior_boot">履歴（前回起動・token 認証 fallback、送信元の身元は OS 未検証）: その run の VERIFY 記録はありません。現在の run については示しません。</string>
     <string name="diagnostics_verify_no_record_boot_unknown">origin は OS 検証済みですが、起動 epoch を利用できないか一致を確認できません。VERIFY 記録を現在の結果とは判定できません。</string>
     <string name="diagnostics_verify_no_verified_run">VERIFY 記録を OS 検証済み run に関連付けられません。現在の run の状態は不明です。</string>
     <string name="diagnostics_verify_no_run_identity">VERIFY 記録も OS 検証済み run ID もありません。現在の run の状態は不明です。</string>
@@ -226,7 +227,7 @@
     <string name="diagnostics_sysprops_invocation">SystemProperties インターセプターへの進入: %1$s</string>
     <string name="diagnostics_invocation_observed">少なくとも 1 回確認（%1$s）</string>
     <string name="diagnostics_invocation_unknown">不明（信頼できる run／origin 情報がありません）</string>
-    <string name="diagnostics_invocation_currentness_unknown">不明（origin は OS 検証済み、run の現在性は未検証）</string>
+    <string name="diagnostics_invocation_currentness_unknown">不明（run の現在性は未検証）</string>
     <string name="diagnostics_invocation_not_observed">未確認（まだ呼び出されていない可能性があります。未確認でも未実行の証明にはなりません）</string>
     <string name="diagnostics_invocation_stale">確認記録は古い情報です（%1$s）</string>
     <string name="diagnostics_registration_origin">登録元: %1$s（run %2$s、開始 %3$s）</string>
@@ -235,4 +236,22 @@
     <string name="diagnostics_unverified_telemetry">未検証テレメトリー（origin／package は OS 未検証）: %1$s</string>
     <string name="diagnostics_process_pid">OS が観測した送信元 PID（利用可能な場合は Binder）: %1$s</string>
     <string name="diagnostics_registration_caveat">すべて登録済みでも、Google フォトが対象 API を呼び出した証明にはなりません。進入の観測はインターセプターに入ったことだけを示し、Google フォトからの呼び出しや偽装値の返却を証明しません。</string>
+    <string name="diagnostics_token_authenticated_fallback_origin">トークン認証フォールバック（送信元の身元は OS 未検証）: %1$s</string>
+    <string name="diagnostics_token_authenticated_fallback_telemetry">トークン認証フォールバック（送信元の身元は OS 未検証）: %1$s</string>
+    <string name="diagnostics_verify_token_authenticated_not_recorded">このトークン認証フォールバック run では VERIFY がまだ記録されていません。送信元の身元は OS 未検証です。</string>
+    <string name="diagnostics_verify_token_authenticated_no_package_ready">パッケージは読み込まれましたが、このトークン認証フォールバック run では package-ready と VERIFY がまだ記録されていません。送信元の身元は OS 未検証です。</string>
+    <string name="diagnostics_verify_token_authenticated_boot_unknown">このトークン認証フォールバック run の起動情報が不明なため、VERIFY を現在の記録として確定できません。送信元の身元は OS 未検証です。</string>
+    <string name="diagnostics_pid_token_authenticated_fallback">利用不可（トークン認証フォールバック）</string>
+    <string name="diagnostics_milestone_prior_boot_token">送信元の身元は OS 未検証のトークン認証フォールバック run による前回起動時の履歴です。これらの記録は現在の証拠ではありません。</string>
+    <string name="diagnostics_milestone_boot_unknown_token">送信元の身元は OS 未検証のトークン認証フォールバック run です。run の起動を現在の起動と照合できません。以下のライフサイクル／フック情報の現在性は未検証で、現在の OS 検証済みの証拠ではありません。</string>
+    <string name="diagnostics_milestone_no_record_boot_unknown_token">現在の起動を確認できないトークン認証 run のライフサイクルのマイルストーンは記録されていません。これは送信元の身元が OS 未検証の履歴／不明なデータであり、現在の OS 検証済みの証拠ではありません。</string>
+    <string name="diagnostics_milestone_no_package_boot_unknown_token">現在性が不明な run では package-load コールバックが記録されていません。記録の欠落は現在の run や欠落理由を示しません。</string>
+    <string name="diagnostics_milestone_verify_prior_boot_token">送信元の身元は OS 未検証のトークン認証フォールバック run による前回起動時の VERIFY は履歴です。これらの記録は現在の証拠ではありません。</string>
+    <string name="diagnostics_milestone_verify_boot_unknown_token">VERIFY は送信元の身元が OS 未検証のトークン認証フォールバック run によるものです。run の起動を現在と照合できないため、結果は不明です。</string>
+    <string name="diagnostics_prior_boot_origin_token">前回起動時の履歴の origin: %1$s（現在の証拠ではありません）</string>
+    <string name="diagnostics_boot_unknown_origin_token">origin。現在の起動を確認できません。</string>
+    <string name="diagnostics_origin_prior_boot_token">前回起動時の履歴の origin: %1$s</string>
+    <string name="diagnostics_origin_boot_unknown_token">origin。現在の起動を確認できません: %1$s</string>
+    <string name="diagnostics_verify_prior_boot_token">不明（送信元の身元は OS 未検証のトークン認証フォールバック run による前回起動時の VERIFY。履歴であり、現在のものではありません）</string>
+    <string name="diagnostics_verify_boot_unknown_token">不明（送信元の身元は OS 未検証のトークン認証フォールバック origin。現在の起動を確認できません）</string>
 </resources>

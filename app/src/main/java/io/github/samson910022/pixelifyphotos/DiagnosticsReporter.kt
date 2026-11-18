@@ -533,21 +533,39 @@ object DiagnosticsReporter {
      */
     private fun resolveBroadcastToken(): String? {
         testBroadcastToken?.let { return it.takeIf(String::isNotEmpty) }
-        return try {
-            val module = PixelifyModule.instance ?: run {
+        return resolveBroadcastTokenWithRetries()
+    }
+
+    /** Minimal seam for focused retry tests; production callers use [resolveBroadcastToken]. */
+    internal fun resolveBroadcastTokenWithRetries(
+        maxAttempts: Int = MAX_PROVIDER_ATTEMPTS,
+        lookup: (Int) -> String? = ::lookupBroadcastTokenFromRemote,
+        sleep: () -> Boolean = ::sleepBeforeRetry,
+    ): String? {
+        repeat(maxAttempts) { attempt ->
+            val token = lookup(attempt)
+            if (token != null) return token
+            if (attempt < maxAttempts - 1 && !sleep()) return null
+        }
+        Log.w(TAG, "Diagnostics IPC token unavailable: module app has not synchronized a token to remote prefs")
+        return null
+    }
+
+    private fun lookupBroadcastTokenFromRemote(attempt: Int): String? = try {
+        val module = PixelifyModule.instance ?: run {
+            if (attempt == MAX_PROVIDER_ATTEMPTS - 1) {
                 Log.w(TAG, "Diagnostics IPC token unavailable: module remote-preference source is not initialized")
-                return null
             }
-            val prefs = module.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
-            val token = prefs.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
-            token?.takeIf { it.isNotEmpty() } ?: run {
-                Log.w(TAG, "Diagnostics IPC token unavailable: module app has not synchronized a token to remote prefs")
-                null
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "Diagnostics IPC token lookup failed; remote report will remain unknown", t)
             null
         }
+        module?.getRemotePreferences(Constants.SHARED_PREF_FILE_NAME)
+            ?.getString(Constants.PREF_DIAG_BROADCAST_TOKEN, null)
+            ?.takeIf { it.isNotEmpty() }
+    } catch (t: Throwable) {
+        if (attempt == MAX_PROVIDER_ATTEMPTS - 1) {
+            Log.w(TAG, "Diagnostics IPC token lookup failed; remote report will remain unknown", t)
+        }
+        null
     }
 
     private fun resolveBootCount(context: Context): Int? {
